@@ -39,6 +39,7 @@ jobs:
         run: pnpm build
         env:
           PUBLIC_VERSION: ${{ github.ref_name }}
+          PUBLIC_GA_ID: G-LBX88FMC3F
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
