@@ -39,7 +39,7 @@ const gaId = import.meta.env.PUBLIC_GA_ID;
       }
     </script>
   </head>
-  <body class="h-screen bg-(--color-bg) flex flex-col overflow-hidden">
+  <body class="h-full bg-(--color-bg) flex flex-col">
     <!-- Mobile Header -->
     <header class="lg:hidden shrink-0 bg-(--color-sidebar) text-white flex items-center px-4 justify-between">
       <a href="/" class="text-base font-medium tracking-tight">Tools</a>
@@ -60,14 +60,14 @@ const gaId = import.meta.env.PUBLIC_GA_ID;
     <!-- Overlay -->
     <div id="overlay" class="fixed inset-0 bg-black/50 z-40 lg:hidden hidden" aria-hidden="true"></div>
 
-    <div class="flex flex-1 h-full">
+    <div class="flex flex-1 h-full overflow-auto">
       <!-- Sidebar -->
       <div id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out h-full">
         <Sidebar currentPath={currentPath} />
       </div>
 
       <!-- Main Content -->
-      <main class="flex-1 p-4 pt-1 w-full mx-auto overflow-auto">
+      <main class="flex-1 mb-2 p-4 pt-1 w-full mx-auto overflow-auto">
         <slot />
       </main>
     </div>
