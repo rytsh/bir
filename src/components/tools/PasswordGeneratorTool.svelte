@@ -5,6 +5,51 @@
   import { placeholder } from "@codemirror/view";
   import { oneDark } from "@codemirror/theme-one-dark";
 
+  interface Preset {
+    name: string;
+    length: number;
+    lower: boolean;
+    upper: boolean;
+    digits: boolean;
+    special: boolean;
+  }
+
+  const presets: Preset[] = [
+    {
+      name: "Memorable",
+      length: 10,
+      lower: true,
+      upper: true,
+      digits: true,
+      special: false,
+    },
+    {
+      name: "Strong",
+      length: 15,
+      lower: true,
+      upper: true,
+      digits: true,
+      special: true,
+    },
+    {
+      name: "Fort Knox",
+      length: 30,
+      lower: true,
+      upper: true,
+      digits: true,
+      special: true,
+    },
+    {
+      name: "Encryption",
+      length: 32,
+      lower: true,
+      upper: true,
+      digits: true,
+      special: false,
+    },
+  ];
+
+  let selectedPreset = $state("");
   let length = $state(16);
   let includeLower = $state(true);
   let includeUpper = $state(true);
@@ -18,36 +63,75 @@
   let isDark = $state(false);
   let error = $state("");
 
+  const applyPreset = (presetName: string) => {
+    const preset = presets.find((p) => p.name === presetName);
+    if (preset) {
+      length = preset.length;
+      includeLower = preset.lower;
+      includeUpper = preset.upper;
+      includeDigits = preset.digits;
+      includeSpecial = preset.special;
+      minDigits = preset.digits ? 1 : 0;
+      minSpecial = preset.special ? 1 : 0;
+    }
+  };
+
+  const handlePresetChange = (e: Event) => {
+    const target = e.target as HTMLSelectElement;
+    selectedPreset = target.value;
+    if (selectedPreset) {
+      applyPreset(selectedPreset);
+    }
+  };
+
   let outputEditorContainer: HTMLDivElement;
   let outputEditor: EditorView;
 
   const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
   const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const DIGITS = "0123456789";
-  const SPECIAL = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+  const SPECIAL = "`~!@#$%^&*()-=_+[]{}|;':\",./<>?";
 
-  const getCharacterSet = (
-    chars: string,
-    exclude: string
-  ): string => {
+  const getCharacterSet = (chars: string, exclude: string): string => {
     return chars
       .split("")
       .filter((c) => !exclude.includes(c))
       .join("");
   };
 
+  const random = (): number => {
+    const { crypto, Uint32Array } = window;
+    if (
+      typeof crypto?.getRandomValues === "function" &&
+      typeof Uint32Array === "function"
+    ) {
+      // Divide a random UInt32 by the maximum value (2^32 -1) to get a result between 0 and 1
+      return window.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967295;
+    }
+
+    return random();
+  };
+
   const generatePassword = (): string => {
     const excludeSet = excludeChars;
 
-    const lowerChars = includeLower ? getCharacterSet(LOWERCASE, excludeSet) : "";
-    const upperChars = includeUpper ? getCharacterSet(UPPERCASE, excludeSet) : "";
+    const lowerChars = includeLower
+      ? getCharacterSet(LOWERCASE, excludeSet)
+      : "";
+    const upperChars = includeUpper
+      ? getCharacterSet(UPPERCASE, excludeSet)
+      : "";
     const digitChars = includeDigits ? getCharacterSet(DIGITS, excludeSet) : "";
-    const specialChars = includeSpecial ? getCharacterSet(SPECIAL, excludeSet) : "";
+    const specialChars = includeSpecial
+      ? getCharacterSet(SPECIAL, excludeSet)
+      : "";
 
     const allChars = lowerChars + upperChars + digitChars + specialChars;
 
     if (allChars.length === 0) {
-      throw new Error("No characters available. Please enable at least one character type.");
+      throw new Error(
+        "No characters available. Please enable at least one character type.",
+      );
     }
 
     // Calculate required minimums
@@ -56,39 +140,43 @@
 
     if (requiredDigits + requiredSpecial > length) {
       throw new Error(
-        `Password length (${length}) is too short for minimum requirements (${requiredDigits} digits + ${requiredSpecial} special = ${requiredDigits + requiredSpecial}).`
+        `Password length (${length}) is too short for minimum requirements (${requiredDigits} digits + ${requiredSpecial} special = ${requiredDigits + requiredSpecial}).`,
       );
     }
 
     if (requiredDigits > 0 && digitChars.length === 0) {
-      throw new Error("Cannot meet minimum digits requirement - all digits are excluded.");
+      throw new Error(
+        "Cannot meet minimum digits requirement - all digits are excluded.",
+      );
     }
 
     if (requiredSpecial > 0 && specialChars.length === 0) {
-      throw new Error("Cannot meet minimum special requirement - all special characters are excluded.");
+      throw new Error(
+        "Cannot meet minimum special requirement - all special characters are excluded.",
+      );
     }
 
     const password: string[] = [];
 
     // Add required digits
     for (let i = 0; i < requiredDigits; i++) {
-      password.push(digitChars[Math.floor(Math.random() * digitChars.length)]);
+      password.push(digitChars[Math.floor(random() * digitChars.length)]);
     }
 
     // Add required special characters
     for (let i = 0; i < requiredSpecial; i++) {
-      password.push(specialChars[Math.floor(Math.random() * specialChars.length)]);
+      password.push(specialChars[Math.floor(random() * specialChars.length)]);
     }
 
     // Fill the rest with random characters from all available
     const remaining = length - password.length;
     for (let i = 0; i < remaining; i++) {
-      password.push(allChars[Math.floor(Math.random() * allChars.length)]);
+      password.push(allChars[Math.floor(random() * allChars.length)]);
     }
 
     // Shuffle the password using Fisher-Yates
     for (let i = password.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(random() * (i + 1));
       [password[i], password[j]] = [password[j], password[i]];
     }
 
@@ -150,7 +238,7 @@
         extensions: [
           basicSetup,
           ...createTheme(isDark),
-          placeholder("Click \"Generate\" to create passwords..."),
+          placeholder('Click "Generate" to create passwords...'),
           EditorState.readOnly.of(true),
           EditorView.theme({
             "&": { height: "100%" },
@@ -184,7 +272,11 @@
   const updateOutput = (content: string) => {
     if (outputEditor) {
       outputEditor.dispatch({
-        changes: { from: 0, to: outputEditor.state.doc.length, insert: content },
+        changes: {
+          from: 0,
+          to: outputEditor.state.doc.length,
+          insert: content,
+        },
       });
     }
   };
@@ -236,7 +328,9 @@
     };
   });
 
-  let hasAnyCharType = $derived(includeLower || includeUpper || includeDigits || includeSpecial);
+  let hasAnyCharType = $derived(
+    includeLower || includeUpper || includeDigits || includeSpecial,
+  );
 </script>
 
 <div class="h-full flex flex-col">
@@ -297,11 +391,26 @@
       >
         Generate
       </button>
+      <!-- Preset Selector -->
+      <select
+        onchange={handlePresetChange}
+        value={selectedPreset}
+        class="w-full max-w-md px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
+      >
+        <option value="">Custom Settings</option>
+        {#each presets as preset}
+          <option value={preset.name}>
+            {preset.name}
+          </option>
+        {/each}
+      </select>
     </div>
 
     <!-- Character Type Checkboxes -->
-    <div class="p-4 border border-(--color-border) bg-(--color-bg-alt)">
-      <div class="text-xs tracking-wider text-(--color-text-light) font-medium mb-3">
+    <div class="px-4 py-2 border border-(--color-border) bg-(--color-bg-alt)">
+      <div
+        class="text-xs tracking-wider text-(--color-text-light) font-medium mb-3"
+      >
         Character Types
       </div>
       <div class="flex flex-wrap gap-x-6 gap-y-3">
@@ -340,73 +449,79 @@
       </div>
     </div>
 
-    <!-- Minimum Requirements -->
-    <div class="p-4 border border-(--color-border) bg-(--color-bg-alt)">
-      <div class="text-xs tracking-wider text-(--color-text-light) font-medium mb-3">
-        Minimum Requirements
-      </div>
-      <div class="flex flex-wrap gap-4">
-        <div>
-          <label
-            for="min-digits"
-            class="block text-xs text-(--color-text-light) mb-1"
-          >
-            Min Digits
-          </label>
-          <input
-            id="min-digits"
-            type="number"
-            min="0"
-            max={length}
-            bind:value={minDigits}
-            disabled={!includeDigits}
-            class="w-20 px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
-          />
+    <div class="flex flex-row justify-between gap-2">
+      <!-- Minimum Requirements -->
+      <div class="px-4 py-2 border border-(--color-border) bg-(--color-bg-alt)">
+        <div
+          class="text-xs tracking-wider text-(--color-text-light) font-medium mb-3"
+        >
+          Minimum Requirements
         </div>
-        <div>
-          <label
-            for="min-special"
-            class="block text-xs text-(--color-text-light) mb-1"
-          >
-            Min Special
-          </label>
-          <input
-            id="min-special"
-            type="number"
-            min="0"
-            max={length}
-            bind:value={minSpecial}
-            disabled={!includeSpecial}
-            class="w-20 px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
-          />
+        <div class="flex flex-wrap gap-4">
+          <div>
+            <label
+              for="min-digits"
+              class="block text-xs text-(--color-text-light) mb-1"
+            >
+              Min Digits
+            </label>
+            <input
+              id="min-digits"
+              type="number"
+              min="0"
+              max={length}
+              bind:value={minDigits}
+              disabled={!includeDigits}
+              class="w-20 px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
+          <div>
+            <label
+              for="min-special"
+              class="block text-xs text-(--color-text-light) mb-1"
+            >
+              Min Special
+            </label>
+            <input
+              id="min-special"
+              type="number"
+              min="0"
+              max={length}
+              bind:value={minSpecial}
+              disabled={!includeSpecial}
+              class="w-20 px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Exclude Characters -->
-    <div class="p-4 border border-(--color-border) bg-(--color-bg-alt)">
-      <label
-        for="exclude-chars"
-        class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
-      >
-        Exclude Characters
-      </label>
-      <input
-        id="exclude-chars"
-        type="text"
-        bind:value={excludeChars}
-        placeholder="e.g., 0O1lI"
-        class="w-full max-w-md px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) font-mono"
-      />
-      <p class="mt-1 text-xs text-(--color-text-muted)">
-        Characters entered here will not appear in generated passwords.
-      </p>
+      <!-- Exclude Characters -->
+      <div class="flex-1 px-4 py-2 border border-(--color-border) bg-(--color-bg-alt)">
+        <label
+          for="exclude-chars"
+          class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
+        >
+          Exclude Characters
+        </label>
+        <input
+          id="exclude-chars"
+          type="text"
+          bind:value={excludeChars}
+          placeholder="e.g., 0O1lI"
+          class="w-full max-w-md px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) font-mono"
+        />
+        <p class="mt-1 text-xs text-(--color-text-muted)">
+          Characters entered here will not appear in generated passwords.
+        </p>
+      </div>
     </div>
   </div>
 
   <!-- Error Message -->
   {#if error}
-    <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm">
+    <div
+      class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm"
+    >
       {error}
     </div>
   {/if}
@@ -414,7 +529,9 @@
   <!-- Output -->
   <div class="flex-1 flex flex-col min-h-[200px]">
     <div class="flex justify-between items-center mb-2">
-      <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+      <span
+        class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+      >
         Generated Passwords
       </span>
       <div class="flex gap-3">

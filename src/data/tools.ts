@@ -63,7 +63,7 @@ const rawCategories: Category[] = [
       },
       {
         id: "html-encoder",
-        name: "HTML Encoder",
+        name: "HTML",
         description: "Encode and decode HTML entities",
         icon: "🔤",
         path: "/codecs/html",
@@ -84,21 +84,21 @@ const rawCategories: Category[] = [
     tools: [
       {
         id: "hash-generator",
-        name: "Hash Generator",
+        name: "Hash",
         description: "Generate MD5, SHA-1, SHA-256, SHA-512 hashes with HMAC support",
         icon: "#️⃣",
         path: "/generators/hash",
       },
       {
         id: "id-generator",
-        name: "ID Generator",
+        name: "ID",
         description: "Generate UUIDs (v1, v4, v7) and ULIDs",
         icon: "🔑",
         path: "/generators/id",
       },
       {
         id: "password-generator",
-        name: "Password Generator",
+        name: "Password",
         description: "Generate secure random passwords with customizable options",
         icon: "🔒",
         path: "/generators/password",
