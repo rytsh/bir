@@ -83,11 +83,25 @@ const rawCategories: Category[] = [
     icon: "⚡",
     tools: [
       {
+        id: "hash-generator",
+        name: "Hash Generator",
+        description: "Generate MD5, SHA-1, SHA-256, SHA-512 hashes with HMAC support",
+        icon: "#️⃣",
+        path: "/generators/hash",
+      },
+      {
         id: "id-generator",
         name: "ID Generator",
         description: "Generate UUIDs (v1, v4, v7) and ULIDs",
         icon: "🔑",
         path: "/generators/id",
+      },
+      {
+        id: "password-generator",
+        name: "Password Generator",
+        description: "Generate secure random passwords with customizable options",
+        icon: "🔒",
+        path: "/generators/password",
       },
     ],
   },
