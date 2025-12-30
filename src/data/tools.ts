@@ -63,6 +63,20 @@ const rawCategories: Category[] = [
       },
     ],
   },
+  {
+    id: "generators",
+    name: "Generators",
+    icon: "⚡",
+    tools: [
+      {
+        id: "id-generator",
+        name: "ID Generator",
+        description: "Generate UUIDs (v1, v4, v7) and ULIDs",
+        icon: "🔑",
+        path: "/generators/id",
+      },
+    ],
+  },
 ];
 
 // Sort categories by name and sort tools within each category by name
