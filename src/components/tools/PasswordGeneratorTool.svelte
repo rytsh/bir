@@ -1,14 +1,4 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-  } from "../../lib/codemirror.js";
-
   interface Preset {
     name: string;
     length: number;
@@ -16,6 +6,12 @@
     upper: boolean;
     digits: boolean;
     special: boolean;
+  }
+
+  interface GeneratedPassword {
+    id: number;
+    value: string;
+    copied: boolean;
   }
 
   const presets: Preset[] = [
@@ -63,9 +59,11 @@
   let minDigits = $state(1);
   let minSpecial = $state(1);
   let count = $state(1);
-  let copied = $state(false);
-  let isDark = $state(false);
   let error = $state("");
+  let nextId = $state(0);
+
+  // Array of generated passwords
+  let passwords = $state<GeneratedPassword[]>([]);
 
   const applyPreset = (presetName: string) => {
     const preset = presets.find((p) => p.name === presetName);
@@ -87,9 +85,6 @@
       applyPreset(selectedPreset);
     }
   };
-
-  let outputEditorContainer: HTMLDivElement;
-  let outputEditor: EditorView;
 
   const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
   const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -187,74 +182,63 @@
     return password.join("");
   };
 
-  const createOutputEditor = () => {
-    if (!outputEditorContainer) return;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: 'Click "Generate" to create passwords...',
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-  };
-
   const handleGenerate = () => {
     error = "";
     try {
-      const safeCount = Math.min(Math.max(1, count), 1000);
-      const passwords: string[] = [];
+      const safeCount = Math.min(Math.max(1, count), 100);
+      const newPasswords: GeneratedPassword[] = [];
 
       for (let i = 0; i < safeCount; i++) {
-        passwords.push(generatePassword());
+        newPasswords.push({
+          id: nextId++,
+          value: generatePassword(),
+          copied: false,
+        });
       }
 
-      const output = passwords.join("\n");
-      updateEditorContent(outputEditor, output);
+      // Add new passwords to the beginning of the list
+      passwords = [...newPasswords, ...passwords];
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Generation failed";
       error = errorMessage;
-      updateEditorContent(outputEditor, "");
     }
   };
 
-  const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
-      copied = true;
-      setTimeout(() => (copied = false), 2000);
+  const handleCopyOne = (id: number) => {
+    const pw = passwords.find((p) => p.id === id);
+    if (pw) {
+      navigator.clipboard.writeText(pw.value);
+      passwords = passwords.map((p) =>
+        p.id === id ? { ...p, copied: true } : p
+      );
+      setTimeout(() => {
+        passwords = passwords.map((p) =>
+          p.id === id ? { ...p, copied: false } : p
+        );
+      }, 2000);
+    }
+  };
+
+  const handleRemoveOne = (id: number) => {
+    passwords = passwords.filter((p) => p.id !== id);
+  };
+
+  const handleCopyAll = () => {
+    if (passwords.length > 0) {
+      const allPasswords = passwords.map((p) => p.value).join("\n");
+      navigator.clipboard.writeText(allPasswords);
+      // Flash all as copied
+      passwords = passwords.map((p) => ({ ...p, copied: true }));
+      setTimeout(() => {
+        passwords = passwords.map((p) => ({ ...p, copied: false }));
+      }, 2000);
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(outputEditor, "");
+    passwords = [];
     error = "";
   };
-
-  onMount(() => {
-    isDark = getInitialDarkMode();
-
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createOutputEditor();
-      }
-    });
-
-    tick().then(() => {
-      createOutputEditor();
-    });
-
-    return () => {
-      cleanup();
-      outputEditor?.destroy();
-    };
-  });
 
   let hasAnyCharType = $derived(
     includeLower || includeUpper || includeDigits || includeSpecial,
@@ -460,26 +444,60 @@
       <span
         class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
       >
-        Generated Passwords
+        Generated Passwords {#if passwords.length > 0}({passwords.length}){/if}
       </span>
       <div class="flex gap-3">
         <button
-          onclick={handleCopy}
-          class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          onclick={handleCopyAll}
+          disabled={passwords.length === 0}
+          class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {copied ? "Copied!" : "Copy"}
+          Copy All
         </button>
         <button
           onclick={handleClear}
-          class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          disabled={passwords.length === 0}
+          class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Clear
         </button>
       </div>
     </div>
     <div
-      bind:this={outputEditorContainer}
-      class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-    ></div>
+      class="flex-1 border border-(--color-border) overflow-auto bg-(--color-bg) p-2"
+    >
+      {#if passwords.length === 0}
+        <div class="h-full flex items-center justify-center text-(--color-text-muted) text-sm">
+          Click "Generate" to create passwords...
+        </div>
+      {:else}
+        <div class="flex flex-col gap-2">
+          {#each passwords as pw (pw.id)}
+            <div class="flex items-center gap-2 group">
+              <input
+                type="text"
+                readonly
+                value={pw.value}
+                class="flex-1 px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm font-mono focus:outline-none focus:border-(--color-accent) select-all"
+                onclick={(e) => (e.target as HTMLInputElement).select()}
+              />
+              <button
+                onclick={() => handleCopyOne(pw.id)}
+                class="px-3 py-2 text-xs border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--color-bg-alt) transition-colors shrink-0 {pw.copied ? 'text-(--color-accent) border-(--color-accent)' : ''}"
+              >
+                {pw.copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                onclick={() => handleRemoveOne(pw.id)}
+                class="px-2 py-2 text-xs text-(--color-text-muted) hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                title="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
