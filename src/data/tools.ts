@@ -68,6 +68,13 @@ const rawCategories: Category[] = [
         icon: "🔤",
         path: "/codecs/html",
       },
+      {
+        id: "jwt",
+        name: "JWT",
+        description: "Encode and decode JSON Web Tokens",
+        icon: "🎟️",
+        path: "/codecs/jwt",
+      },
     ],
   },
   {
