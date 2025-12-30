@@ -24,6 +24,7 @@
   let outputEditorContainer: HTMLDivElement;
   let sourceEditor: EditorView;
   let outputEditor: EditorView;
+  let convertTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const formatLabels: Record<Format, string> = {
     json: "JSON",
@@ -173,15 +174,25 @@
     }
   };
 
+  const debouncedConvert = () => {
+    if (convertTimeout) {
+      clearTimeout(convertTimeout);
+    }
+    convertTimeout = setTimeout(() => {
+      convert();
+    }, 150);
+  };
+
   const createSourceEditor = () => {
-    if (!sourceEditorContainer) return;
+    if (!sourceEditorContainer) return false;
+    const content = sourceEditor?.state.doc.toString() || "";
     if (sourceEditor) {
       sourceEditor.destroy();
     }
 
     sourceEditor = new EditorView({
       state: EditorState.create({
-        doc: "",
+        doc: content,
         extensions: [
           basicSetup,
           getLanguageExtension(sourceFormat),
@@ -189,7 +200,7 @@
           placeholder(`Paste or type your ${formatLabels[sourceFormat]} here...`),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
-              convert();
+              debouncedConvert();
             }
           }),
           EditorView.theme({
@@ -200,17 +211,19 @@
       }),
       parent: sourceEditorContainer,
     });
+    return true;
   };
 
   const createOutputEditor = () => {
-    if (!outputEditorContainer) return;
+    if (!outputEditorContainer) return false;
+    const content = outputEditor?.state.doc.toString() || "";
     if (outputEditor) {
       outputEditor.destroy();
     }
 
     outputEditor = new EditorView({
       state: EditorState.create({
-        doc: "",
+        doc: content,
         extensions: [
           basicSetup,
           getLanguageExtension(outputFormat),
@@ -225,6 +238,7 @@
       }),
       parent: outputEditorContainer,
     });
+    return true;
   };
 
   onMount(() => {
@@ -236,20 +250,9 @@
           const newIsDark = document.documentElement.classList.contains("dark");
           if (newIsDark !== isDark) {
             isDark = newIsDark;
-            const sourceContent = sourceEditor?.state.doc.toString() || "";
-            const outputContent = outputEditor?.state.doc.toString() || "";
+            // createSourceEditor and createOutputEditor already preserve content internally
             createSourceEditor();
             createOutputEditor();
-            if (sourceContent) {
-              sourceEditor.dispatch({
-                changes: { from: 0, to: 0, insert: sourceContent },
-              });
-            }
-            if (outputContent) {
-              outputEditor.dispatch({
-                changes: { from: 0, to: 0, insert: outputContent },
-              });
-            }
           }
         }
       });
@@ -257,14 +260,22 @@
 
     observer.observe(document.documentElement, { attributes: true });
 
-    tick().then(() => {
-      createSourceEditor();
-      createOutputEditor();
-      mounted = true;
-    });
+    const initEditors = () => {
+      const sourceOk = createSourceEditor();
+      const outputOk = createOutputEditor();
+      if (sourceOk && outputOk) {
+        mounted = true;
+      } else {
+        requestAnimationFrame(initEditors);
+      }
+    };
+    tick().then(initEditors);
 
     return () => {
       observer.disconnect();
+      if (convertTimeout) {
+        clearTimeout(convertTimeout);
+      }
       sourceEditor?.destroy();
       outputEditor?.destroy();
     };
@@ -277,27 +288,17 @@
   // Recreate editors when format changes
   $effect(() => {
     if (mounted && sourceFormat !== prevSourceFormat) {
-      const content = sourceEditor?.state.doc.toString() || "";
       prevSourceFormat = sourceFormat;
+      // createSourceEditor already preserves content internally
       createSourceEditor();
-      if (content) {
-        sourceEditor.dispatch({
-          changes: { from: 0, to: 0, insert: content },
-        });
-      }
     }
   });
 
   $effect(() => {
     if (mounted && outputFormat !== prevOutputFormat) {
-      const content = outputEditor?.state.doc.toString() || "";
       prevOutputFormat = outputFormat;
+      // createOutputEditor already preserves content internally
       createOutputEditor();
-      if (content) {
-        outputEditor.dispatch({
-          changes: { from: 0, to: 0, insert: content },
-        });
-      }
       convert();
     }
   });
