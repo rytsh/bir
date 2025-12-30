@@ -26,6 +26,20 @@ const rawCategories: Category[] = [
         icon: "🔍",
         path: "/text/diff",
       },
+      {
+        id: "text-escape",
+        name: "Text Escape",
+        description: "Escape or unescape text for JSON, HTML, URL, Regex, Shell, SQL, CSV",
+        icon: "🔡",
+        path: "/text/escape",
+      },
+      {
+        id: "font-glyphs",
+        name: "Font Glyphs",
+        description: "View and copy glyphs from font files",
+        icon: "🔤",
+        path: "/text/glyphs",
+      },
     ],
   },
   {
@@ -69,6 +83,13 @@ const rawCategories: Category[] = [
         path: "/codecs/html",
       },
       {
+        id: "url-encoder",
+        name: "URL",
+        description: "Encode and decode URL components",
+        icon: "🔗",
+        path: "/codecs/url",
+      },
+      {
         id: "hex-viewer",
         name: "Hex Viewer",
         description: "View hex dump of text, files, or Base64 data",
@@ -109,6 +130,13 @@ const rawCategories: Category[] = [
         description: "Generate UUIDs (v1, v4, v7) and ULIDs",
         icon: "🔑",
         path: "/generators/id",
+      },
+      {
+        id: "key-generator",
+        name: "RSA Key",
+        description: "Generate RSA public and private key pairs",
+        icon: "🗝️",
+        path: "/generators/key",
       },
       {
         id: "password-generator",

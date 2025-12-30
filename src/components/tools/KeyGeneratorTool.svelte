@@ -1,0 +1,311 @@
+<script lang="ts">
+  import { onMount, tick } from "svelte";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
+
+  type BitSize = 1024 | 2048 | 4096;
+
+  let bitSize = $state<BitSize>(1024);
+  let generating = $state(false);
+  let error = $state("");
+  let copiedPublic = $state(false);
+  let copiedPrivate = $state(false);
+  let isDark = $state(false);
+  let hasKeys = $state(false);
+
+  let publicKeyContainer: HTMLDivElement;
+  let privateKeyContainer: HTMLDivElement;
+  let publicKeyEditor: EditorView;
+  let privateKeyEditor: EditorView;
+
+  const bitSizes: BitSize[] = [1024, 2048, 4096];
+
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  const formatPem = (base64: string, type: "PUBLIC" | "PRIVATE"): string => {
+    const lines: string[] = [];
+    for (let i = 0; i < base64.length; i += 64) {
+      lines.push(base64.slice(i, i + 64));
+    }
+    return `-----BEGIN ${type} KEY-----\n${lines.join("\n")}\n-----END ${type} KEY-----`;
+  };
+
+  const generateKeys = async () => {
+    generating = true;
+    error = "";
+    hasKeys = false;
+    updateEditorContent(publicKeyEditor, "");
+    updateEditorContent(privateKeyEditor, "");
+
+    try {
+      // Generate RSA key pair using Web Crypto API
+      const keyPair = await crypto.subtle.generateKey(
+        {
+          name: "RSA-OAEP",
+          modulusLength: bitSize,
+          publicExponent: new Uint8Array([1, 0, 1]), // 65537
+          hash: "SHA-256",
+        },
+        true, // extractable
+        ["encrypt", "decrypt"]
+      );
+
+      // Export public key in SPKI format (standard for PKCS#8 public keys)
+      const publicKeyBuffer = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const publicKeyBase64 = arrayBufferToBase64(publicKeyBuffer);
+      const publicKeyPem = formatPem(publicKeyBase64, "PUBLIC");
+
+      // Export private key in PKCS#8 format
+      const privateKeyBuffer = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      const privateKeyBase64 = arrayBufferToBase64(privateKeyBuffer);
+      const privateKeyPem = formatPem(privateKeyBase64, "PRIVATE");
+
+      updateEditorContent(publicKeyEditor, publicKeyPem);
+      updateEditorContent(privateKeyEditor, privateKeyPem);
+      hasKeys = true;
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Key generation failed";
+    } finally {
+      generating = false;
+    }
+  };
+
+  const createPublicKeyEditor = () => {
+    if (!publicKeyContainer) return;
+    const content = getEditorContent(publicKeyEditor);
+    if (publicKeyEditor) publicKeyEditor.destroy();
+
+    publicKeyEditor = createEditor({
+      container: publicKeyContainer,
+      config: {
+        dark: isDark,
+        placeholderText: "Public key will appear here...",
+        readOnly: true,
+      },
+      initialContent: content,
+    });
+  };
+
+  const createPrivateKeyEditor = () => {
+    if (!privateKeyContainer) return;
+    const content = getEditorContent(privateKeyEditor);
+    if (privateKeyEditor) privateKeyEditor.destroy();
+
+    privateKeyEditor = createEditor({
+      container: privateKeyContainer,
+      config: {
+        dark: isDark,
+        placeholderText: "Private key will appear here...",
+        readOnly: true,
+      },
+      initialContent: content,
+    });
+  };
+
+  onMount(() => {
+    isDark = getInitialDarkMode();
+
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createPublicKeyEditor();
+        createPrivateKeyEditor();
+      }
+    });
+
+    tick().then(() => {
+      createPublicKeyEditor();
+      createPrivateKeyEditor();
+    });
+
+    return () => {
+      cleanup();
+      publicKeyEditor?.destroy();
+      privateKeyEditor?.destroy();
+    };
+  });
+
+  const handleCopyPublic = () => {
+    const content = getEditorContent(publicKeyEditor);
+    if (content) {
+      navigator.clipboard.writeText(content);
+      copiedPublic = true;
+      setTimeout(() => (copiedPublic = false), 2000);
+    }
+  };
+
+  const handleCopyPrivate = () => {
+    const content = getEditorContent(privateKeyEditor);
+    if (content) {
+      navigator.clipboard.writeText(content);
+      copiedPrivate = true;
+      setTimeout(() => (copiedPrivate = false), 2000);
+    }
+  };
+
+  const downloadFile = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPublic = () => {
+    const content = getEditorContent(publicKeyEditor);
+    if (content) {
+      downloadFile(content, "id_rsa.pub");
+    }
+  };
+
+  const handleDownloadPrivate = () => {
+    const content = getEditorContent(privateKeyEditor);
+    if (content) {
+      downloadFile(content, "id_rsa");
+    }
+  };
+
+  const handleClear = () => {
+    updateEditorContent(publicKeyEditor, "");
+    updateEditorContent(privateKeyEditor, "");
+    hasKeys = false;
+    error = "";
+  };
+</script>
+
+<div class="h-full flex flex-col">
+  <header class="mb-4">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
+      RSA Key Generator
+    </h1>
+    <p class="text-sm text-(--color-text-muted)">
+      Generate RSA public and private key pairs in PKCS#8 format.
+    </p>
+  </header>
+
+  <!-- Controls -->
+  <div class="mb-4 flex flex-wrap items-center gap-4">
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-(--color-text-muted)">Key Size:</span>
+      <div class="p-1 bg-(--color-border) inline-flex gap-1">
+        {#each bitSizes as size}
+          <button
+            class="px-3 py-1 text-sm font-medium transition-colors {bitSize === size
+              ? 'bg-(--color-text) text-(--color-btn-text)'
+              : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+            onclick={() => (bitSize = size)}
+            disabled={generating}
+          >
+            {size}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <button
+      onclick={generateKeys}
+      disabled={generating}
+      class="px-6 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {generating ? "Generating..." : "Generate"}
+    </button>
+
+    <button
+      onclick={handleClear}
+      class="text-sm text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+    >
+      Clear
+    </button>
+  </div>
+
+  <!-- Error -->
+  {#if error}
+    <div class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">
+      {error}
+    </div>
+  {/if}
+
+  <!-- Key Editors - Side by Side -->
+  <div class="flex-1 flex flex-col lg:flex-row gap-4">
+    <!-- Public Key -->
+    <div class="flex-1 flex flex-col min-h-[200px]">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+          Public Key (SPKI)
+        </span>
+        <div class="flex gap-3">
+          <button
+            onclick={handleDownloadPublic}
+            disabled={!hasKeys}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Download
+          </button>
+          <button
+            onclick={handleCopyPublic}
+            disabled={!hasKeys}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {copiedPublic ? "Copied!" : "Copy"}
+          </button>
+        </div>
+      </div>
+      <div
+        bind:this={publicKeyContainer}
+        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
+      ></div>
+    </div>
+
+    <!-- Private Key -->
+    <div class="flex-1 flex flex-col min-h-[200px]">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+          Private Key (PKCS#8)
+        </span>
+        <div class="flex gap-3">
+          <button
+            onclick={handleDownloadPrivate}
+            disabled={!hasKeys}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Download
+          </button>
+          <button
+            onclick={handleCopyPrivate}
+            disabled={!hasKeys}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {copiedPrivate ? "Copied!" : "Copy"}
+          </button>
+        </div>
+      </div>
+      <div
+        bind:this={privateKeyContainer}
+        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div class="mt-4 p-3 border border-(--color-border) bg-(--color-bg-alt) text-xs text-(--color-text-muted)">
+    <p><strong>Note:</strong> Keys are generated locally in your browser using the Web Crypto API. They are never sent to any server.</p>
+    <p class="mt-1">Larger key sizes (2048, 4096) provide better security but take longer to generate.</p>
+  </div>
+</div>

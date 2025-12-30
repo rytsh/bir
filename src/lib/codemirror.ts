@@ -74,6 +74,7 @@ export const createBaseExtensions = (config: EditorConfig): Extension[] => {
     basicSetup,
     ...createTheme(config.dark),
     editorHeightExtension,
+    EditorView.lineWrapping,
   ];
 
   if (config.language) {
