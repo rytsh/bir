@@ -298,7 +298,7 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
       ID Generator
     </h1>
     <p class="text-sm text-(--color-text-muted)">
@@ -313,7 +313,7 @@
       <div class="flex-1 max-w-xs">
         <label
           for="type-select"
-          class="block text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-2"
+          class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
         >
           ID Type
         </label>
@@ -333,7 +333,7 @@
         <div>
           <label
             for="count-input"
-            class="block text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-2"
+            class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
           >
             Count
           </label>

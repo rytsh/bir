@@ -270,7 +270,7 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
       Text Diff
     </h1>
     <p class="text-sm text-(--color-text-muted)">
@@ -300,7 +300,7 @@
   <!-- Editors - Side by Side -->
   <div class="flex-1 flex flex-col lg:flex-row gap-4 mb-4">
     <!-- Old Text Editor -->
-    <div class="flex-1 flex flex-col min-h-[150px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[150px]">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           Old Text
@@ -327,7 +327,7 @@
     </div>
 
     <!-- New Text Editor -->
-    <div class="flex-1 flex flex-col min-h-[150px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[150px]">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           New Text
@@ -357,7 +357,7 @@
   <!-- Diff Output -->
   <div class="flex-1 flex flex-col min-h-[200px] mt-2">
     <div class="flex justify-between items-center mb-2">
-      <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+      <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
         Differences
       </span>
       {#if hasDiff}

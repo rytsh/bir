@@ -177,7 +177,7 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
       Julian Date Converter
     </h1>
     <p class="text-sm text-(--color-text-muted)">
@@ -186,8 +186,8 @@
   </header>
 
   <!-- Configuration -->
-  <div class="mb-4 p-2 lg:p-2 bg-(--color-bg-alt) border border-(--color-border)">
-    <div class="flex flex-wrap items-center gap-3 lg:gap-4">
+  <div class="mb-4 p-2 bg-(--color-bg-alt) border border-(--color-border)">
+    <div class="flex flex-wrap items-center gap-3">
       <label class="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
@@ -213,7 +213,7 @@
     <div class="flex-1 flex flex-col">
       <div class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col">
         <div class="flex justify-between items-center mb-3">
-          <h2 class="text-sm uppercase tracking-wider text-(--color-text-light) font-medium">
+          <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
             Julian Date to Calendar Date
           </h2>
           <button
@@ -262,7 +262,7 @@
     <div class="flex-1 flex flex-col">
       <div class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col">
         <div class="flex justify-between items-center mb-3">
-          <h2 class="text-sm uppercase tracking-wider text-(--color-text-light) font-medium">
+          <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
             Calendar Date to Julian Date
           </h2>
           <div class="flex gap-3">

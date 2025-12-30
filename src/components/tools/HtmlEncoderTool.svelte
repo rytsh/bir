@@ -292,7 +292,7 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
       HTML Encoder / Decoder
     </h1>
     <p class="text-sm text-(--color-text-muted)">
@@ -304,7 +304,7 @@
   <div class="mb-4 flex flex-wrap items-center gap-4">
     <div class="p-1 bg-(--color-border) inline-flex gap-1">
       <button
-        class="px-3 lg:px-4 py-1.5 text-sm font-medium transition-colors {mode === 'encode'
+        class="px-3 py-1 text-sm font-medium transition-colors {mode === 'encode'
           ? 'bg-(--color-text) text-(--color-btn-text)'
           : 'text-(--color-text-muted) hover:text-(--color-text)'}"
         onclick={() => {
@@ -315,7 +315,7 @@
         Encode
       </button>
       <button
-        class="px-3 lg:px-4 py-1.5 text-sm font-medium transition-colors {mode === 'decode'
+        class="px-3 py-1 text-sm font-medium transition-colors {mode === 'decode'
           ? 'bg-(--color-text) text-(--color-btn-text)'
           : 'text-(--color-text-muted) hover:text-(--color-text)'}"
         onclick={() => {
@@ -349,9 +349,9 @@
   <!-- Editors - Side by Side -->
   <div class="flex-1 flex flex-col lg:flex-row gap-4">
     <!-- Input Editor -->
-    <div class="flex-1 flex flex-col min-h-[200px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[200px]">
       <div class="flex justify-between items-center mb-2">
-        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           {mode === "encode" ? "Text to Encode" : "HTML to Decode"}
         </span>
         <div class="flex gap-3">
@@ -376,9 +376,9 @@
     </div>
 
     <!-- Output Editor -->
-    <div class="flex-1 flex flex-col min-h-[200px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[200px]">
       <div class="flex justify-between items-center mb-2">
-        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           {mode === "encode" ? "Encoded HTML" : "Decoded Text"}
         </span>
         <div class="flex gap-3">

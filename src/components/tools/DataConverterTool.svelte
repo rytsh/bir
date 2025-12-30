@@ -45,8 +45,9 @@
     if (!text) return 0;
     // Split on whitespace, punctuation, and common token boundaries
     // GPT tokenizers typically split on: spaces, punctuation, numbers, and merge common words
-    const tokens = text.split(/(\s+|[{}[\]:,."'`();<>!=+\-*/%&|^~@#$\\]|\d+)/g)
-      .filter(t => t && t.length > 0);
+    const tokens = text
+      .split(/(\s+|[{}[\]:,."'`();<>!=+\-*/%&|^~@#$\\]|\d+)/g)
+      .filter((t) => t && t.length > 0);
     // Adjust for subword tokenization: longer words get split into ~4 char chunks
     let count = 0;
     for (const token of tokens) {
@@ -74,7 +75,7 @@
   };
 
   const tokenDiffPercent = $derived(() => {
-    if (sourceTokens === 0) return null;
+    if (sourceTokens === 0) return 0;
     const diff = ((outputTokens - sourceTokens) / sourceTokens) * 100;
     return diff;
   });
@@ -123,13 +124,19 @@
       case "toml":
         // TOML requires a root object, not arrays or primitives
         if (processedData === null) {
-          throw new Error("Cannot convert null to TOML. TOML requires an object at the root level.");
+          throw new Error(
+            "Cannot convert null to TOML. TOML requires an object at the root level.",
+          );
         }
         if (typeof processedData !== "object") {
-          throw new Error(`Cannot convert ${typeof processedData} to TOML. TOML requires an object at the root level (e.g., {"key": "value"}).`);
+          throw new Error(
+            `Cannot convert ${typeof processedData} to TOML. TOML requires an object at the root level (e.g., {"key": "value"}).`,
+          );
         }
         if (Array.isArray(processedData)) {
-          throw new Error("Cannot convert array to TOML. TOML requires an object at the root level, not an array.");
+          throw new Error(
+            "Cannot convert array to TOML. TOML requires an object at the root level, not an array.",
+          );
         }
         return TOML.stringify(processedData as Record<string, unknown>);
       case "toon":
@@ -254,7 +261,9 @@
           basicSetup,
           getLanguageExtension(sourceFormat),
           createTheme(isDark),
-          placeholder(`Paste or type your ${formatLabels[sourceFormat]} here...`),
+          placeholder(
+            `Paste or type your ${formatLabels[sourceFormat]} here...`,
+          ),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               debouncedConvert();
@@ -435,9 +444,9 @@
 
   <!-- Configuration -->
   <div
-    class="mb-4 p-2 lg:p-2 bg-(--color-bg-alt) border border-(--color-border)"
+    class="mb-4 py-1 px-2 bg-(--color-bg-alt) border border-(--color-border)"
   >
-    <div class="flex flex-wrap items-center gap-3 lg:gap-4">
+    <div class="flex flex-wrap items-center gap-3">
       <!-- Source Format -->
       <div class="flex items-center gap-2">
         <label
@@ -449,7 +458,7 @@
         <select
           id="source-format"
           bind:value={sourceFormat}
-          class="px-2 py-1.5 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
         >
           <option value="json">JSON</option>
           <option value="yaml">YAML</option>
@@ -471,7 +480,7 @@
         <select
           id="output-format"
           bind:value={outputFormat}
-          class="px-2 py-1.5 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
         >
           <option value="json">JSON</option>
           <option value="yaml">YAML</option>
@@ -493,7 +502,7 @@
         <select
           id="indent"
           bind:value={indentType}
-          class="px-2 py-1.5 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
         >
           <option value="2">2 spaces</option>
           <option value="4">4 spaces</option>
@@ -527,7 +536,7 @@
   <!-- Editors - Side by Side -->
   <div class="flex-1 flex flex-col lg:flex-row gap-4">
     <!-- Source Editor -->
-    <div class="flex-1 flex flex-col min-h-[300px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[300px]">
       <div class="flex justify-between items-center mb-2">
         <div class="flex items-center gap-3">
           <span
@@ -535,11 +544,12 @@
           >
             Source ({formatLabels[sourceFormat]})
           </span>
-          {#if sourceChars > 0}
-            <span class="text-xs text-(--color-text-muted)">
-              {sourceChars.toLocaleString()} chars | {sourceTokens.toLocaleString()} tokens
-            </span>
-          {/if}
+          <span
+            class="text-xs text-(--color-text-muted) bg-(--color-border) px-2"
+          >
+            {sourceChars} chars {sourceTokens}
+            tokens
+          </span>
         </div>
         <div class="flex gap-3">
           <button
@@ -563,7 +573,7 @@
     </div>
 
     <!-- Output Editor -->
-    <div class="flex-1 flex flex-col min-h-[300px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[300px]">
       <div class="flex justify-between items-center mb-2">
         <div class="flex items-center gap-3">
           <span
@@ -571,16 +581,22 @@
           >
             Output ({formatLabels[outputFormat]})
           </span>
-          {#if outputChars > 0}
-            <span class="text-xs text-(--color-text-muted)">
-              {outputChars.toLocaleString()} chars | {outputTokens.toLocaleString()} tokens
+          <span class="text-xs bg-(--color-border) px-2">
+            <span class="text-(--color-text-muted)">
+              {outputChars} chars {outputTokens} tokens
             </span>
-            {#if tokenDiffPercent() !== null}
-              <span class="text-xs font-medium {tokenDiffPercent()! < 0 ? 'text-green-600 dark:text-green-400' : tokenDiffPercent()! > 0 ? 'text-red-600 dark:text-red-400' : 'text-(--color-text-muted)'}">
-                ({tokenDiffPercent()! > 0 ? '+' : ''}{tokenDiffPercent()!.toFixed(1)}%)
-              </span>
-            {/if}
-          {/if}
+            <span
+              class="text-xs {tokenDiffPercent()! < 0
+                ? 'text-green-600 dark:text-green-400'
+                : tokenDiffPercent()! > 0
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-(--color-text-muted)'}"
+            >
+              ({tokenDiffPercent()! > 0 ? "+" : ""}{tokenDiffPercent()!.toFixed(
+                1,
+              )}%)
+            </span>
+          </span>
         </div>
         <div class="flex gap-3">
           <button

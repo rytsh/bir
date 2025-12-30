@@ -368,7 +368,7 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
+    <h1 class="text-xl font-medium text-(--color-text) mb-2">
       JWT Encoder / Decoder
     </h1>
     <p class="text-sm text-(--color-text-muted)">
@@ -377,13 +377,13 @@
   </header>
 
   <!-- Configuration -->
-  <div class="mb-4 p-2 lg:p-3 bg-(--color-bg-alt) border border-(--color-border)">
+  <div class="mb-4 px-2 py-1 bg-(--color-bg-alt) border border-(--color-border)">
     <div class="flex flex-wrap items-center gap-3 lg:gap-4">
       <!-- Algorithm -->
       <div class="flex items-center gap-2">
         <label
           for="algorithm"
-          class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          class="text-xs tracking-wider text-(--color-text-light) font-medium"
         >
           Algorithm
         </label>
@@ -416,7 +416,7 @@
       <div class="mt-3 pt-3 border-t border-(--color-border)">
         <label
           for="secret"
-          class="block text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-2"
+          class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
         >
           {isSymmetricAlgorithm(algorithm) ? "Secret" : "Private Key (PKCS8 or JWK)"}
         </label>
@@ -451,7 +451,7 @@
   <!-- Token Input -->
   <div class="mb-4">
     <div class="flex justify-between items-center mb-2">
-      <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+      <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
         JWT Token
       </span>
       <div class="flex gap-3">
@@ -490,11 +490,11 @@
   </div>
 
   <!-- Decoded Output -->
-  <div class="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
+  <div class="flex-1 flex flex-col lg:flex-row gap-4">
     <!-- Header -->
-    <div class="flex-1 flex flex-col min-h-[150px] lg:min-h-0">
+    <div class="flex-1 flex flex-col min-h-[150px]">
       <div class="flex justify-between items-center mb-2">
-        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           Header
         </span>
         {#if isSigningEnabled}
@@ -508,9 +508,9 @@
     </div>
 
     <!-- Payload -->
-    <div class="flex-[2] flex flex-col min-h-[200px] lg:min-h-0">
+    <div class="flex-[2] flex flex-col min-h-[200px]">
       <div class="flex justify-between items-center mb-2">
-        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           Payload
         </span>
         {#if isSigningEnabled}
