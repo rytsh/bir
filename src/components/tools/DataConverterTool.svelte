@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
+  import * as TOON from "@toon-format/toon";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
   import { placeholder } from "@codemirror/view";
@@ -9,7 +10,7 @@
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
   import { oneDark } from "@codemirror/theme-one-dark";
 
-  type Format = "json" | "yaml" | "toml";
+  type Format = "json" | "yaml" | "toml" | "toon";
   type IndentType = "2" | "4" | "tab";
 
   let sourceFormat = $state<Format>("json");
@@ -19,6 +20,11 @@
   let error = $state("");
   let copied = $state(false);
   let isDark = $state(false);
+
+  let sourceChars = $state(0);
+  let sourceTokens = $state(0);
+  let outputChars = $state(0);
+  let outputTokens = $state(0);
 
   let sourceEditorContainer: HTMLDivElement;
   let outputEditorContainer: HTMLDivElement;
@@ -30,7 +36,48 @@
     json: "JSON",
     yaml: "YAML",
     toml: "TOML",
+    toon: "TOON",
   };
+
+  // Simple token estimation based on GPT tokenization patterns
+  // This approximates cl100k_base tokenizer behavior without the heavy library
+  const countTokens = (text: string): number => {
+    if (!text) return 0;
+    // Split on whitespace, punctuation, and common token boundaries
+    // GPT tokenizers typically split on: spaces, punctuation, numbers, and merge common words
+    const tokens = text.split(/(\s+|[{}[\]:,."'`();<>!=+\-*/%&|^~@#$\\]|\d+)/g)
+      .filter(t => t && t.length > 0);
+    // Adjust for subword tokenization: longer words get split into ~4 char chunks
+    let count = 0;
+    for (const token of tokens) {
+      if (/^\s+$/.test(token)) {
+        count += 1; // whitespace is usually 1 token
+      } else if (token.length <= 4) {
+        count += 1;
+      } else {
+        count += Math.ceil(token.length / 4);
+      }
+    }
+    return count;
+  };
+
+  const updateSourceStats = () => {
+    const text = sourceEditor?.state.doc.toString() || "";
+    sourceChars = text.length;
+    sourceTokens = countTokens(text);
+  };
+
+  const updateOutputStats = () => {
+    const text = outputEditor?.state.doc.toString() || "";
+    outputChars = text.length;
+    outputTokens = countTokens(text);
+  };
+
+  const tokenDiffPercent = $derived(() => {
+    if (sourceTokens === 0) return null;
+    const diff = ((outputTokens - sourceTokens) / sourceTokens) * 100;
+    return diff;
+  });
 
   const getIndent = (): string | number => {
     if (indentType === "tab") return "\t";
@@ -57,6 +104,8 @@
         return YAML.parse(text);
       case "toml":
         return TOML.parse(text);
+      case "toon":
+        return TOON.decode(text);
     }
   };
 
@@ -83,6 +132,8 @@
           throw new Error("Cannot convert array to TOML. TOML requires an object at the root level, not an array.");
         }
         return TOML.stringify(processedData as Record<string, unknown>);
+      case "toon":
+        return TOON.encode(processedData);
     }
   };
 
@@ -92,6 +143,8 @@
         return json();
       case "yaml":
       case "toml":
+      case "toon":
+        // TOON is YAML-like, so use YAML highlighting
         return yamlLang();
     }
   };
@@ -140,6 +193,7 @@
   const convert = () => {
     error = "";
     const input = sourceEditor?.state.doc.toString() || "";
+    updateSourceStats();
 
     if (!input.trim()) {
       if (outputEditor) {
@@ -150,6 +204,7 @@
             insert: "",
           },
         });
+        updateOutputStats();
       }
       return;
     }
@@ -165,12 +220,14 @@
             insert: result,
           },
         });
+        updateOutputStats();
       }
     } catch (e) {
       error =
         e instanceof Error
           ? e.message
           : `Invalid ${formatLabels[sourceFormat]} input`;
+      updateOutputStats();
     }
   };
 
@@ -371,7 +428,7 @@
       Data Format Converter
     </h1>
     <p class="text-sm text-(--color-text-muted)">
-      Convert between JSON, YAML, and TOML data formats with customizable
+      Convert between JSON, YAML, TOML, and TOON data formats with customizable
       options.
     </p>
   </header>
@@ -397,6 +454,7 @@
           <option value="json">JSON</option>
           <option value="yaml">YAML</option>
           <option value="toml">TOML</option>
+          <option value="toon">TOON</option>
         </select>
       </div>
 
@@ -418,6 +476,7 @@
           <option value="json">JSON</option>
           <option value="yaml">YAML</option>
           <option value="toml">TOML</option>
+          <option value="toon">TOON</option>
         </select>
       </div>
 
@@ -470,11 +529,18 @@
     <!-- Source Editor -->
     <div class="flex-1 flex flex-col min-h-[300px] lg:min-h-0">
       <div class="flex justify-between items-center mb-2">
-        <span
-          class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
-        >
-          Source ({formatLabels[sourceFormat]})
-        </span>
+        <div class="flex items-center gap-3">
+          <span
+            class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          >
+            Source ({formatLabels[sourceFormat]})
+          </span>
+          {#if sourceChars > 0}
+            <span class="text-xs text-(--color-text-muted)">
+              {sourceChars.toLocaleString()} chars | {sourceTokens.toLocaleString()} tokens
+            </span>
+          {/if}
+        </div>
         <div class="flex gap-3">
           <button
             onclick={handlePaste}
@@ -499,11 +565,23 @@
     <!-- Output Editor -->
     <div class="flex-1 flex flex-col min-h-[300px] lg:min-h-0">
       <div class="flex justify-between items-center mb-2">
-        <span
-          class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
-        >
-          Output ({formatLabels[outputFormat]})
-        </span>
+        <div class="flex items-center gap-3">
+          <span
+            class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          >
+            Output ({formatLabels[outputFormat]})
+          </span>
+          {#if outputChars > 0}
+            <span class="text-xs text-(--color-text-muted)">
+              {outputChars.toLocaleString()} chars | {outputTokens.toLocaleString()} tokens
+            </span>
+            {#if tokenDiffPercent() !== null}
+              <span class="text-xs font-medium {tokenDiffPercent()! < 0 ? 'text-green-600 dark:text-green-400' : tokenDiffPercent()! > 0 ? 'text-red-600 dark:text-red-400' : 'text-(--color-text-muted)'}">
+                ({tokenDiffPercent()! > 0 ? '+' : ''}{tokenDiffPercent()!.toFixed(1)}%)
+              </span>
+            {/if}
+          {/if}
+        </div>
         <div class="flex gap-3">
           <button
             onclick={handleSwap}

@@ -36,7 +36,7 @@ const rawCategories: Category[] = [
       {
         id: "data-converter",
         name: "Data Converter",
-        description: "Convert between JSON, YAML, and TOML formats",
+        description: "Convert between JSON, YAML, TOML, and TOON formats",
         icon: "📄",
         path: "/converter/data",
       },
