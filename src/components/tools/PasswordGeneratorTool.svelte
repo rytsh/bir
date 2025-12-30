@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
 
   interface Preset {
     name: string;
@@ -183,70 +187,19 @@
     return password.join("");
   };
 
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return [
-      EditorView.theme({
-        "&": {
-          backgroundColor: "var(--color-bg-alt)",
-          color: "var(--color-text)",
-        },
-        ".cm-content": {
-          caretColor: "var(--color-text)",
-        },
-        ".cm-cursor": {
-          borderLeftColor: "var(--color-text)",
-        },
-        ".cm-gutters": {
-          backgroundColor: "var(--color-bg)",
-          color: "var(--color-text-light)",
-          border: "none",
-        },
-        ".cm-activeLineGutter": {
-          backgroundColor: "var(--color-border)",
-        },
-        ".cm-activeLine": {
-          backgroundColor: "rgba(0, 0, 0, 0.05)",
-        },
-        ".cm-placeholder": {
-          color: "var(--color-text-light)",
-          fontStyle: "italic",
-        },
-      }),
-    ];
-  };
-
   const createOutputEditor = () => {
     if (!outputEditorContainer) return;
-    if (outputEditor) {
-      outputEditor.destroy();
-    }
+    const content = getEditorContent(outputEditor);
+    if (outputEditor) outputEditor.destroy();
 
-    outputEditor = new EditorView({
-      state: EditorState.create({
-        doc: "",
-        extensions: [
-          basicSetup,
-          ...createTheme(isDark),
-          placeholder('Click "Generate" to create passwords...'),
-          EditorState.readOnly.of(true),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: outputEditorContainer,
+    outputEditor = createEditor({
+      container: outputEditorContainer,
+      config: {
+        dark: isDark,
+        placeholderText: 'Click "Generate" to create passwords...',
+        readOnly: true,
+      },
+      initialContent: content,
     });
   };
 
@@ -261,28 +214,16 @@
       }
 
       const output = passwords.join("\n");
-      updateOutput(output);
+      updateEditorContent(outputEditor, output);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Generation failed";
       error = errorMessage;
-      updateOutput("");
-    }
-  };
-
-  const updateOutput = (content: string) => {
-    if (outputEditor) {
-      outputEditor.dispatch({
-        changes: {
-          from: 0,
-          to: outputEditor.state.doc.length,
-          insert: content,
-        },
-      });
+      updateEditorContent(outputEditor, "");
     }
   };
 
   const handleCopy = () => {
-    const output = outputEditor?.state.doc.toString() || "";
+    const output = getEditorContent(outputEditor);
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
@@ -291,39 +232,26 @@
   };
 
   const handleClear = () => {
-    updateOutput("");
+    updateEditorContent(outputEditor, "");
     error = "";
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            const outputContent = outputEditor?.state.doc.toString() || "";
-            createOutputEditor();
-            if (outputContent) {
-              outputEditor.dispatch({
-                changes: { from: 0, to: 0, insert: outputContent },
-              });
-            }
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createOutputEditor();
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     tick().then(() => {
       createOutputEditor();
     });
 
     return () => {
-      observer.disconnect();
+      cleanup();
       outputEditor?.destroy();
     };
   });

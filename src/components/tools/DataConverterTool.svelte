@@ -3,12 +3,16 @@
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import * as TOON from "@toon-format/toon";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
 
   type Format = "json" | "yaml" | "toml" | "toon";
   type IndentType = "2" | "4" | "tab";
@@ -63,13 +67,13 @@
   };
 
   const updateSourceStats = () => {
-    const text = sourceEditor?.state.doc.toString() || "";
+    const text = getEditorContent(sourceEditor);
     sourceChars = text.length;
     sourceTokens = countTokens(text);
   };
 
   const updateOutputStats = () => {
-    const text = outputEditor?.state.doc.toString() || "";
+    const text = getEditorContent(outputEditor);
     outputChars = text.length;
     outputTokens = countTokens(text);
   };
@@ -156,79 +160,22 @@
     }
   };
 
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return EditorView.theme({
-      "&": {
-        backgroundColor: "var(--color-bg-alt)",
-        color: "var(--color-text)",
-      },
-      ".cm-content": {
-        caretColor: "var(--color-text)",
-      },
-      ".cm-cursor": {
-        borderLeftColor: "var(--color-text)",
-      },
-      ".cm-gutters": {
-        backgroundColor: "var(--color-bg)",
-        color: "var(--color-text-light)",
-        border: "none",
-      },
-      ".cm-activeLineGutter": {
-        backgroundColor: "var(--color-border)",
-      },
-      ".cm-activeLine": {
-        backgroundColor: "rgba(0, 0, 0, 0.05)",
-      },
-      ".cm-placeholder": {
-        color: "var(--color-text-light)",
-        fontStyle: "italic",
-      },
-    });
-  };
-
   const convert = () => {
     error = "";
-    const input = sourceEditor?.state.doc.toString() || "";
+    const input = getEditorContent(sourceEditor);
     updateSourceStats();
 
     if (!input.trim()) {
-      if (outputEditor) {
-        outputEditor.dispatch({
-          changes: {
-            from: 0,
-            to: outputEditor.state.doc.length,
-            insert: "",
-          },
-        });
-        updateOutputStats();
-      }
+      updateEditorContent(outputEditor, "");
+      updateOutputStats();
       return;
     }
 
     try {
       const parsed = parse(input, sourceFormat);
       const result = stringify(parsed, outputFormat);
-      if (outputEditor) {
-        outputEditor.dispatch({
-          changes: {
-            from: 0,
-            to: outputEditor.state.doc.length,
-            insert: result,
-          },
-        });
-        updateOutputStats();
-      }
+      updateEditorContent(outputEditor, result);
+      updateOutputStats();
     } catch (e) {
       error =
         e instanceof Error
@@ -249,82 +196,50 @@
 
   const createSourceEditor = () => {
     if (!sourceEditorContainer) return false;
-    const content = sourceEditor?.state.doc.toString() || "";
-    if (sourceEditor) {
-      sourceEditor.destroy();
-    }
+    const content = getEditorContent(sourceEditor);
+    if (sourceEditor) sourceEditor.destroy();
 
-    sourceEditor = new EditorView({
-      state: EditorState.create({
-        doc: content,
-        extensions: [
-          basicSetup,
-          getLanguageExtension(sourceFormat),
-          createTheme(isDark),
-          placeholder(
-            `Paste or type your ${formatLabels[sourceFormat]} here...`,
-          ),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              debouncedConvert();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: sourceEditorContainer,
+    sourceEditor = createEditor({
+      container: sourceEditorContainer,
+      config: {
+        dark: isDark,
+        language: getLanguageExtension(sourceFormat),
+        placeholderText: `Paste or type your ${formatLabels[sourceFormat]} here...`,
+        onUpdate: () => debouncedConvert(),
+      },
+      initialContent: content,
     });
     return true;
   };
 
   const createOutputEditor = () => {
     if (!outputEditorContainer) return false;
-    const content = outputEditor?.state.doc.toString() || "";
-    if (outputEditor) {
-      outputEditor.destroy();
-    }
+    const content = getEditorContent(outputEditor);
+    if (outputEditor) outputEditor.destroy();
 
-    outputEditor = new EditorView({
-      state: EditorState.create({
-        doc: content,
-        extensions: [
-          basicSetup,
-          getLanguageExtension(outputFormat),
-          createTheme(isDark),
-          placeholder("Converted output will appear here..."),
-          EditorState.readOnly.of(true),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: outputEditorContainer,
+    outputEditor = createEditor({
+      container: outputEditorContainer,
+      config: {
+        dark: isDark,
+        language: getLanguageExtension(outputFormat),
+        placeholderText: "Converted output will appear here...",
+        readOnly: true,
+      },
+      initialContent: content,
     });
     return true;
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            // createSourceEditor and createOutputEditor already preserve content internally
-            createSourceEditor();
-            createOutputEditor();
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createSourceEditor();
+        createOutputEditor();
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     const initEditors = () => {
       const sourceOk = createSourceEditor();
@@ -338,7 +253,7 @@
     tick().then(initEditors);
 
     return () => {
-      observer.disconnect();
+      cleanup();
       if (convertTimeout) {
         clearTimeout(convertTimeout);
       }
@@ -355,7 +270,6 @@
   $effect(() => {
     if (mounted && sourceFormat !== prevSourceFormat) {
       prevSourceFormat = sourceFormat;
-      // createSourceEditor already preserves content internally
       createSourceEditor();
     }
   });
@@ -363,7 +277,6 @@
   $effect(() => {
     if (mounted && outputFormat !== prevOutputFormat) {
       prevOutputFormat = outputFormat;
-      // createOutputEditor already preserves content internally
       createOutputEditor();
       convert();
     }
@@ -379,7 +292,7 @@
   });
 
   const handleCopy = () => {
-    const output = outputEditor?.state.doc.toString() || "";
+    const output = getEditorContent(outputEditor);
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
@@ -389,41 +302,19 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      if (sourceEditor) {
-        sourceEditor.dispatch({
-          changes: {
-            from: 0,
-            to: sourceEditor.state.doc.length,
-            insert: text,
-          },
-        });
-      }
+      updateEditorContent(sourceEditor, text);
     });
   };
 
   const handleClear = () => {
-    if (sourceEditor) {
-      sourceEditor.dispatch({
-        changes: {
-          from: 0,
-          to: sourceEditor.state.doc.length,
-          insert: "",
-        },
-      });
-    }
+    updateEditorContent(sourceEditor, "");
     error = "";
   };
 
   const handleSwap = () => {
-    const output = outputEditor?.state.doc.toString() || "";
-    if (output && sourceEditor) {
-      sourceEditor.dispatch({
-        changes: {
-          from: 0,
-          to: sourceEditor.state.doc.length,
-          insert: output,
-        },
-      });
+    const output = getEditorContent(outputEditor);
+    if (output) {
+      updateEditorContent(sourceEditor, output);
       const temp = sourceFormat;
       sourceFormat = outputFormat;
       outputFormat = temp;

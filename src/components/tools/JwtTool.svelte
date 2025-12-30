@@ -1,10 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    EditorState,
+    createBaseExtensions,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
   import * as jose from "jose";
 
   type Algorithm = "HS256" | "HS384" | "HS512" | "RS256" | "RS384" | "RS512" | "ES256" | "ES384" | "ES512";
@@ -61,54 +66,13 @@
     throw new Error("Unsupported key format. Use PKCS8 PEM or JWK.");
   };
 
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return EditorView.theme({
-      "&": {
-        backgroundColor: "var(--color-bg-alt)",
-        color: "var(--color-text)",
-      },
-      ".cm-content": {
-        caretColor: "var(--color-text)",
-      },
-      ".cm-cursor": {
-        borderLeftColor: "var(--color-text)",
-      },
-      ".cm-gutters": {
-        backgroundColor: "var(--color-bg)",
-        color: "var(--color-text-light)",
-        border: "none",
-      },
-      ".cm-activeLineGutter": {
-        backgroundColor: "var(--color-border)",
-      },
-      ".cm-activeLine": {
-        backgroundColor: "rgba(0, 0, 0, 0.05)",
-      },
-      ".cm-placeholder": {
-        color: "var(--color-text-light)",
-        fontStyle: "italic",
-      },
-    });
-  };
-
   const decodeToken = () => {
     error = "";
 
     const token = tokenInput.trim();
     if (!token) {
-      updateEditor(headerEditor, "");
-      updateEditor(payloadEditor, "");
+      updateEditorContent(headerEditor, "");
+      updateEditorContent(payloadEditor, "");
       return;
     }
 
@@ -121,8 +85,8 @@
       const header = JSON.parse(atob(parts[0].replace(/-/g, "+").replace(/_/g, "/")));
       const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
 
-      updateEditor(headerEditor, JSON.stringify(header, null, 2));
-      updateEditor(payloadEditor, JSON.stringify(payload, null, 2));
+      updateEditorContent(headerEditor, JSON.stringify(header, null, 2));
+      updateEditorContent(payloadEditor, JSON.stringify(payload, null, 2));
 
       // Update algorithm from header
       if (header.alg && algorithmOptions.includes(header.alg)) {
@@ -130,24 +94,16 @@
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to decode JWT";
-      updateEditor(headerEditor, "");
-      updateEditor(payloadEditor, "");
-    }
-  };
-
-  const updateEditor = (editor: EditorView | undefined, content: string) => {
-    if (editor) {
-      editor.dispatch({
-        changes: { from: 0, to: editor.state.doc.length, insert: content },
-      });
+      updateEditorContent(headerEditor, "");
+      updateEditorContent(payloadEditor, "");
     }
   };
 
   const signToken = async () => {
     if (!isSigningEnabled) return;
     
-    const headerContent = headerEditor?.state.doc.toString() || "";
-    const payloadContent = payloadEditor?.state.doc.toString() || "";
+    const headerContent = getEditorContent(headerEditor);
+    const payloadContent = getEditorContent(payloadEditor);
 
     if (!payloadContent.trim()) {
       tokenInput = "";
@@ -214,30 +170,21 @@
 
   const createHeaderEditor = (readOnly: boolean) => {
     if (!headerEditorContainer) return;
-    const content = headerEditor?.state.doc.toString() || "";
-    if (headerEditor) {
-      headerEditor.destroy();
-    }
+    const content = getEditorContent(headerEditor);
+    if (headerEditor) headerEditor.destroy();
+
+    const extensions = createBaseExtensions({
+      dark: isDark,
+      language: json(),
+      placeholderText: '{"alg": "HS256", "typ": "JWT"}',
+      readOnly: readOnly,
+      onUpdate: readOnly ? undefined : () => debouncedSignToken(),
+    });
 
     headerEditor = new EditorView({
       state: EditorState.create({
         doc: content,
-        extensions: [
-          basicSetup,
-          json(),
-          createTheme(isDark),
-          placeholder('{"alg": "HS256", "typ": "JWT"}'),
-          EditorState.readOnly.of(readOnly),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && !readOnly) {
-              debouncedSignToken();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
+        extensions,
       }),
       parent: headerEditorContainer,
     });
@@ -245,52 +192,36 @@
 
   const createPayloadEditor = (readOnly: boolean) => {
     if (!payloadEditorContainer) return;
-    const content = payloadEditor?.state.doc.toString() || "";
-    if (payloadEditor) {
-      payloadEditor.destroy();
-    }
+    const content = getEditorContent(payloadEditor);
+    if (payloadEditor) payloadEditor.destroy();
+
+    const extensions = createBaseExtensions({
+      dark: isDark,
+      language: json(),
+      placeholderText: '{\n  "sub": "1234567890",\n  "name": "John Doe",\n  "iat": 1516239022\n}',
+      readOnly: readOnly,
+      onUpdate: readOnly ? undefined : () => debouncedSignToken(),
+    });
 
     payloadEditor = new EditorView({
       state: EditorState.create({
         doc: content,
-        extensions: [
-          basicSetup,
-          json(),
-          createTheme(isDark),
-          placeholder('{\n  "sub": "1234567890",\n  "name": "John Doe",\n  "iat": 1516239022\n}'),
-          EditorState.readOnly.of(readOnly),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && !readOnly) {
-              debouncedSignToken();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
+        extensions,
       }),
       parent: payloadEditorContainer,
     });
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            createHeaderEditor(!isSigningEnabled);
-            createPayloadEditor(!isSigningEnabled);
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createHeaderEditor(!isSigningEnabled);
+        createPayloadEditor(!isSigningEnabled);
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     tick().then(() => {
       createHeaderEditor(!isSigningEnabled);
@@ -299,7 +230,7 @@
     });
 
     return () => {
-      observer.disconnect();
+      cleanup();
       if (signTimeout) clearTimeout(signTimeout);
       headerEditor?.destroy();
       payloadEditor?.destroy();
@@ -356,8 +287,8 @@
     tokenInput = "";
     secret = "";
     error = "";
-    updateEditor(headerEditor, "");
-    updateEditor(payloadEditor, "");
+    updateEditorContent(headerEditor, "");
+    updateEditorContent(payloadEditor, "");
   };
 
   const handleSampleToken = () => {

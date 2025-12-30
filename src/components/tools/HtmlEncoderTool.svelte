@@ -1,10 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
   import { html } from "@codemirror/lang-html";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
 
   let mode = $state<"encode" | "decode">("encode");
   let encodeAllChars = $state(false);
@@ -69,57 +73,12 @@
     return result;
   };
 
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return EditorView.theme({
-      "&": {
-        backgroundColor: "var(--color-bg-alt)",
-        color: "var(--color-text)",
-      },
-      ".cm-content": {
-        caretColor: "var(--color-text)",
-      },
-      ".cm-cursor": {
-        borderLeftColor: "var(--color-text)",
-      },
-      ".cm-gutters": {
-        backgroundColor: "var(--color-bg)",
-        color: "var(--color-text-light)",
-        border: "none",
-      },
-      ".cm-activeLineGutter": {
-        backgroundColor: "var(--color-border)",
-      },
-      ".cm-activeLine": {
-        backgroundColor: "rgba(0, 0, 0, 0.05)",
-      },
-      ".cm-placeholder": {
-        color: "var(--color-text-light)",
-        fontStyle: "italic",
-      },
-    });
-  };
-
   const convert = () => {
     error = "";
-    const input = inputEditor?.state.doc.toString() || "";
+    const input = getEditorContent(inputEditor);
 
     if (!input.trim()) {
-      if (outputEditor) {
-        outputEditor.dispatch({
-          changes: { from: 0, to: outputEditor.state.doc.length, insert: "" },
-        });
-      }
+      updateEditorContent(outputEditor, "");
       return;
     }
 
@@ -130,106 +89,59 @@
       } else {
         result = decodeHtml(input);
       }
-      if (outputEditor) {
-        outputEditor.dispatch({
-          changes: { from: 0, to: outputEditor.state.doc.length, insert: result },
-        });
-      }
+      updateEditorContent(outputEditor, result);
     } catch (e) {
       error = e instanceof Error ? e.message : "Conversion failed";
-      if (outputEditor) {
-        outputEditor.dispatch({
-          changes: { from: 0, to: outputEditor.state.doc.length, insert: "" },
-        });
-      }
+      updateEditorContent(outputEditor, "");
     }
   };
 
   const createInputEditor = () => {
     if (!inputEditorContainer) return;
-    if (inputEditor) {
-      inputEditor.destroy();
-    }
+    const content = getEditorContent(inputEditor);
+    if (inputEditor) inputEditor.destroy();
 
-    inputEditor = new EditorView({
-      state: EditorState.create({
-        doc: "",
-        extensions: [
-          basicSetup,
-          html(),
-          createTheme(isDark),
-          placeholder(mode === "encode" 
-            ? "Enter text with special characters like <div>, \"quotes\", & ampersands..." 
-            : "Enter HTML entities like &lt;div&gt;, &quot;quotes&quot;, &amp; ampersands..."),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              convert();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: inputEditorContainer,
+    inputEditor = createEditor({
+      container: inputEditorContainer,
+      config: {
+        dark: isDark,
+        language: html(),
+        placeholderText: mode === "encode" 
+          ? "Enter text with special characters like <div>, \"quotes\", & ampersands..." 
+          : "Enter HTML entities like &lt;div&gt;, &quot;quotes&quot;, &amp; ampersands...",
+        onUpdate: () => convert(),
+      },
+      initialContent: content,
     });
   };
 
   const createOutputEditor = () => {
     if (!outputEditorContainer) return;
-    if (outputEditor) {
-      outputEditor.destroy();
-    }
+    const content = getEditorContent(outputEditor);
+    if (outputEditor) outputEditor.destroy();
 
-    outputEditor = new EditorView({
-      state: EditorState.create({
-        doc: "",
-        extensions: [
-          basicSetup,
-          html(),
-          createTheme(isDark),
-          placeholder("Result will appear here..."),
-          EditorState.readOnly.of(true),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: outputEditorContainer,
+    outputEditor = createEditor({
+      container: outputEditorContainer,
+      config: {
+        dark: isDark,
+        language: html(),
+        placeholderText: "Result will appear here...",
+        readOnly: true,
+      },
+      initialContent: content,
     });
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            const inputContent = inputEditor?.state.doc.toString() || "";
-            const outputContent = outputEditor?.state.doc.toString() || "";
-            createInputEditor();
-            createOutputEditor();
-            if (inputContent) {
-              inputEditor.dispatch({
-                changes: { from: 0, to: 0, insert: inputContent },
-              });
-            }
-            if (outputContent) {
-              outputEditor.dispatch({
-                changes: { from: 0, to: 0, insert: outputContent },
-              });
-            }
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createInputEditor();
+        createOutputEditor();
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     tick().then(() => {
       createInputEditor();
@@ -237,7 +149,7 @@
     });
 
     return () => {
-      observer.disconnect();
+      cleanup();
       inputEditor?.destroy();
       outputEditor?.destroy();
     };
@@ -251,27 +163,21 @@
   });
 
   const handleSwap = () => {
-    const output = outputEditor?.state.doc.toString() || "";
-    if (output && inputEditor) {
-      inputEditor.dispatch({
-        changes: { from: 0, to: inputEditor.state.doc.length, insert: output },
-      });
+    const output = getEditorContent(outputEditor);
+    if (output) {
+      updateEditorContent(inputEditor, output);
       mode = mode === "encode" ? "decode" : "encode";
       error = "";
     }
   };
 
   const handleClear = () => {
-    if (inputEditor) {
-      inputEditor.dispatch({
-        changes: { from: 0, to: inputEditor.state.doc.length, insert: "" },
-      });
-    }
+    updateEditorContent(inputEditor, "");
     error = "";
   };
 
   const handleCopy = () => {
-    const output = outputEditor?.state.doc.toString() || "";
+    const output = getEditorContent(outputEditor);
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
@@ -281,11 +187,7 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      if (inputEditor) {
-        inputEditor.dispatch({
-          changes: { from: 0, to: inputEditor.state.doc.length, insert: text },
-        });
-      }
+      updateEditorContent(inputEditor, text);
     });
   };
 </script>

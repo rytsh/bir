@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
   import CryptoJS from "crypto-js";
 
   type InputMode = "text" | "file" | "url";
@@ -38,74 +41,21 @@
     sha512: "",
   });
 
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return [
-      EditorView.theme({
-        "&": {
-          backgroundColor: "var(--color-bg-alt)",
-          color: "var(--color-text)",
-        },
-        ".cm-content": {
-          caretColor: "var(--color-text)",
-        },
-        ".cm-cursor": {
-          borderLeftColor: "var(--color-text)",
-        },
-        ".cm-gutters": {
-          backgroundColor: "var(--color-bg)",
-          color: "var(--color-text-light)",
-          border: "none",
-        },
-        ".cm-activeLineGutter": {
-          backgroundColor: "var(--color-border)",
-        },
-        ".cm-activeLine": {
-          backgroundColor: "rgba(0, 0, 0, 0.05)",
-        },
-        ".cm-placeholder": {
-          color: "var(--color-text-light)",
-          fontStyle: "italic",
-        },
-      }),
-    ];
-  };
-
   const createInputEditor = () => {
     if (!inputEditorContainer) return;
-    if (inputEditor) {
-      inputEditor.destroy();
-    }
+    const content = getEditorContent(inputEditor);
+    if (inputEditor) inputEditor.destroy();
 
-    inputEditor = new EditorView({
-      state: EditorState.create({
-        doc: textInput,
-        extensions: [
-          basicSetup,
-          ...createTheme(isDark),
-          placeholder("Enter text to hash..."),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              textInput = update.state.doc.toString();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: inputEditorContainer,
+    inputEditor = createEditor({
+      container: inputEditorContainer,
+      config: {
+        dark: isDark,
+        placeholderText: "Enter text to hash...",
+        onUpdate: (content) => {
+          textInput = content;
+        },
+      },
+      initialContent: content || textInput,
     });
   };
 
@@ -222,34 +172,21 @@
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            const inputContent = inputEditor?.state.doc.toString() || "";
-            createInputEditor();
-            if (inputContent) {
-              inputEditor.dispatch({
-                changes: { from: 0, to: 0, insert: inputContent },
-              });
-            }
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createInputEditor();
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     tick().then(() => {
       createInputEditor();
     });
 
     return () => {
-      observer.disconnect();
+      cleanup();
       inputEditor?.destroy();
     };
   });

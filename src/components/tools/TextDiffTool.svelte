@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
-  import { EditorState } from "@codemirror/state";
-  import { placeholder } from "@codemirror/view";
-  import { oneDark } from "@codemirror/theme-one-dark";
+  import {
+    EditorView,
+    createEditor,
+    createDarkModeObserver,
+    getInitialDarkMode,
+    updateEditorContent,
+    getEditorContent,
+  } from "../../lib/codemirror.js";
 
   interface DiffLine {
     type: "unchanged" | "added" | "removed";
@@ -21,47 +25,6 @@
   let newEditor: EditorView;
 
   let diffLines = $state<DiffLine[]>([]);
-
-  const createTheme = (dark: boolean) => {
-    if (dark) {
-      return [
-        oneDark,
-        EditorView.theme({
-          ".cm-placeholder": {
-            color: "var(--color-text-light)",
-            fontStyle: "italic",
-          },
-        }),
-      ];
-    }
-    return EditorView.theme({
-      "&": {
-        backgroundColor: "var(--color-bg-alt)",
-        color: "var(--color-text)",
-      },
-      ".cm-content": {
-        caretColor: "var(--color-text)",
-      },
-      ".cm-cursor": {
-        borderLeftColor: "var(--color-text)",
-      },
-      ".cm-gutters": {
-        backgroundColor: "var(--color-bg)",
-        color: "var(--color-text-light)",
-        border: "none",
-      },
-      ".cm-activeLineGutter": {
-        backgroundColor: "var(--color-border)",
-      },
-      ".cm-activeLine": {
-        backgroundColor: "rgba(0, 0, 0, 0.05)",
-      },
-      ".cm-placeholder": {
-        color: "var(--color-text-light)",
-        fontStyle: "italic",
-      },
-    });
-  };
 
   const computeDiff = (oldText: string, newText: string): DiffLine[] => {
     const oldLines = oldText.split("\n");
@@ -124,96 +87,53 @@
   };
 
   const updateDiff = () => {
-    const oldText = oldEditor?.state.doc.toString() || "";
-    const newText = newEditor?.state.doc.toString() || "";
+    const oldText = getEditorContent(oldEditor);
+    const newText = getEditorContent(newEditor);
     diffLines = computeDiff(oldText, newText);
   };
 
   const createOldEditor = () => {
     if (!oldEditorContainer) return;
-    if (oldEditor) {
-      oldEditor.destroy();
-    }
+    const content = getEditorContent(oldEditor);
+    if (oldEditor) oldEditor.destroy();
 
-    oldEditor = new EditorView({
-      state: EditorState.create({
-        doc: "",
-        extensions: [
-          basicSetup,
-          createTheme(isDark),
-          placeholder("Enter original text..."),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              updateDiff();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: oldEditorContainer,
+    oldEditor = createEditor({
+      container: oldEditorContainer,
+      config: {
+        dark: isDark,
+        placeholderText: "Enter original text...",
+        onUpdate: () => updateDiff(),
+      },
+      initialContent: content,
     });
   };
 
   const createNewEditor = () => {
     if (!newEditorContainer) return;
-    if (newEditor) {
-      newEditor.destroy();
-    }
+    const content = getEditorContent(newEditor);
+    if (newEditor) newEditor.destroy();
 
-    newEditor = new EditorView({
-      state: EditorState.create({
-        doc: "",
-        extensions: [
-          basicSetup,
-          createTheme(isDark),
-          placeholder("Enter new text..."),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              updateDiff();
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
-      }),
-      parent: newEditorContainer,
+    newEditor = createEditor({
+      container: newEditorContainer,
+      config: {
+        dark: isDark,
+        placeholderText: "Enter new text...",
+        onUpdate: () => updateDiff(),
+      },
+      initialContent: content,
     });
   };
 
   onMount(() => {
-    isDark = document.documentElement.classList.contains("dark");
+    isDark = getInitialDarkMode();
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === "class") {
-          const newIsDark = document.documentElement.classList.contains("dark");
-          if (newIsDark !== isDark) {
-            isDark = newIsDark;
-            const oldContent = oldEditor?.state.doc.toString() || "";
-            const newContent = newEditor?.state.doc.toString() || "";
-            createOldEditor();
-            createNewEditor();
-            if (oldContent) {
-              oldEditor.dispatch({
-                changes: { from: 0, to: 0, insert: oldContent },
-              });
-            }
-            if (newContent) {
-              newEditor.dispatch({
-                changes: { from: 0, to: 0, insert: newContent },
-              });
-            }
-          }
-        }
-      });
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createOldEditor();
+        createNewEditor();
+      }
     });
-
-    observer.observe(document.documentElement, { attributes: true });
 
     tick().then(() => {
       createOldEditor();
@@ -221,45 +141,29 @@
     });
 
     return () => {
-      observer.disconnect();
+      cleanup();
       oldEditor?.destroy();
       newEditor?.destroy();
     };
   });
 
   const handleClearOld = () => {
-    if (oldEditor) {
-      oldEditor.dispatch({
-        changes: { from: 0, to: oldEditor.state.doc.length, insert: "" },
-      });
-    }
+    updateEditorContent(oldEditor, "");
   };
 
   const handleClearNew = () => {
-    if (newEditor) {
-      newEditor.dispatch({
-        changes: { from: 0, to: newEditor.state.doc.length, insert: "" },
-      });
-    }
+    updateEditorContent(newEditor, "");
   };
 
   const handlePasteOld = () => {
     navigator.clipboard.readText().then((text) => {
-      if (oldEditor) {
-        oldEditor.dispatch({
-          changes: { from: 0, to: oldEditor.state.doc.length, insert: text },
-        });
-      }
+      updateEditorContent(oldEditor, text);
     });
   };
 
   const handlePasteNew = () => {
     navigator.clipboard.readText().then((text) => {
-      if (newEditor) {
-        newEditor.dispatch({
-          changes: { from: 0, to: newEditor.state.doc.length, insert: text },
-        });
-      }
+      updateEditorContent(newEditor, text);
     });
   };
 
