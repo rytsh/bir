@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
   import { placeholder } from "@codemirror/view";
@@ -106,6 +106,7 @@
   };
 
   const createInputEditor = () => {
+    if (!inputEditorContainer) return;
     if (inputEditor) {
       inputEditor.destroy();
     }
@@ -133,6 +134,7 @@
   };
 
   const createOutputEditor = () => {
+    if (!outputEditorContainer) return;
     if (outputEditor) {
       outputEditor.destroy();
     }
@@ -185,8 +187,10 @@
 
     observer.observe(document.documentElement, { attributes: true });
 
-    createInputEditor();
-    createOutputEditor();
+    tick().then(() => {
+      createInputEditor();
+      createOutputEditor();
+    });
 
     return () => {
       observer.disconnect();

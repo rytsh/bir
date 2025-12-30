@@ -13,7 +13,21 @@ export interface Category {
   tools: Tool[];
 }
 
-export const categories: Category[] = [
+const rawCategories: Category[] = [
+  {
+    id: "text",
+    name: "Text",
+    icon: "📝",
+    tools: [
+      {
+        id: "text-diff",
+        name: "Text Diff",
+        description: "Compare two texts and highlight differences",
+        icon: "🔍",
+        path: "/tools/text-diff",
+      },
+    ],
+  },
   {
     id: "converters",
     name: "Converters",
@@ -50,6 +64,14 @@ export const categories: Category[] = [
     ],
   },
 ];
+
+// Sort categories by name and sort tools within each category by name
+export const categories: Category[] = rawCategories
+  .map((category) => ({
+    ...category,
+    tools: [...category.tools].sort((a, b) => a.name.localeCompare(b.name)),
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 export function getAllTools(): Tool[] {
   return categories.flatMap((category) => category.tools);

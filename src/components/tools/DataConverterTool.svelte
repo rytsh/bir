@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import { EditorView, basicSetup } from "codemirror";
@@ -174,6 +174,7 @@
   };
 
   const createSourceEditor = () => {
+    if (!sourceEditorContainer) return;
     if (sourceEditor) {
       sourceEditor.destroy();
     }
@@ -202,6 +203,7 @@
   };
 
   const createOutputEditor = () => {
+    if (!outputEditorContainer) return;
     if (outputEditor) {
       outputEditor.destroy();
     }
@@ -255,8 +257,11 @@
 
     observer.observe(document.documentElement, { attributes: true });
 
-    createSourceEditor();
-    createOutputEditor();
+    tick().then(() => {
+      createSourceEditor();
+      createOutputEditor();
+      mounted = true;
+    });
 
     return () => {
       observer.disconnect();
@@ -265,11 +270,15 @@
     };
   });
 
+  let mounted = $state(false);
+  let prevSourceFormat = $state<Format>(sourceFormat);
+  let prevOutputFormat = $state<Format>(outputFormat);
+
   // Recreate editors when format changes
   $effect(() => {
-    if (sourceEditor && sourceEditorContainer) {
-      const content = sourceEditor.state.doc.toString();
-      sourceFormat;
+    if (mounted && sourceFormat !== prevSourceFormat) {
+      const content = sourceEditor?.state.doc.toString() || "";
+      prevSourceFormat = sourceFormat;
       createSourceEditor();
       if (content) {
         sourceEditor.dispatch({
@@ -280,15 +289,16 @@
   });
 
   $effect(() => {
-    if (outputEditor && outputEditorContainer) {
-      const content = outputEditor.state.doc.toString();
-      outputFormat;
+    if (mounted && outputFormat !== prevOutputFormat) {
+      const content = outputEditor?.state.doc.toString() || "";
+      prevOutputFormat = outputFormat;
       createOutputEditor();
       if (content) {
         outputEditor.dispatch({
           changes: { from: 0, to: 0, insert: content },
         });
       }
+      convert();
     }
   });
 
@@ -296,8 +306,9 @@
   $effect(() => {
     indentType;
     sortKeys;
-    outputFormat;
-    convert();
+    if (mounted) {
+      convert();
+    }
   });
 
   const handleCopy = () => {

@@ -21,13 +21,17 @@
   --color-error-bg: #fef2f2;
   --color-error-border: #fecaca;
   --color-error-text: #b91c1c;
+  --color-diff-added-bg: #dcfce7;
+  --color-diff-added-text: #166534;
+  --color-diff-removed-bg: #fee2e2;
+  --color-diff-removed-text: #991b1b;
 }
 
 :root.dark {
   --color-bg: #0a0a0a;
   --color-bg-alt: #141414;
-  --color-sidebar: #0a0a0a;
-  --color-sidebar-hover: #1a1a1a;
+  --color-sidebar: #1a1a1a;
+  --color-sidebar-hover: #2a2a2a;
   --color-text: #f1f1f1;
   --color-text-muted: #a1a1a1;
   --color-text-light: #6b6b6b;
@@ -39,6 +43,10 @@
   --color-error-bg: #1f1315;
   --color-error-border: #5c2b2e;
   --color-error-text: #f87171;
+  --color-diff-added-bg: #14532d;
+  --color-diff-added-text: #86efac;
+  --color-diff-removed-bg: #450a0a;
+  --color-diff-removed-text: #fca5a5;
 }
 
 html {

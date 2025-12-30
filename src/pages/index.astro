@@ -5,24 +5,25 @@ import { categories } from "../data/tools";
 
 <Layout title="Home" currentPath="/">
   <div>
-    <header class="mb-8 lg:mb-12">
+    <header class="mb-4">
       <p class="text-(--color-text-muted) text-sm">
         A collection of useful tools for everyday tasks.
       </p>
+      <hr class="border-(--color-border) my-4" />
     </header>
 
     {
       categories.map((category) => (
-        <section class="mb-8 lg:mb-10">
-          <h2 class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 lg:mb-4 font-medium">
+        <section class="mb-8">
+          <h2 class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 font-medium">
             {category.name}
           </h2>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {category.tools.map((tool) => (
               <a
                 href={tool.path}
-                class="group block p-3 lg:p-4 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
+                class="group block p-3 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
               >
                 <div class="flex items-center gap-3">
                   <span class="text-lg">{tool.icon}</span>
