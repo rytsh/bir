@@ -283,6 +283,7 @@
     <label class="flex items-center gap-2 cursor-pointer">
       <span class="text-sm text-(--color-text-muted)">Inline Mode</span>
       <button
+        title="on/off"
         type="button"
         role="switch"
         aria-checked={inlineMode}
@@ -297,7 +298,7 @@
   </div>
 
   <!-- Editors - Side by Side -->
-  <div class="flex-1 flex flex-col lg:flex-row gap-4 min-h-0 mb-4">
+  <div class="flex-1 flex flex-col lg:flex-row gap-4 mb-4">
     <!-- Old Text Editor -->
     <div class="flex-1 flex flex-col min-h-[150px] lg:min-h-0">
       <div class="flex justify-between items-center mb-2">
@@ -354,7 +355,7 @@
   </div>
 
   <!-- Diff Output -->
-  <div class="flex-1 flex flex-col min-h-[200px]">
+  <div class="flex-1 flex flex-col min-h-[200px] mt-2">
     <div class="flex justify-between items-center mb-2">
       <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
         Differences

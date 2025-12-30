@@ -347,7 +347,7 @@
   {/if}
 
   <!-- Editors - Side by Side -->
-  <div class="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
+  <div class="flex-1 flex flex-col lg:flex-row gap-4">
     <!-- Input Editor -->
     <div class="flex-1 flex flex-col min-h-[200px] lg:min-h-0">
       <div class="flex justify-between items-center mb-2">
