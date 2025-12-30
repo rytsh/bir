@@ -1,0 +1,56 @@
+---
+import { categories } from "../data/tools";
+
+interface Props {
+  currentPath?: string;
+}
+
+const { currentPath = "" } = Astro.props;
+---
+
+<aside
+  class="w-56 bg-(--color-sidebar) text-white/80 min-h-screen flex flex-col font-mono text-sm"
+>
+  <div class="p-5 border-b border-white/10">
+    <a
+      href="/"
+      class="flex items-center gap-2 text-white hover:text-white/70 transition-colors"
+    >
+      <span class="text-base font-medium tracking-tight">Tools</span>
+    </a>
+  </div>
+
+  <nav class="flex-1 p-4 overflow-y-auto">
+    {
+      categories.map((category) => (
+        <div class="mb-6">
+          <h3 class="text-[11px] text-white/40 uppercase tracking-wider mb-3 px-2">
+            {category.name}
+          </h3>
+          <ul class="space-y-0.5">
+            {category.tools.map((tool) => (
+              <li>
+                <a
+                  href={tool.path}
+                  class:list={[
+                    "flex items-center gap-2 px-2 py-1.5 text-[13px] transition-colors",
+                    currentPath === tool.path
+                      ? "text-white bg-white/10"
+                      : "text-white/60 hover:text-white hover:bg-white/5",
+                  ]}
+                >
+                  <span class="w-4 text-center text-xs">{tool.icon}</span>
+                  <span>{tool.name}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </nav>
+
+  <div class="p-4 border-t border-white/10 text-[11px] text-white/30">
+    <p>Developer Tools</p>
+  </div>
+</aside>

@@ -1,0 +1,30 @@
+---
+import "../styles/global.css";
+import Sidebar from "../components/Sidebar.astro";
+
+interface Props {
+  title: string;
+  currentPath?: string;
+}
+
+const { title, currentPath } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title} | Tools</title>
+  </head>
+  <body class="min-h-screen bg-bg">
+    <div class="flex min-h-screen">
+      <Sidebar currentPath={currentPath} />
+      <main class="flex-1 p-10 max-w-5xl">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>
