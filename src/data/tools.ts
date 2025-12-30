@@ -40,6 +40,13 @@ const rawCategories: Category[] = [
         icon: "📄",
         path: "/converter/data",
       },
+      {
+        id: "julian-converter",
+        name: "Julian Date",
+        description: "Convert between Julian Date and calendar date",
+        icon: "📅",
+        path: "/converter/julian",
+      },
     ],
   },
   {
