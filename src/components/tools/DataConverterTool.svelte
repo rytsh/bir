@@ -4,6 +4,7 @@
   import * as TOML from "smol-toml";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
+  import { placeholder } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
   import { oneDark } from "@codemirror/theme-one-dark";
@@ -96,7 +97,15 @@
 
   const createTheme = (dark: boolean) => {
     if (dark) {
-      return oneDark;
+      return [
+        oneDark,
+        EditorView.theme({
+          ".cm-placeholder": {
+            color: "var(--color-text-light)",
+            fontStyle: "italic",
+          },
+        }),
+      ];
     }
     return EditorView.theme({
       "&": {
@@ -119,6 +128,10 @@
       },
       ".cm-activeLine": {
         backgroundColor: "rgba(0, 0, 0, 0.05)",
+      },
+      ".cm-placeholder": {
+        color: "var(--color-text-light)",
+        fontStyle: "italic",
       },
     });
   };
@@ -172,6 +185,7 @@
           basicSetup,
           getLanguageExtension(sourceFormat),
           createTheme(isDark),
+          placeholder(`Paste or type your ${formatLabels[sourceFormat]} here...`),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               convert();
@@ -199,6 +213,7 @@
           basicSetup,
           getLanguageExtension(outputFormat),
           createTheme(isDark),
+          placeholder("Converted output will appear here..."),
           EditorState.readOnly.of(true),
           EditorView.theme({
             "&": { height: "100%" },
