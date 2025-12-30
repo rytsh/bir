@@ -82,6 +82,13 @@ const rawCategories: Category[] = [
         icon: "🎟️",
         path: "/codecs/jwt",
       },
+      {
+        id: "luhn",
+        name: "Luhn",
+        description: "Validate credit card numbers using the Luhn algorithm",
+        icon: "💳",
+        path: "/codecs/luhn",
+      },
     ],
   },
   {
