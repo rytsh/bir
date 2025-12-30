@@ -5,8 +5,8 @@ import { categories } from "../data/tools";
 
 <Layout title="Home" currentPath="/">
   <div>
-    <header class="mb-12">
-      <h1 class="text-2xl font-medium text-(--color-text) mb-2">
+    <header class="mb-8 lg:mb-12">
+      <h1 class="text-xl lg:text-2xl font-medium text-(--color-text) mb-2">
         Tools
       </h1>
       <p class="text-(--color-text-muted) text-sm">
@@ -16,24 +16,24 @@ import { categories } from "../data/tools";
 
     {
       categories.map((category) => (
-        <section class="mb-10">
-          <h2 class="text-xs uppercase tracking-wider text-(--color-text-light) mb-4 font-medium">
+        <section class="mb-8 lg:mb-10">
+          <h2 class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 lg:mb-4 font-medium">
             {category.name}
           </h2>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">
             {category.tools.map((tool) => (
               <a
                 href={tool.path}
-                class="group block p-4 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) transition-colors"
+                class="group block p-3 lg:p-4 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
               >
                 <div class="flex items-center gap-3">
                   <span class="text-lg">{tool.icon}</span>
-                  <div>
-                    <h3 class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors truncate">
                       {tool.name}
                     </h3>
-                    <p class="text-xs text-(--color-text-light) mt-0.5">
+                    <p class="text-xs text-(--color-text-light) mt-0.5 truncate">
                       {tool.description}
                     </p>
                   </div>

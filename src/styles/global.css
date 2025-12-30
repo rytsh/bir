@@ -3,7 +3,9 @@
 @theme {
   --font-sans: "Inter", "Inter Fallback", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
-  
+}
+
+:root {
   --color-bg: #f8f8f8;
   --color-bg-alt: #ffffff;
   --color-sidebar: #1a1a1a;
@@ -15,6 +17,28 @@
   --color-border-dark: #333;
   --color-accent: #1a1a1a;
   --color-accent-hover: #333;
+  --color-btn-text: #ffffff;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-error-text: #b91c1c;
+}
+
+:root.dark {
+  --color-bg: #0a0a0a;
+  --color-bg-alt: #141414;
+  --color-sidebar: #0a0a0a;
+  --color-sidebar-hover: #1a1a1a;
+  --color-text: #f1f1f1;
+  --color-text-muted: #a1a1a1;
+  --color-text-light: #6b6b6b;
+  --color-border: #2a2a2a;
+  --color-border-dark: #3a3a3a;
+  --color-accent: #f1f1f1;
+  --color-accent-hover: #d1d1d1;
+  --color-btn-text: #0a0a0a;
+  --color-error-bg: #1f1315;
+  --color-error-border: #5c2b2e;
+  --color-error-text: #f87171;
 }
 
 html {
@@ -26,9 +50,14 @@ html {
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+button {
+  cursor: pointer;
 }
 
 ::selection {
-  background-color: #1a1a1a;
-  color: #fff;
+  background-color: var(--color-text);
+  color: var(--color-bg);
 }
