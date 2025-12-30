@@ -15,6 +15,20 @@ export interface Category {
 
 export const categories: Category[] = [
   {
+    id: "converters",
+    name: "Converters",
+    icon: "🔄",
+    tools: [
+      {
+        id: "data-converter",
+        name: "Data Converter",
+        description: "Convert between JSON, YAML, and TOML formats",
+        icon: "📄",
+        path: "/tools/data-converter",
+      },
+    ],
+  },
+  {
     id: "encoders-decoders",
     name: "Encoders / Decoders",
     icon: "🔐",
@@ -25,6 +39,13 @@ export const categories: Category[] = [
         description: "Encode and decode Base64 strings",
         icon: "📝",
         path: "/tools/base64",
+      },
+      {
+        id: "html-encoder",
+        name: "HTML Encoder",
+        description: "Encode and decode HTML entities",
+        icon: "🔤",
+        path: "/tools/html-encoder",
       },
     ],
   },

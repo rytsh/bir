@@ -11,7 +11,7 @@ const version = import.meta.env.PUBLIC_VERSION || "development";
 ---
 
 <aside
-  class="w-64 lg:w-56 bg-(--color-sidebar) text-white/80 min-h-screen flex flex-col font-mono text-sm"
+  class="w-64 lg:w-56 bg-(--color-sidebar) text-white/80 h-full flex flex-col font-mono text-sm"
 >
   <div class="px-4 border-b border-white/10 hidden lg:flex items-center justify-between">
     <a
@@ -26,7 +26,7 @@ const version = import.meta.env.PUBLIC_VERSION || "development";
   <nav class="flex-1 py-2 px-4 overflow-y-auto">
     {
       categories.map((category) => (
-        <div class="mb-6">
+        <div class="mb-2">
           <h3 class="text-[11px] text-white/40 uppercase tracking-wider mb-2 px-2">
             {category.name}
           </h3>

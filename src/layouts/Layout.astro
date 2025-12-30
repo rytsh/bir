@@ -27,9 +27,9 @@ const { title, currentPath } = Astro.props;
       }
     </script>
   </head>
-  <body class="min-h-screen bg-(--color-bg)">
+  <body class="h-screen bg-(--color-bg) flex flex-col overflow-hidden">
     <!-- Mobile Header -->
-    <header class="lg:hidden sticky top-0 left-0 right-0 z-40 bg-(--color-sidebar) text-white flex items-center px-4 justify-between">
+    <header class="lg:hidden shrink-0 bg-(--color-sidebar) text-white flex items-center px-4 justify-between">
       <a href="/" class="text-base font-medium tracking-tight">Tools</a>
       <div class="flex items-center gap-1">
         <ThemeToggle client:load />
@@ -48,14 +48,14 @@ const { title, currentPath } = Astro.props;
     <!-- Overlay -->
     <div id="overlay" class="fixed inset-0 bg-black/50 z-40 lg:hidden hidden" aria-hidden="true"></div>
 
-    <div class="flex min-h-screen">
+    <div class="flex flex-1 min-h-0">
       <!-- Sidebar -->
-      <div id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out">
+      <div id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out h-full">
         <Sidebar currentPath={currentPath} />
       </div>
 
       <!-- Main Content -->
-      <main class="flex-1 p-4 lg:p-4 w-full max-w-5xl mx-auto lg:mx-0">
+      <main class="flex-1 p-4 pt-2 w-full mx-auto overflow-auto">
         <slot />
       </main>
     </div>
