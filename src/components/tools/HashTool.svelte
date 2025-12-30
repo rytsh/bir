@@ -403,7 +403,7 @@
         class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
       ></div>
     {:else if inputMode === "file"}
-      <div class="border border-(--color-border) bg-(--color-bg) p-4">
+      <div class="flex items-center border border-(--color-border) bg-(--color-bg) py-2 px-4">
         <input
           type="file"
           id="file-input"
@@ -417,7 +417,7 @@
           {fileInput ? fileInput.name : "Choose a file..."}
         </label>
         {#if fileInput}
-          <p class="mt-2 text-xs text-(--color-text-muted)">
+          <p class="ml-2 text-xs text-(--color-text-muted)">
             Size: {(fileInput.size / 1024).toFixed(2)} KB
           </p>
         {/if}

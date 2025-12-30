@@ -1,0 +1,8 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import HexViewerTool from "../../components/tools/HexViewerTool.svelte";
+---
+
+<Layout title="Hex Viewer" currentPath="/codecs/hex">
+  <HexViewerTool client:load />
+</Layout>

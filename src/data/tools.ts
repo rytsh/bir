@@ -69,6 +69,13 @@ const rawCategories: Category[] = [
         path: "/codecs/html",
       },
       {
+        id: "hex-viewer",
+        name: "Hex Viewer",
+        description: "View hex dump of text, files, or Base64 data",
+        icon: "🔢",
+        path: "/codecs/hex",
+      },
+      {
         id: "jwt",
         name: "JWT",
         description: "Encode and decode JSON Web Tokens",
