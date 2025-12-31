@@ -12,10 +12,10 @@ interface Props {
 const { title, description, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
-const siteName = "Developer Tools";
+const siteName = "Tools";
 const defaultDescription = "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.";
 const metaDescription = description || defaultDescription;
-const pageTitle = `${title} | ${siteName}`;
+const pageTitle = `${title ? `${title} | ` : ""}${siteName}`;
 const canonicalURL = new URL(currentPath || "/", Astro.site);
 ---
 
