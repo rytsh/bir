@@ -4,11 +4,12 @@ import tailwindcss from "@tailwindcss/vite";
 import svelte from "@astrojs/svelte";
 import sitemap from "@astrojs/sitemap";
 
+import relativeLinks from "astro-relative-links";
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://1.tools",
-  base: "./",
-  integrations: [svelte(), sitemap()],
+  integrations: [svelte(), sitemap(), relativeLinks()],
   vite: {
     plugins: [tailwindcss()],
   },

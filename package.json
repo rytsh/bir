@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "pnpx serve dist",
+    "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
@@ -21,6 +21,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@toon-format/toon": "^2.1.0",
     "astro": "^5.16.6",
+    "astro-relative-links": "^0.4.2",
     "codemirror": "^6.0.2",
     "crypto-js": "^4.2.0",
     "jose": "^6.1.3",
