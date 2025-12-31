@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import JwtTool from "../../components/tools/JwtTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/jwt");
 ---
 
-<Layout title="JWT Encoder / Decoder" currentPath="/codecs/jwt">
+<Layout title="JWT Encoder / Decoder" description={tool?.description} currentPath="/codecs/jwt">
   <JwtTool client:load />
 </Layout>

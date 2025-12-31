@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import TextEscapeTool from "../../components/tools/TextEscapeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/escape");
 ---
 
-<Layout title="Text Escape" currentPath="/text/escape">
+<Layout title="Text Escape" description={tool?.description} currentPath="/text/escape">
   <TextEscapeTool client:load />
 </Layout>

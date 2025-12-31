@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import Base64Tool from "../../components/tools/Base64Tool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/base64");
 ---
 
-<Layout title="Base64 Encoder/Decoder" currentPath="/codecs/base64">
+<Layout title="Base64 Encoder/Decoder" description={tool?.description} currentPath="/codecs/base64">
   <Base64Tool client:load />
 </Layout>

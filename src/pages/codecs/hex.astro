@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import HexViewerTool from "../../components/tools/HexViewerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/hex");
 ---
 
-<Layout title="Hex Viewer" currentPath="/codecs/hex">
+<Layout title="Hex Viewer" description={tool?.description} currentPath="/codecs/hex">
   <HexViewerTool client:load />
 </Layout>

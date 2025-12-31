@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import GlyphsTool from "../../components/tools/GlyphsTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/glyphs");
 ---
 
-<Layout title="Font Glyphs" currentPath="/text/glyphs">
+<Layout title="Font Glyphs" description={tool?.description} currentPath="/text/glyphs">
   <GlyphsTool client:load />
 </Layout>

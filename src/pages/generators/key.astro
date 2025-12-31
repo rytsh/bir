@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import KeyGeneratorTool from "../../components/tools/KeyGeneratorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/key");
 ---
 
-<Layout title="RSA Key Generator" currentPath="/generators/key">
+<Layout title="RSA Key Generator" description={tool?.description} currentPath="/generators/key">
   <KeyGeneratorTool client:load />
 </Layout>

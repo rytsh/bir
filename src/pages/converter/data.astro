@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import DataConverterTool from "../../components/tools/DataConverterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/data");
 ---
 
-<Layout title="Data Converter" currentPath="/converter/data">
+<Layout title="Data Converter" description={tool?.description} currentPath="/converter/data">
   <DataConverterTool client:load />
 </Layout>

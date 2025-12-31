@@ -5,11 +5,18 @@ import ThemeToggle from "../components/ThemeToggle.svelte";
 
 interface Props {
   title: string;
+  description?: string;
   currentPath?: string;
 }
 
-const { title, currentPath } = Astro.props;
+const { title, description, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
+
+const siteName = "Developer Tools";
+const defaultDescription = "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.";
+const metaDescription = description || defaultDescription;
+const pageTitle = `${title} | ${siteName}`;
+const canonicalURL = new URL(currentPath || "/", Astro.site);
 ---
 
 <!doctype html>
@@ -19,7 +26,24 @@ const gaId = import.meta.env.PUBLIC_GA_ID;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
-    <title>{title} | Tools</title>
+    <title>{pageTitle}</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content={metaDescription} />
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={metaDescription} />
+    <meta property="og:site_name" content={siteName} />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:url" content={canonicalURL} />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={metaDescription} />
     {gaId && (
       <>
         <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}></script>

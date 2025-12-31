@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import LuhnTool from "../../components/tools/LuhnTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/luhn");
 ---
 
-<Layout title="Luhn Validator" currentPath="/codecs/luhn">
+<Layout title="Luhn Validator" description={tool?.description} currentPath="/codecs/luhn">
   <LuhnTool client:load />
 </Layout>

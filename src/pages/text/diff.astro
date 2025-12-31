@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import TextDiffTool from "../../components/tools/TextDiffTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/diff");
 ---
 
-<Layout title="Text Diff" currentPath="/text/diff">
+<Layout title="Text Diff" description={tool?.description} currentPath="/text/diff">
   <TextDiffTool client:load />
 </Layout>

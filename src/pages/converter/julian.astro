@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import JulianTool from "../../components/tools/JulianTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/julian");
 ---
 
-<Layout title="Julian Date Converter" currentPath="/converter/julian">
+<Layout title="Julian Date Converter" description={tool?.description} currentPath="/converter/julian">
   <JulianTool client:load />
 </Layout>

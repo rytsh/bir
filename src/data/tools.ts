@@ -168,3 +168,7 @@ export function getToolById(id: string): Tool | undefined {
 export function getCategoryByToolId(toolId: string): Category | undefined {
   return categories.find((category) => category.tools.some((tool) => tool.id === toolId));
 }
+
+export function getToolByPath(path: string): Tool | undefined {
+  return getAllTools().find((tool) => tool.path === path);
+}

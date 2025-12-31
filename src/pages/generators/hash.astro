@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import HashTool from "../../components/tools/HashTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/hash");
 ---
 
-<Layout title="Hash Generator" currentPath="/generators/hash">
+<Layout title="Hash Generator" description={tool?.description} currentPath="/generators/hash">
   <HashTool client:load />
 </Layout>

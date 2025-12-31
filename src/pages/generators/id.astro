@@ -1,8 +1,11 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import IdGeneratorTool from "../../components/tools/IdGeneratorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/id");
 ---
 
-<Layout title="ID Generator" currentPath="/generators/id">
+<Layout title="ID Generator" description={tool?.description} currentPath="/generators/id">
   <IdGeneratorTool client:load />
 </Layout>
