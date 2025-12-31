@@ -14,6 +14,9 @@ importers:
       '@astrojs/svelte':
         specifier: ^7.2.4
         version: 7.2.4(@types/node@25.0.3)(astro@5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2))(jiti@2.6.1)(lightningcss@1.30.2)(svelte@5.46.1)(typescript@5.9.3)(yaml@2.8.2)
+      '@bwip-js/browser':
+        specifier: ^4.8.0
+        version: 4.8.0
       '@codemirror/lang-html':
         specifier: ^6.4.11
         version: 6.4.11
@@ -125,6 +128,9 @@ packages:
   '@babel/types@7.28.5':
     resolution: {integrity: sha512-qQ5m48eI/MFLQ5PxQj4PFaprjyCTLI37ElWMmNs0K8Lk3dVeOdNpB3ks8jc7yM5CDmVC73eMVk/trk3fgmrUpA==}
     engines: {node: '>=6.9.0'}
+
+  '@bwip-js/browser@4.8.0':
+    resolution: {integrity: sha512-RhN8N7wwBxe2FZBO7xZc2LEfGfnaFiy6Xf/7nmorrcCp3JA1sYF+iJeC1jF697lAi03Avlve7PNTThDq+0Rl3w==}
 
   '@capsizecss/unpack@3.0.1':
     resolution: {integrity: sha512-8XqW8xGn++Eqqbz3e9wKuK7mxryeRjs4LOHLxbh2lwKeSbuNR4NFifDZT4KzvjU6HMOPbiNTsWpniK5EJfTWkg==}
@@ -2094,6 +2100,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
+
+  '@bwip-js/browser@4.8.0': {}
 
   '@capsizecss/unpack@3.0.1':
     dependencies:

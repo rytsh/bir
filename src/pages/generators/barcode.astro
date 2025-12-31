@@ -1,0 +1,11 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BarcodeTool from "../../components/tools/BarcodeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/barcode");
+---
+
+<Layout title="Barcode Generator" description={tool?.description} currentPath="/generators/barcode">
+  <BarcodeTool client:load />
+</Layout>

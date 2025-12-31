@@ -118,6 +118,13 @@ const rawCategories: Category[] = [
     icon: "⚡",
     tools: [
       {
+        id: "barcode-generator",
+        name: "Barcode",
+        description: "Generate barcodes and QR codes with WiFi support, custom colors, and frames",
+        icon: "📊",
+        path: "/generators/barcode",
+      },
+      {
         id: "hash-generator",
         name: "Hash",
         description: "Generate MD5, SHA-1, SHA-256, SHA-512 hashes with HMAC support",

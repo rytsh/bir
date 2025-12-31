@@ -10,6 +10,7 @@
   } from "../../lib/codemirror.js";
 
   let mode = $state<"encode" | "decode">("encode");
+  let urlSafe = $state(false);
   let error = $state("");
   let copied = $state(false);
   let isDark = $state(false);
@@ -25,16 +26,34 @@
   let outputEditor: EditorView;
   let fileInput: HTMLInputElement;
 
+  // Standard Base64 to URL-safe Base64
+  const toUrlSafe = (base64: string): string => {
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+
+  // URL-safe Base64 to Standard Base64
+  const fromUrlSafe = (urlSafeBase64: string): string => {
+    let base64 = urlSafeBase64.replace(/-/g, "+").replace(/_/g, "/");
+    // Add padding if needed
+    const padding = base64.length % 4;
+    if (padding) {
+      base64 += "=".repeat(4 - padding);
+    }
+    return base64;
+  };
+
   const utf8ToBase64 = (str: string): string => {
     const bytes = new TextEncoder().encode(str);
     const binString = Array.from(bytes, (byte) =>
       String.fromCodePoint(byte),
     ).join("");
-    return btoa(binString);
+    const base64 = btoa(binString);
+    return urlSafe ? toUrlSafe(base64) : base64;
   };
 
   const base64ToUtf8 = (base64: string): string => {
-    const binString = atob(base64);
+    const standardBase64 = urlSafe ? fromUrlSafe(base64) : base64;
+    const binString = atob(standardBase64);
     const bytes = Uint8Array.from(binString, (char) => char.codePointAt(0)!);
     return new TextDecoder().decode(bytes);
   };
@@ -44,11 +63,13 @@
     const binString = Array.from(bytes, (byte) =>
       String.fromCodePoint(byte),
     ).join("");
-    return btoa(binString);
+    const base64 = btoa(binString);
+    return urlSafe ? toUrlSafe(base64) : base64;
   };
 
   const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
-    const binString = atob(base64);
+    const standardBase64 = urlSafe ? fromUrlSafe(base64) : base64;
+    const binString = atob(standardBase64);
     const bytes = new Uint8Array(binString.length);
     for (let i = 0; i < binString.length; i++) {
       bytes[i] = binString.charCodeAt(i);
@@ -147,6 +168,12 @@
   // Re-convert when mode changes
   $effect(() => {
     mode;
+    convert();
+  });
+
+  // Re-convert when urlSafe changes
+  $effect(() => {
+    urlSafe;
     convert();
   });
 
@@ -297,29 +324,39 @@
   />
 
   <!-- Mode Toggle -->
-  <div class="mb-4 p-1 bg-(--color-border) inline-flex gap-1">
-    <button
-      class="px-3 py-1 text-sm font-medium transition-colors {mode === 'encode'
-        ? 'bg-(--color-text) text-(--color-btn-text)'
-        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
-      onclick={() => {
-        mode = "encode";
-        error = "";
-      }}
-    >
-      Encode
-    </button>
-    <button
-      class="px-3 py-1 text-sm font-medium transition-colors {mode === 'decode'
-        ? 'bg-(--color-text) text-(--color-btn-text)'
-        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
-      onclick={() => {
-        mode = "decode";
-        error = "";
-      }}
-    >
-      Decode
-    </button>
+  <div class="mb-4 flex flex-wrap items-center gap-4">
+    <div class="p-1 bg-(--color-border) inline-flex gap-1">
+      <button
+        class="px-3 py-1 text-sm font-medium transition-colors {mode === 'encode'
+          ? 'bg-(--color-text) text-(--color-btn-text)'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+        onclick={() => {
+          mode = "encode";
+          error = "";
+        }}
+      >
+        Encode
+      </button>
+      <button
+        class="px-3 py-1 text-sm font-medium transition-colors {mode === 'decode'
+          ? 'bg-(--color-text) text-(--color-btn-text)'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+        onclick={() => {
+          mode = "decode";
+          error = "";
+        }}
+      >
+        Decode
+      </button>
+    </div>
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input
+        type="checkbox"
+        bind:checked={urlSafe}
+        class="w-4 h-4 accent-(--color-accent)"
+      />
+      <span class="text-sm text-(--color-text)">URL-safe</span>
+    </label>
   </div>
 
   <!-- URL Input -->

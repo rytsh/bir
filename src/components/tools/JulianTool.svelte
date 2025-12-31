@@ -1,4 +1,9 @@
 <script lang="ts">
+  type TabType = "jdn" | "jd";
+
+  // Tab state
+  let activeTab = $state<TabType>("jdn");
+
   // Julian Date (JD) state
   let julianInput = $state("");
   let dateInput = $state("");
@@ -353,327 +358,344 @@
     </p>
   </header>
 
-  <!-- JDN Section Header -->
-  <h2 class="text-lg font-medium text-(--color-text) mb-4">
-    Julian Day Number (JDN)
-  </h2>
-
-  <!-- JDN Error -->
-  {#if jdnError}
-    <div
-      class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm"
+  <!-- Tabs -->
+  <div class="flex gap-0 mb-4 border-b border-(--color-border)">
+    <button
+      onclick={() => (activeTab = "jdn")}
+      class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'jdn'
+        ? 'text-(--color-text) border-b-2 border-(--color-accent)'
+        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
-      {jdnError}
-    </div>
-  {/if}
+      Julian Day Number (JDN)
+    </button>
+    <button
+      onclick={() => (activeTab = "jd")}
+      class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'jd'
+        ? 'text-(--color-text) border-b-2 border-(--color-accent)'
+        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      Julian Date (JD)
+    </button>
+  </div>
 
-  <div class="flex-1 flex flex-col lg:flex-row gap-6">
-    <!-- Date to JDN -->
-    <div class="flex-1 flex flex-col">
+  {#if activeTab === "jdn"}
+    <!-- JDN Error -->
+    {#if jdnError}
       <div
-        class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
+        class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm"
       >
-        <div class="flex justify-between items-center mb-3">
-          <h2
-            class="text-sm tracking-wider text-(--color-text-light) font-medium"
-          >
-            Calendar Date to JDN
-          </h2>
-          <div class="flex gap-3">
-            <button
-              onclick={handleJdnUseToday}
-              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+        {jdnError}
+      </div>
+    {/if}
+
+    <div class="flex-1 flex flex-col lg:flex-row gap-6">
+      <!-- Date to JDN -->
+      <div class="flex-1 flex flex-col">
+        <div
+          class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
+        >
+          <div class="flex justify-between items-center mb-3">
+            <h2
+              class="text-sm tracking-wider text-(--color-text-light) font-medium"
             >
-              Today
-            </button>
+              Calendar Date to JDN
+            </h2>
+            <div class="flex gap-3">
+              <button
+                onclick={handleJdnUseToday}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                Today
+              </button>
+              <button
+                onclick={handleClearJdnDate}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label
+              for="jdn-date-input"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
+              Date (text input)
+            </label>
+            <input
+              id="jdn-date-input"
+              type="text"
+              bind:value={jdnDateInput}
+              placeholder="e.g., 2024-01-15 or 15/01/2024"
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
+          </div>
+
+          <div class="mb-4">
+            <label
+              for="jdn-date-picker"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
+              Date (picker)
+            </label>
+            <input
+              id="jdn-date-picker"
+              type="date"
+              onchange={handleJdnDatePickerChange}
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
+          </div>
+
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-sm text-(--color-text-muted)">
+                Julian Day Number (YYDDD)
+              </label>
+              {#if jdnOutput}
+                <button
+                  onclick={handleCopyJdn}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                >
+                  {copiedJdn ? "Copied!" : "Copy"}
+                </button>
+              {/if}
+            </div>
+            <div
+              class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
+            >
+              {jdnOutput || ""}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- JDN to Date -->
+      <div class="flex-1 flex flex-col">
+        <div
+          class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
+        >
+          <div class="flex justify-between items-center mb-3">
+            <h2
+              class="text-sm tracking-wider text-(--color-text-light) font-medium"
+            >
+              JDN to Calendar Date
+            </h2>
             <button
-              onclick={handleClearJdnDate}
+              onclick={handleClearJdn}
               class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
             >
               Clear
             </button>
           </div>
-        </div>
 
-        <div class="mb-4">
-          <label
-            for="jdn-date-input"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Date (text input)
-          </label>
-          <input
-            id="jdn-date-input"
-            type="text"
-            bind:value={jdnDateInput}
-            placeholder="e.g., 2024-01-15 or 15/01/2024"
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="mb-4">
-          <label
-            for="jdn-date-picker"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Date (picker)
-          </label>
-          <input
-            id="jdn-date-picker"
-            type="date"
-            onchange={handleJdnDatePickerChange}
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="flex-1">
-          <div class="flex justify-between items-center mb-2">
-            <label class="block text-sm text-(--color-text-muted)">
+          <div class="mb-4">
+            <label
+              for="jdn-input"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
               Julian Day Number (YYDDD)
             </label>
-            {#if jdnOutput}
-              <button
-                onclick={handleCopyJdn}
-                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-              >
-                {copiedJdn ? "Copied!" : "Copy"}
-              </button>
-            {/if}
+            <input
+              id="jdn-input"
+              type="text"
+              bind:value={jdnInput}
+              placeholder="e.g., 25364"
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
           </div>
-          <div
-            class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
-          >
-            {jdnOutput || ""}
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- JDN to Date -->
-    <div class="flex-1 flex flex-col">
-      <div
-        class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
-      >
-        <div class="flex justify-between items-center mb-3">
-          <h2
-            class="text-sm tracking-wider text-(--color-text-light) font-medium"
-          >
-            JDN to Calendar Date
-          </h2>
-          <button
-            onclick={handleClearJdn}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-
-        <div class="mb-4">
-          <label
-            for="jdn-input"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Julian Day Number (YYDDD)
-          </label>
-          <input
-            id="jdn-input"
-            type="text"
-            bind:value={jdnInput}
-            placeholder="e.g., 25364"
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="flex-1">
-          <div class="flex justify-between items-center mb-2">
-            <label class="block text-sm text-(--color-text-muted)">
-              Calendar Date
-            </label>
-            {#if jdnDateOutput}
-              <button
-                onclick={handleCopyJdnDate}
-                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-              >
-                {copiedJdnDate ? "Copied!" : "Copy"}
-              </button>
-            {/if}
-          </div>
-          <div
-            class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
-          >
-            {jdnDateOutput || ""}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- JD Section Header -->
-  <h2 class="text-lg font-medium text-(--color-text) mt-6 mb-4">
-    Julian Date (JD)
-  </h2>
-
-  <!-- JD Error -->
-  {#if error}
-    <div
-      class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm"
-    >
-      {error}
-    </div>
-  {/if}
-
-  <div class="flex-1 flex flex-col lg:flex-row gap-6">
-    <!-- Date to Julian -->
-    <div class="flex-1 flex flex-col">
-      <div
-        class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
-      >
-        <div class="flex justify-between items-center mb-3">
-          <h2
-            class="text-sm tracking-wider text-(--color-text-light) font-medium"
-          >
-            Calendar Date to Julian Date
-          </h2>
-          <div class="flex gap-3">
-            <button
-              onclick={handleUseNow}
-              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-sm text-(--color-text-muted)">
+                Calendar Date
+              </label>
+              {#if jdnDateOutput}
+                <button
+                  onclick={handleCopyJdnDate}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                >
+                  {copiedJdnDate ? "Copied!" : "Copy"}
+                </button>
+              {/if}
+            </div>
+            <div
+              class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
             >
-              Now
-            </button>
+              {jdnDateOutput || ""}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JDN Info Section -->
+    <div
+      class="mt-4 p-3 bg-(--color-bg-alt) border border-(--color-border) text-sm text-(--color-text-muted)"
+    >
+      <strong class="text-(--color-text)">About Julian Day Number:</strong>
+      Julian Day Number (JDN) in YYDDD format represents the 2-digit year and 3-digit
+      day of year (1-365/366). For example, 25364 means the 364th day of 2025.
+    </div>
+  {:else}
+    <!-- JD Error -->
+    {#if error}
+      <div
+        class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm"
+      >
+        {error}
+      </div>
+    {/if}
+
+    <div class="flex-1 flex flex-col lg:flex-row gap-6">
+      <!-- Date to Julian -->
+      <div class="flex-1 flex flex-col">
+        <div
+          class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
+        >
+          <div class="flex justify-between items-center mb-3">
+            <h2
+              class="text-sm tracking-wider text-(--color-text-light) font-medium"
+            >
+              Calendar Date to Julian Date
+            </h2>
+            <div class="flex gap-3">
+              <button
+                onclick={handleUseNow}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                Now
+              </button>
+              <button
+                onclick={handleClearDate}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label
+              for="date-input"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
+              Date (text input)
+            </label>
+            <input
+              id="date-input"
+              type="text"
+              bind:value={dateInput}
+              placeholder="e.g., 2024-01-15 or 2024-01-15T12:00:00"
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
+          </div>
+
+          <div class="mb-4">
+            <label
+              for="date-picker"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
+              Date (picker)
+            </label>
+            <input
+              id="date-picker"
+              type="datetime-local"
+              onchange={handleDatePickerChange}
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
+          </div>
+
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-sm text-(--color-text-muted)">
+                Julian Date
+              </label>
+              {#if julianOutput}
+                <button
+                  onclick={handleCopyJulian}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                >
+                  {copiedJulian ? "Copied!" : "Copy"}
+                </button>
+              {/if}
+            </div>
+            <div
+              class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
+            >
+              {julianOutput || ""}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Julian to Date -->
+      <div class="flex-1 flex flex-col">
+        <div
+          class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
+        >
+          <div class="flex justify-between items-center mb-3">
+            <h2
+              class="text-sm tracking-wider text-(--color-text-light) font-medium"
+            >
+              Julian Date to Calendar Date
+            </h2>
             <button
-              onclick={handleClearDate}
+              onclick={handleClearJulian}
               class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
             >
               Clear
             </button>
           </div>
-        </div>
 
-        <div class="mb-4">
-          <label
-            for="date-input"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Date (text input)
-          </label>
-          <input
-            id="date-input"
-            type="text"
-            bind:value={dateInput}
-            placeholder="e.g., 2024-01-15 or 2024-01-15T12:00:00"
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="mb-4">
-          <label
-            for="date-picker"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Date (picker)
-          </label>
-          <input
-            id="date-picker"
-            type="datetime-local"
-            onchange={handleDatePickerChange}
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="flex-1">
-          <div class="flex justify-between items-center mb-2">
-            <label class="block text-sm text-(--color-text-muted)">
+          <div class="mb-4">
+            <label
+              for="julian-input"
+              class="block text-sm text-(--color-text-muted) mb-2"
+            >
               Julian Date
             </label>
-            {#if julianOutput}
-              <button
-                onclick={handleCopyJulian}
-                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-              >
-                {copiedJulian ? "Copied!" : "Copy"}
-              </button>
-            {/if}
+            <input
+              id="julian-input"
+              type="text"
+              bind:value={julianInput}
+              placeholder="e.g., 2460000.5"
+              class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
           </div>
-          <div
-            class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
-          >
-            {julianOutput || ""}
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Julian to Date -->
-    <div class="flex-1 flex flex-col">
-      <div
-        class="p-4 bg-(--color-bg-alt) border border-(--color-border) flex-1 flex flex-col"
-      >
-        <div class="flex justify-between items-center mb-3">
-          <h2
-            class="text-sm tracking-wider text-(--color-text-light) font-medium"
-          >
-            Julian Date to Calendar Date
-          </h2>
-          <button
-            onclick={handleClearJulian}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-
-        <div class="mb-4">
-          <label
-            for="julian-input"
-            class="block text-sm text-(--color-text-muted) mb-2"
-          >
-            Julian Date
-          </label>
-          <input
-            id="julian-input"
-            type="text"
-            bind:value={julianInput}
-            placeholder="e.g., 2460000.5"
-            class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
-          />
-        </div>
-
-        <div class="flex-1">
-          <div class="flex justify-between items-center mb-2">
-            <label class="block text-sm text-(--color-text-muted)">
-              Calendar Date (UTC)
-            </label>
-            {#if dateOutput}
-              <button
-                onclick={handleCopyDate}
-                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-              >
-                {copiedDate ? "Copied!" : "Copy"}
-              </button>
-            {/if}
-          </div>
-          <div
-            class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
-          >
-            {dateOutput || ""}
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-sm text-(--color-text-muted)">
+                Calendar Date (UTC)
+              </label>
+              {#if dateOutput}
+                <button
+                  onclick={handleCopyDate}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                >
+                  {copiedDate ? "Copied!" : "Copy"}
+                </button>
+              {/if}
+            </div>
+            <div
+              class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) min-h-[42px]"
+            >
+              {dateOutput || ""}
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Info Section -->
-  <div
-    class="mt-4 p-3 bg-(--color-bg-alt) border border-(--color-border) text-sm text-(--color-text-muted)"
-  >
-    <strong class="text-(--color-text)">About Julian Day Number:</strong>
-    Julian Day Number (JDN) in YYDDD format represents the 2-digit year and 3-digit
-    day of year (1-365/366). For example, 25364 means the 364th day of 2025.
-    <br /><br />
-    <strong class="text-(--color-text)">About Julian Date:</strong>
-    Julian Date (JD) is a continuous count of days (including fractions) since the
-    beginning of the Julian Period on January 1, 4713 BC. JD 2440587.5 corresponds
-    to January 1, 1970, 00:00:00 UTC (Unix epoch).
-  </div>
+    <!-- JD Info Section -->
+    <div
+      class="mt-4 p-3 bg-(--color-bg-alt) border border-(--color-border) text-sm text-(--color-text-muted)"
+    >
+      <strong class="text-(--color-text)">About Julian Date:</strong>
+      Julian Date (JD) is a continuous count of days (including fractions) since the
+      beginning of the Julian Period on January 1, 4713 BC. JD 2440587.5 corresponds
+      to January 1, 1970, 00:00:00 UTC (Unix epoch).
+    </div>
+  {/if}
 </div>
