@@ -171,6 +171,21 @@ const rawCategories: Category[] = [
       },
     ],
   },
+  {
+    id: "timers",
+    name: "Timers",
+    icon: "⏱️",
+    tools: [
+      {
+        id: "countdown-timer",
+        name: "Countdown",
+        description: "Customizable countdown timer with color themes, presets, and end-of-time alerts",
+        icon: "⏳",
+        path: "/timers/countdown",
+        keywords: "countdown timer, timer, countdown clock, pomodoro, stopwatch, time tracker, alarm, kitchen timer, presentation timer",
+      },
+    ],
+  },
 ];
 
 // Sort categories by name and sort tools within each category by name

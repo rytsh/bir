@@ -1,5 +1,38 @@
 @import "tailwindcss";
 
+/* DSEG Fonts for countdown timer */
+@font-face {
+  font-family: "DSEG7 Classic";
+  src: url("/fonts/DSEG7Classic-Bold.otf") format("opentype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DSEG7 Modern";
+  src: url("/fonts/DSEG7Modern-Bold.otf") format("opentype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DSEG14 Classic";
+  src: url("/fonts/DSEG14Classic-Bold.otf") format("opentype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DSEG14 Modern";
+  src: url("/fonts/DSEG14Modern-Bold.otf") format("opentype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   --font-sans: "Inter", "Inter Fallback", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
