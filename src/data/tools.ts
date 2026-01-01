@@ -186,6 +186,21 @@ const rawCategories: Category[] = [
       },
     ],
   },
+  {
+    id: "party",
+    name: "Party",
+    icon: "🎉",
+    tools: [
+      {
+        id: "name-picker",
+        name: "Name Picker",
+        description: "Spin a wheel to pick random names with prize support and winner history",
+        icon: "🎡",
+        path: "/party/name-picker",
+        keywords: "name picker, random picker, wheel spinner, raffle, lucky draw, prize wheel, random name, winner picker, spin wheel, lottery",
+      },
+    ],
+  },
 ];
 
 // Sort categories by name and sort tools within each category by name
