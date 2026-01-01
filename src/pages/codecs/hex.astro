@@ -6,6 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/codecs/hex");
 ---
 
-<Layout title="Hex Viewer" description={tool?.description} currentPath="/codecs/hex">
+<Layout title="Hex Viewer - Hexadecimal File Viewer Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/hex">
+  <h1 class="sr-only">Hex Viewer</h1>
   <HexViewerTool client:load />
 </Layout>

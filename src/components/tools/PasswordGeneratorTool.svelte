@@ -258,7 +258,7 @@
   <!-- Controls -->
   <div class="mb-4 flex flex-col gap-4">
     <!-- Basic Settings Row -->
-    <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+    <div class="flex flex-row flex-wrap gap-4 items-end">
       <!-- Length Input -->
       <div>
         <label
@@ -307,7 +307,7 @@
       <select
         onchange={handlePresetChange}
         value={selectedPreset}
-        class="w-full max-w-md px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
+        class="w-full lg:max-w-md px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
       >
         <option value="">Custom Settings</option>
         {#each presets as preset}

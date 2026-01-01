@@ -6,17 +6,22 @@ import ThemeToggle from "../components/ThemeToggle.svelte";
 interface Props {
   title: string;
   description?: string;
+  keywords?: string;
   currentPath?: string;
 }
 
-const { title, description, currentPath } = Astro.props;
+const { title, description, keywords, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
 const siteName = "Tools";
-const defaultDescription = "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.";
+const defaultDescription = "A collection of open-source tools for everyday tasks - encoders, decoders, generators, converters, and more.";
+const defaultKeywords = "tools, developer tools, web tools, encoder, decoder, generator, converter, base64, url encoding, hash, jwt, barcode, password generator, text tools, hex viewer, data converter, julian date, luhn algorithm";
 const metaDescription = description || defaultDescription;
+const metaKeywords = keywords || defaultKeywords;
 const pageTitle = `${title ? `${title} | ` : ""}${siteName}`;
 const canonicalURL = new URL(currentPath || "/", Astro.site);
+const ogImage = new URL("/og.jpg", Astro.site);
+const twitterImage = new URL("/og.jpg", Astro.site);
 ---
 
 <!doctype html>
@@ -24,12 +29,28 @@ const canonicalURL = new URL(currentPath || "/", Astro.site);
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <!-- Modern Favicon Setup -->
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="msapplication-TileColor" content="#1a1a1a" />
+    <!-- Performance & Theme -->
+    <meta name="theme-color" content="#1a1a1a" />
+    <link rel="dns-prefetch" href="//fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <meta name="generator" content={Astro.generator} />
     <title>{pageTitle}</title>
 
-    <!-- SEO Meta Tags -->
+    <!-- Essential Meta Tags -->
     <meta name="description" content={metaDescription} />
+    <meta name="keywords" content={metaKeywords} />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="author" content="rytsh" />
+    <meta name="publisher" content="rytsh" />
+    <meta name="copyright" content="© 2025 rytsh" />
+    <meta name="language" content="English" />
+    <meta name="geo.region" content="US" />
     <link rel="canonical" href={canonicalURL} />
 
     <!-- Open Graph / Facebook -->
@@ -38,12 +59,18 @@ const canonicalURL = new URL(currentPath || "/", Astro.site);
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={metaDescription} />
     <meta property="og:site_name" content={siteName} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Tools - Utilities Collection" />
 
     <!-- Twitter -->
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content={canonicalURL} />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={metaDescription} />
+    <meta name="twitter:image" content={twitterImage} />
+    <meta name="twitter:image:alt" content="Tools - Utilities Collection" />
     {gaId && (
       <>
         <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}></script>

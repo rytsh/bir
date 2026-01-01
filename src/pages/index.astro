@@ -1,6 +1,29 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import { categories } from "../data/tools";
+
+// Structured data for homepage
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Tools",
+  "description": "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.",
+  "url": "https://1.tools",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "creator": {
+    "@type": "Organization",
+    "name": "Tools"
+  },
+  "featureList": categories.flatMap(cat => 
+    cat.tools.map(tool => `${tool.name}: ${tool.description}`)
+  ).join("; ")
+};
 ---
 
 <Layout
@@ -8,8 +31,13 @@ import { categories } from "../data/tools";
   description="A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more."
   currentPath="/"
 >
+  <!-- Structured Data -->
+  <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
   <div>
     <header class="mb-4">
+      <h1 class="sr-only">
+        Tools Collection
+      </h1>
       <p class="text-(--color-text-muted) text-sm">
         A collection of open-source useful tools for everyday tasks.
       </p>

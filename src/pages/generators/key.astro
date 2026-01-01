@@ -6,6 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/generators/key");
 ---
 
-<Layout title="RSA Key Generator" description={tool?.description} currentPath="/generators/key">
+<Layout title="RSA Key Generator - Public Private Key Pair" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/key">
+  <h1 class="sr-only">RSA Key Generator</h1>
   <KeyGeneratorTool client:load />
 </Layout>

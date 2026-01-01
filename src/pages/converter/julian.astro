@@ -6,6 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/converter/julian");
 ---
 
-<Layout title="Julian Date Converter" description={tool?.description} currentPath="/converter/julian">
+<Layout title="Julian Date Converter - Calendar Date Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/julian">
+  <h1 class="sr-only">Julian Date Converter</h1>
   <JulianTool client:load />
 </Layout>

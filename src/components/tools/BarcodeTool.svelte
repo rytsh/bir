@@ -611,7 +611,7 @@
 
       <!-- Colors -->
       <div class="flex flex-col gap-2">
-        <div class="flex gap-4">
+        <div class="flex flex-wrap gap-4">
           <div class="flex flex-col gap-2 flex-1">
             <label for="fg-color" class="text-xs tracking-wider text-(--color-text-light) font-medium">
               Foreground

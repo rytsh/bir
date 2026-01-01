@@ -6,6 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/text/escape");
 ---
 
-<Layout title="Text Escape" description={tool?.description} currentPath="/text/escape">
+<Layout title="Text Escape Tool - JSON, HTML, URL, Regex, Shell" description={tool?.description} keywords={tool?.keywords} currentPath="/text/escape">
+  <h1 class="sr-only">Text Escape Tool</h1>
   <TextEscapeTool client:load />
 </Layout>
