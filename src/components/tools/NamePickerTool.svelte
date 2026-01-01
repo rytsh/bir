@@ -91,7 +91,7 @@
     // Calculate dimensions based on canvas size
     const magnifierSpace = 190;
     const wheelSize = Math.min(canvasWidth - magnifierSpace, canvasHeight);
-    const centerX = wheelSize / 2;
+    const centerX = (canvasWidth - magnifierSpace) / 2;
     const centerY = canvasHeight / 2;
     const radius = Math.min(centerX, centerY) - 10;
 
@@ -120,7 +120,7 @@
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = "right";
       ctx.fillStyle = "#000000";
-      ctx.font = `bold ${Math.max(12, Math.min(18, 200 / names.length))}px sans-serif`;
+      ctx.font = `${Math.max(12, Math.min(18, 200 / names.length))}px system-ui`;
       ctx.fillText(
         name.length > 12 ? name.slice(0, 12) + "..." : name,
         radius - 15,
@@ -141,7 +141,7 @@
     // Magnifier needs ~190px on the right (160px width + 30px gap)
     const magnifierSpace = 190;
     const wheelSize = Math.min(canvasWidth - magnifierSpace, canvasHeight);
-    const centerX = wheelSize / 2;
+    const centerX = (canvasWidth - magnifierSpace) / 2;
     const centerY = canvasHeight / 2;
     const radius = Math.min(centerX, centerY) - 10;
 
@@ -215,7 +215,7 @@
      // Wheel rotates counter-clockwise (positive rotation), so segments move UP past pointer
      // In magnifier: as segmentProgress increases, current segment should move UP (scroll up)
      // Next segment (currentIndex + 1) comes from below
-     const magCenterY = wheelCenterY;
+     const magCenterY = wheelCenterY + rowHeight / 2;
 
      for (let i = -halfVisible - 1; i <= halfVisible + 1; i++) {
        // i=0 is current segment (at center when segmentProgress=0)
@@ -240,8 +240,8 @@
 
         // Draw text
         ctx.fillStyle = "#000000";
-        const fontSize = Math.round(16 * scale);
-        ctx.font = `bold ${fontSize}px sans-serif`;
+        const fontSize = Math.round(14 * scale);
+        ctx.font = `${fontSize}px system-ui`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         const maxChars = Math.floor(magWidth / (fontSize * 0.6));
@@ -264,8 +264,8 @@
 
     // Draw center indicator line (aligned with current name position)
     ctx.beginPath();
-    ctx.moveTo(magX, magCenterY);
-    ctx.lineTo(magX + magWidth, magCenterY);
+    ctx.moveTo(magX, magCenterY - rowHeight / 2);
+    ctx.lineTo(magX + magWidth, magCenterY - rowHeight / 2);
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -291,8 +291,8 @@
       const progress = Math.min(elapsed / spinDuration, 1);
 
       // Custom easing: fast start, very long slow ending for excitement
-      // Using ease-out with higher power (5) for more dramatic slowdown
-      const easeOut = 1 - Math.pow(1 - progress, 5);
+      // Using ease-out with higher power (6) for more dramatic slowdown
+      const easeOut = 1 - Math.pow(1 - progress, 6);
       rotation = startRotation + totalRotation * easeOut;
 
       drawWheel();
@@ -479,8 +479,8 @@
   <header class="mb-4">
     <h1 class="text-xl font-medium text-(--color-text) mb-2">Name Picker</h1>
     <p class="text-sm text-(--color-text-muted)">
-      Spin the wheel to pick random winners. Add prizes to award from smallest
-      to biggest.
+      Spin the wheel to pick random winners. Add prizes to award from biggest
+      to smallest.
     </p>
   </header>
 
@@ -522,7 +522,7 @@
         for="prizes-input"
         class="text-xs tracking-wider text-(--color-text-light) font-medium"
       >
-        Prizes (smallest to biggest, one per line)
+        Prizes (biggest to smallest, one per line)
       </label>
       <textarea
         id="prizes-input"
@@ -547,18 +547,18 @@
   <!-- Bottom: Wheel, Current Selection, Winners -->
   <div
     bind:this={spinContainer}
-    class="flex-1 flex flex-col lg:flex-row gap-4 min-h-0 overflow-hidden {isFullscreen
+    class="flex-1 flex flex-col lg:flex-row gap-4 {isFullscreen
       ? 'bg-(--color-bg) p-4'
       : ''}"
   >
-    <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div class="flex-1 flex flex-col">
       <div
-        class="flex gap-2 items-center border-b border-(--color-border) pb-2 mb-2"
+        class="flex gap-2 items-center border-b border-(--color-border) py-2 mb-2"
       >
         <button
           onclick={spin}
           disabled={isSpinning || names.length === 0}
-          class="px-8 py-1 bg-(--color-accent) text-(--color-btn-text) text-lg font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-8 py-1 bg-(--color-accent) text-(--color-btn-text) font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSpinning ? "Spinning..." : "SPIN"}
         </button>
@@ -626,13 +626,14 @@
           {Math.round(rotation % 360)}°
         </span>
 
-        <span class="flex-1 text-right">
-          {`total names: ${names.length} | total prizes left: ${prizes.length}`}
-        </span>
+        <div class="flex-1 flex gap-3 justify-end items-center text-xs text-(--color-text-muted) font-mono">
+          <span>names: {names.length.toString().padStart(2, '0')}</span>
+          <span>prizes: {prizes.length.toString().padStart(2, '0')}</span>
+        </div>
       </div>
       <!-- Wheel -->
       <div
-        class="flex-1 flex flex-col items-center justify-center min-h-0 overflow-hidden {isFullscreen
+        class="flex-1 flex flex-col items-center justify-center min-h-80 {isFullscreen
           ? ''
           : ''}"
       >
@@ -644,7 +645,7 @@
         {:else}
           <div
             bind:this={canvasContainer}
-            class="relative w-full flex-1 min-h-0"
+            class="relative w-full flex-1"
           >
             <canvas
               bind:this={canvas}
@@ -653,9 +654,10 @@
               class="absolute inset-0"
             ></canvas>
 
-            {#if currentPrize && !isSpinning && !selectedName}
+            {#if currentPrize && !selectedName}
               <div
-                class="absolute top-2 left-1/2 -translate-x-1/2 px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium"
+                class="absolute top-2 right-4 px-4 py-2 bg-(--color-accent) text-(--color-btn-text) font-medium"
+                style="font-size: {Math.max(14, canvasWidth / 40)}px;"
               >
                 Prize: {currentPrize}
               </div>
