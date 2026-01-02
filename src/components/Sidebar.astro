@@ -1,6 +1,5 @@
 ---
 import { categories } from "../data/tools";
-import ThemeToggle from "./ThemeToggle.svelte";
 
 interface Props {
   currentPath?: string;
@@ -13,14 +12,14 @@ const version = import.meta.env.PUBLIC_VERSION || "development";
 <aside
   class="w-64 lg:w-56 bg-(--color-sidebar) text-white/80 h-full flex flex-col font-mono text-sm"
 >
-  <div class="px-4 border-b border-white/10 hidden lg:flex items-center justify-between">
+  <div class="px-4 py-1 h-9 border-b border-white/10 flex items-center justify-between">
     <a
       href="/"
       class="flex items-center gap-2 text-white hover:text-white/70 transition-colors"
     >
       <span class="text-base font-medium tracking-tight">Tools</span>
     </a>
-    <ThemeToggle client:load />
+    <!-- <ThemeToggle client:load /> -->
   </div>
 
   <nav class="flex-1 py-2 px-4 overflow-y-auto">

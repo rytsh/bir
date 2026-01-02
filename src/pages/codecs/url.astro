@@ -6,7 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/codecs/url");
 ---
 
-<Layout title="URL Encoder & Decoder - Percent Encoding Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/url">
+<Layout navbarTitle="URL Encoder & Decoder" title="URL Encoder & Decoder - Percent Encoding Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/url">
   <h1 class="sr-only">URL Encoder & Decoder</h1>
   <UrlEncoderTool client:load />
 </Layout>

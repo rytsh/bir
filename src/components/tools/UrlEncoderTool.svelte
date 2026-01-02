@@ -154,9 +154,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      URL Encoder / Decoder
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Encode special characters for URLs or decode URL-encoded text back to readable format.
     </p>

@@ -290,7 +290,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">Hash Generator</h1>
     <p class="text-sm text-(--color-text-muted)">
       Generate MD5, SHA-1, SHA-256, and SHA-512 hashes from text, files, or
       URLs. Supports HMAC mode.

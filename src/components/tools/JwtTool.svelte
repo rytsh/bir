@@ -299,9 +299,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      JWT Encoder / Decoder
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Decode JSON Web Tokens to inspect header and payload. Enable signing mode with a secret/private key to edit and re-sign tokens.
     </p>

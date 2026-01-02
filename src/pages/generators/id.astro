@@ -6,7 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/generators/id");
 ---
 
-<Layout title="UUID & ULID Generator - Unique ID Creator" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/id">
+<Layout navbarTitle="UUID & ULID Generator" title="UUID & ULID Generator - Unique ID Creator" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/id">
   <h1 class="sr-only">UUID & ULID Generator</h1>
   <IdGeneratorTool client:load />
 </Layout>

@@ -549,7 +549,6 @@
 
 <div class="h-full flex flex-col overflow-hidden">
   <header class="mb-4 shrink-0">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">Hex Viewer</h1>
     <p class="text-sm text-(--color-text-muted)">
       View hex dump of text, files, or Base64 data. Hover to highlight bytes.
     </p>

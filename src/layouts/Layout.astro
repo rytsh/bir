@@ -5,12 +5,13 @@ import ThemeToggle from "../components/ThemeToggle.svelte";
 
 interface Props {
   title: string;
+  navbarTitle?: string;
   description?: string;
   keywords?: string;
   currentPath?: string;
 }
 
-const { title, description, keywords, currentPath } = Astro.props;
+const { title, navbarTitle, description, keywords, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
 const siteName = "Tools";
@@ -91,23 +92,6 @@ const twitterImage = new URL("/og.jpg", Astro.site);
     </script>
   </head>
   <body class="h-full bg-(--color-bg) flex flex-col">
-    <!-- Mobile Header -->
-    <header class="lg:hidden shrink-0 bg-(--color-sidebar) text-white flex items-center px-4 justify-between">
-      <a href="/" class="text-base font-medium tracking-tight">Tools</a>
-      <div class="flex items-center gap-1">
-        <ThemeToggle client:load />
-        <button 
-          id="menu-toggle" 
-          class="p-2 hover:bg-white/10 transition-colors"
-          aria-label="Toggle menu"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path id="menu-icon" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      </div>
-    </header>
-
     <!-- Overlay -->
     <div id="overlay" class="fixed inset-0 bg-black/50 z-40 lg:hidden hidden" aria-hidden="true"></div>
 
@@ -117,10 +101,30 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         <Sidebar currentPath={currentPath} />
       </div>
 
-      <!-- Main Content -->
-      <main class="flex-1 p-4 pt-1 w-full mx-auto overflow-auto">
-        <slot />
-      </main>
+      <div class="flex flex-col flex-1 min-h-full">
+            <!-- Navbar -->
+    <header class="shrink-0 bg-(--color-sidebar) text-white flex items-center justify-between">
+              <button
+          id="menu-toggle"
+          class="p-2 hover:bg-white/10 transition-colors"
+          aria-label="Toggle menu"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path id="menu-icon" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      <span class="text-base font-medium tracking-tight">
+          {navbarTitle}
+      </span>
+      <div class="flex items-center gap-1">
+        <ThemeToggle client:load />
+      </div>
+    </header>
+    <!-- Main Content -->
+    <main class="flex-1 p-4 pt-1 w-full mx-auto overflow-auto">
+      <slot />
+    </main>
+  </div>
     </div>
 
     <script>
@@ -130,7 +134,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 
       const toggleMenu = () => {
         const isOpen = sidebar?.classList.contains('translate-x-0');
-        
+
         if (isOpen) {
           sidebar?.classList.remove('translate-x-0');
           sidebar?.classList.add('-translate-x-full');

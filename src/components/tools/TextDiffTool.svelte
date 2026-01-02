@@ -174,9 +174,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Text Diff
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Compare two texts and see the differences highlighted.
     </p>

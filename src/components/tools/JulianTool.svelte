@@ -349,9 +349,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Julian Date Converter
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Convert between Julian Day Number (JDN), Julian Date (JD), and calendar
       date.

@@ -298,9 +298,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Text Escape / Unescape
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Escape or unescape text for various formats like JSON, HTML, URL, Regex, Shell, SQL, and CSV.
     </p>

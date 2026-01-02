@@ -306,9 +306,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Base64 Encoder / Decoder
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Encode text or files to Base64, decode Base64 strings, or download decoded
       content as a file.

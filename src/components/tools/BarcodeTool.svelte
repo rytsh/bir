@@ -473,7 +473,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">Barcode Generator</h1>
     <p class="text-sm text-(--color-text-muted)">
       Generate barcodes and QR codes in various formats with customization options.
     </p>

@@ -230,9 +230,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      ID Generator
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Generate UUIDs (v1, v3, v4, v5, v6, v7), convert between formats, and create ULIDs.
     </p>

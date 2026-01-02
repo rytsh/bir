@@ -153,9 +153,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Luhn Validator
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Validate credit card numbers using the Luhn algorithm (mod 10).
     </p>

@@ -194,9 +194,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      HTML Encoder / Decoder
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Encode special characters to HTML entities or decode HTML entities back to text.
     </p>

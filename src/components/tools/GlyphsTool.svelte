@@ -385,9 +385,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">
-      Font Glyphs Viewer
-    </h1>
     <p class="text-sm text-(--color-text-muted)">
       Load a font file to view and copy its available glyphs. Click on any glyph to copy it.
     </p>

@@ -462,7 +462,9 @@
   // Redraw when rotation changes
   $effect(() => {
     rotation;
-    drawWheel();
+    if (!isSpinning) {
+      drawWheel();
+    }
     updateNameAtPointer();
   });
 
@@ -477,7 +479,6 @@
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
-    <h1 class="text-xl font-medium text-(--color-text) mb-2">Name Picker</h1>
     <p class="text-sm text-(--color-text-muted)">
       Spin the wheel to pick random winners. Add prizes to award from biggest
       to smallest.
