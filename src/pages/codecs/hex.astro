@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/hex");
 ---
 
 <Layout title="Hex Viewer - Hexadecimal File Viewer Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/hex">
-  <span slot="navbar-title">Hex Viewer</span>
-  <h1 class="sr-only">Hex Viewer</h1>
+  <h1 slot="navbar-title">Hex Viewer</h1>
   <HexViewerTool client:load />
 </Layout>

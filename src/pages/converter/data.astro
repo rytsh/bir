@@ -7,7 +7,6 @@ const tool = getToolByPath("/converter/data");
 ---
 
 <Layout title="Data Format Converter - JSON, YAML, TOML, TOON" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/data">
-  <span slot="navbar-title">Data Format Converter</span>
-  <h1 class="sr-only">Data Format Converter</h1>
+  <h1 slot="navbar-title">Data Format Converter</h1>
   <DataConverterTool client:load />
 </Layout>

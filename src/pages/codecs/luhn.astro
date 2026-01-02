@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/luhn");
 ---
 
 <Layout title="Luhn Validator - Credit Card Number Checker" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/luhn">
-  <span slot="navbar-title">Luhn Validator</span>
-  <h1 class="sr-only">Luhn Validator</h1>
+  <h1 slot="navbar-title">Luhn Validator</h1>
   <LuhnTool client:load />
 </Layout>

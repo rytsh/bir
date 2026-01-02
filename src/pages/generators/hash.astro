@@ -7,7 +7,6 @@ const tool = getToolByPath("/generators/hash");
 ---
 
 <Layout title="Hash Generator - MD5, SHA-1, SHA-256, SHA-512" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/hash">
-  <span slot="navbar-title">Hash Generator</span>
-  <h1 class="sr-only">Hash Generator</h1>
+  <h1 slot="navbar-title">Hash Generator</h1>
   <HashTool client:load />
 </Layout>

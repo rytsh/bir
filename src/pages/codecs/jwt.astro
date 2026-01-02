@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/jwt");
 ---
 
 <Layout title="JWT Decoder & Encoder - JSON Web Token Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/jwt">
-  <span slot="navbar-title">JWT Decoder & Encoder</span>
-  <h1 class="sr-only">JWT Decoder & Encoder</h1>
+  <h1 slot="navbar-title">JWT Decoder & Encoder</h1>
   <JwtTool client:load />
 </Layout>

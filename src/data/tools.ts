@@ -44,6 +44,22 @@ const rawCategories: Category[] = [
         path: "/text/glyphs",
         keywords: "font glyphs, font viewer, glyph viewer, font characters, unicode glyphs, font inspection, character map",
       },
+      {
+        id: "lorem-ipsum",
+        name: "Lorem Ipsum",
+        description: "Generate lorem ipsum placeholder text with customizable length and format",
+        icon: "📜",
+        path: "/text/random",
+        keywords: "lorem ipsum, placeholder text, dummy text, random text, filler text, lipsum, text generator, sample text",
+      },
+      {
+        id: "text-inspector",
+        name: "Text Inspector",
+        description: "Transform text with sorting, case conversion, and line operations",
+        icon: "🔎",
+        path: "/text/inspector",
+        keywords: "text inspector, text transform, sort lines, alphabetize, reverse text, randomize lines, uppercase, lowercase, snake case, title case, camel case, kebab case, pascal case, text manipulation",
+      },
     ],
   },
   {

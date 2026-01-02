@@ -7,7 +7,6 @@ const tool = getToolByPath("/generators/key");
 ---
 
 <Layout title="RSA Key Generator - Public Private Key Pair" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/key">
-  <span slot="navbar-title">RSA Key Generator</span>
-  <h1 class="sr-only">RSA Key Generator</h1>
+  <h1 slot="navbar-title">RSA Key Generator</h1>
   <KeyGeneratorTool client:load />
 </Layout>

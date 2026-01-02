@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/html");
 ---
 
 <Layout title="HTML Encoder & Decoder - HTML Entity Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/html">
-  <span slot="navbar-title">HTML Encoder & Decoder</span>
-  <h1 class="sr-only">HTML Encoder & Decoder</h1>
+  <h1 slot="navbar-title">HTML Encoder & Decoder</h1>
   <HtmlEncoderTool client:load />
 </Layout>

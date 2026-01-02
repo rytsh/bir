@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TextInspectorTool from "../../components/tools/TextInspectorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/inspector");
+---
+
+<Layout title="Text Inspector - Transform & Sort Text" description={tool?.description} keywords={tool?.keywords} currentPath="/text/inspector">
+  <h1 slot="navbar-title">Text Inspector</h1>
+  <TextInspectorTool client:load />
+</Layout>

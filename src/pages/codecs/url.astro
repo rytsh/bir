@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/url");
 ---
 
 <Layout title="URL Encoder & Decoder - Percent Encoding Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/url">
-  <span slot="navbar-title">URL Encoder & Decoder</span>
-  <h1 class="sr-only">URL Encoder & Decoder</h1>
+  <h1 slot="navbar-title">URL Encoder & Decoder</h1>
   <UrlEncoderTool client:load />
 </Layout>

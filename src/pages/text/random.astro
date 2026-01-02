@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import RandomTool from "../../components/tools/RandomTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/random");
+---
+
+<Layout title="Lorem Ipsum Generator - Random Text Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/text/random">
+  <h1 slot="navbar-title">Lorem Ipsum Generator</h1>
+  <RandomTool client:load />
+</Layout>

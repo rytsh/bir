@@ -7,7 +7,6 @@ const tool = getToolByPath("/codecs/base64");
 ---
 
 <Layout title="Base64 Encoder & Decoder - Online Base64 Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/base64">
-  <span slot="navbar-title">Base64 Encoder & Decoder</span>
-  <h1 class="sr-only">Base64 Encoder & Decoder</h1>
+  <h1 slot="navbar-title">Base64 Encoder & Decoder</h1>
   <Base64Tool client:load />
 </Layout>
