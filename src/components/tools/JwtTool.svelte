@@ -212,35 +212,29 @@
     });
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createHeaderEditor(!isSigningEnabled);
-          createPayloadEditor(!isSigningEnabled);
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createHeaderEditor(!isSigningEnabled);
         createPayloadEditor(!isSigningEnabled);
-        mounted = true;
-      });
+      }
+    });
 
-      return () => {
-        cleanup();
-        if (signTimeout) clearTimeout(signTimeout);
-        headerEditor?.destroy();
-        payloadEditor?.destroy();
-      };
-    }
+    tick().then(() => {
+      createHeaderEditor(!isSigningEnabled);
+      createPayloadEditor(!isSigningEnabled);
+      mounted = true;
+    });
+
+    return () => {
+      cleanup();
+      if (signTimeout) clearTimeout(signTimeout);
+      headerEditor?.destroy();
+      payloadEditor?.destroy();
+    };
   });
 
   // Decode when token input changes from external source (not from signing)

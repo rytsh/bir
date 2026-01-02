@@ -418,48 +418,42 @@
            searchResultsArray[currentSearchIndex] === offset;
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createInputEditor();
-          createBase64Editor();
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createInputEditor();
         createBase64Editor();
-        if (containerEl) {
-          containerHeight = containerEl.clientHeight;
-        }
-      });
-
-      // ResizeObserver for container
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          containerHeight = entry.contentRect.height;
-        }
-      });
-
-      if (containerEl) {
-        resizeObserver.observe(containerEl);
       }
+    });
 
-      return () => {
-        cleanup();
-        inputEditor?.destroy();
-        base64Editor?.destroy();
-        resizeObserver.disconnect();
-      };
+    tick().then(() => {
+      createInputEditor();
+      createBase64Editor();
+      if (containerEl) {
+        containerHeight = containerEl.clientHeight;
+      }
+    });
+
+    // ResizeObserver for container
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerHeight = entry.contentRect.height;
+      }
+    });
+
+    if (containerEl) {
+      resizeObserver.observe(containerEl);
     }
+
+    return () => {
+      cleanup();
+      inputEditor?.destroy();
+      base64Editor?.destroy();
+      resizeObserver.disconnect();
+    };
   });
 
   $effect(() => {

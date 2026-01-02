@@ -171,30 +171,24 @@
     }
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createInputEditor();
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createInputEditor();
-      });
+      }
+    });
 
-      return () => {
-        cleanup();
-        inputEditor?.destroy();
-      };
-    }
+    tick().then(() => {
+      createInputEditor();
+    });
+
+    return () => {
+      cleanup();
+      inputEditor?.destroy();
+    };
   });
 
   const hashTypes: { key: keyof HashResult; label: string }[] = [

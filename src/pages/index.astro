@@ -7,23 +7,26 @@ import { categories } from "../data/tools";
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  "name": "Tools",
-  "description": "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.",
-  "url": "https://1.tools",
-  "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "Web Browser",
-  "offers": {
+  name: "Tools",
+  description:
+    "A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more.",
+  url: "https://1.tools",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web Browser",
+  offers: {
     "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
+    price: "0",
+    priceCurrency: "USD",
   },
-  "creator": {
+  creator: {
     "@type": "Organization",
-    "name": "Tools"
+    name: "Tools",
   },
-  "featureList": categories.flatMap(cat =>
-    cat.tools.map(tool => `${tool.name}: ${tool.description}`)
-  ).join("; ")
+  featureList: categories
+    .flatMap((cat) =>
+      cat.tools.map((tool) => `${tool.name}: ${tool.description}`),
+    )
+    .join("; "),
 };
 ---
 
@@ -33,7 +36,10 @@ const structuredData = {
   currentPath="/"
 >
   <!-- Structured Data -->
-  <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify(structuredData)}
+  />
 
   <ToolsIndex client:load />
 </Layout>

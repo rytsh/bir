@@ -132,33 +132,27 @@
     });
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createInputEditor();
-          createOutputEditor();
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createInputEditor();
         createOutputEditor();
-      });
+      }
+    });
 
-      return () => {
-        cleanup();
-        inputEditor?.destroy();
-        outputEditor?.destroy();
-      };
-    }
+    tick().then(() => {
+      createInputEditor();
+      createOutputEditor();
+    });
+
+    return () => {
+      cleanup();
+      inputEditor?.destroy();
+      outputEditor?.destroy();
+    };
   });
 
   // Re-convert when mode or options change

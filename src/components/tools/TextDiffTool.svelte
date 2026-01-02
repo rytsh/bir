@@ -124,33 +124,27 @@
     });
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createOldEditor();
-          createNewEditor();
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createOldEditor();
         createNewEditor();
-      });
+      }
+    });
 
-      return () => {
-        cleanup();
-        oldEditor?.destroy();
-        newEditor?.destroy();
-      };
-    }
+    tick().then(() => {
+      createOldEditor();
+      createNewEditor();
+    });
+
+    return () => {
+      cleanup();
+      oldEditor?.destroy();
+      newEditor?.destroy();
+    };
   });
 
   const handleClearOld = () => {

@@ -230,42 +230,36 @@
     return true;
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
+        createSourceEditor();
+        createOutputEditor();
+      }
+    });
 
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createSourceEditor();
-          createOutputEditor();
-        }
-      });
+    const initEditors = () => {
+      const sourceOk = createSourceEditor();
+      const outputOk = createOutputEditor();
+      if (sourceOk && outputOk) {
+        mounted = true;
+      } else {
+        requestAnimationFrame(initEditors);
+      }
+    };
+    tick().then(initEditors);
 
-      const initEditors = () => {
-        const sourceOk = createSourceEditor();
-        const outputOk = createOutputEditor();
-        if (sourceOk && outputOk) {
-          mounted = true;
-        } else {
-          requestAnimationFrame(initEditors);
-        }
-      };
-      tick().then(initEditors);
-
-      return () => {
-        cleanup();
-        if (convertTimeout) {
-          clearTimeout(convertTimeout);
-        }
-        sourceEditor?.destroy();
-        outputEditor?.destroy();
-      };
-    }
+    return () => {
+      cleanup();
+      if (convertTimeout) {
+        clearTimeout(convertTimeout);
+      }
+      sourceEditor?.destroy();
+      outputEditor?.destroy();
+    };
   });
 
   let mounted = $state(false);

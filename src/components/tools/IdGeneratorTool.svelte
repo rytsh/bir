@@ -203,30 +203,24 @@
     updateEditorContent(outputEditor, "");
   };
 
-  let hasMounted = $state(false);
-
   $effect(() => {
-    if (!hasMounted) {
-      hasMounted = true;
+    isDark = getInitialDarkMode();
 
-      isDark = getInitialDarkMode();
-
-      const cleanup = createDarkModeObserver((newIsDark) => {
-        if (newIsDark !== isDark) {
-          isDark = newIsDark;
-          createOutputEditor();
-        }
-      });
-
-      tick().then(() => {
+    const cleanup = createDarkModeObserver((newIsDark) => {
+      if (newIsDark !== isDark) {
+        isDark = newIsDark;
         createOutputEditor();
-      });
+      }
+    });
 
-      return () => {
-        cleanup();
-        outputEditor?.destroy();
-      };
-    }
+    tick().then(() => {
+      createOutputEditor();
+    });
+
+    return () => {
+      cleanup();
+      outputEditor?.destroy();
+    };
   });
 
   let selectedDescription = $derived(
