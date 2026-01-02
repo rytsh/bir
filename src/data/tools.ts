@@ -83,6 +83,14 @@ const rawCategories: Category[] = [
         path: "/converter/julian",
         keywords: "julian date, date converter, julian calendar, calendar conversion, astronomical date, julian day, date format",
       },
+      {
+        id: "timestamp-converter",
+        name: "Timestamp",
+        description: "Convert Unix timestamps to human-readable dates and formats",
+        icon: "⏰",
+        path: "/converter/timestamp",
+        keywords: "timestamp converter, unix timestamp, epoch time, date converter, unix time, epoch converter, time converter, rfc3339, iso8601",
+      },
     ],
   },
   {

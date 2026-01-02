@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TimestampTool from "../../components/tools/TimestampTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/timestamp");
+---
+
+<Layout title="Timestamp Converter - Unix Epoch Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/timestamp">
+  <h1 slot="navbar-title">Timestamp Converter</h1>
+  <TimestampTool client:load />
+</Layout>

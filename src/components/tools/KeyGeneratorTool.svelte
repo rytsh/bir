@@ -12,6 +12,7 @@
   type BitSize = 1024 | 2048 | 4096;
 
   let bitSize = $state<BitSize>(1024);
+  let passphrase = $state("");
   let generating = $state(false);
   let error = $state("");
   let copiedPublic = $state(false);
@@ -35,12 +36,60 @@
     return btoa(binary);
   };
 
-  const formatPem = (base64: string, type: "PUBLIC" | "PRIVATE"): string => {
+  const formatPem = (base64: string, type: "PUBLIC" | "PRIVATE" | "ENCRYPTED PRIVATE"): string => {
     const lines: string[] = [];
     for (let i = 0; i < base64.length; i += 64) {
       lines.push(base64.slice(i, i + 64));
     }
     return `-----BEGIN ${type} KEY-----\n${lines.join("\n")}\n-----END ${type} KEY-----`;
+  };
+
+  const deriveKeyFromPassphrase = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
+    const encoder = new TextEncoder();
+    const passphraseKey = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(passphrase),
+      "PBKDF2",
+      false,
+      ["deriveKey"]
+    );
+
+    return crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: salt.buffer as ArrayBuffer,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      passphraseKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
+  };
+
+  const encryptPrivateKey = async (privateKeyBuffer: ArrayBuffer, passphrase: string): Promise<string> => {
+    // Generate random salt and IV
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // Derive encryption key from passphrase
+    const encryptionKey = await deriveKeyFromPassphrase(passphrase, salt);
+
+    // Encrypt the private key
+    const encryptedData = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      encryptionKey,
+      privateKeyBuffer
+    );
+
+    // Combine salt + iv + encrypted data
+    const combined = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
+    combined.set(salt, 0);
+    combined.set(iv, salt.length);
+    combined.set(new Uint8Array(encryptedData), salt.length + iv.length);
+
+    return arrayBufferToBase64(combined.buffer);
   };
 
   const generateKeys = async () => {
@@ -70,8 +119,17 @@
 
       // Export private key in PKCS#8 format
       const privateKeyBuffer = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-      const privateKeyBase64 = arrayBufferToBase64(privateKeyBuffer);
-      const privateKeyPem = formatPem(privateKeyBase64, "PRIVATE");
+
+      let privateKeyPem: string;
+      if (passphrase.trim()) {
+        // Encrypt the private key with passphrase
+        const encryptedBase64 = await encryptPrivateKey(privateKeyBuffer, passphrase.trim());
+        privateKeyPem = formatPem(encryptedBase64, "ENCRYPTED PRIVATE");
+      } else {
+        // No passphrase - use plain PKCS#8
+        const privateKeyBase64 = arrayBufferToBase64(privateKeyBuffer);
+        privateKeyPem = formatPem(privateKeyBase64, "PRIVATE");
+      }
 
       updateEditorContent(publicKeyEditor, publicKeyPem);
       updateEditorContent(privateKeyEditor, privateKeyPem);
@@ -216,6 +274,18 @@
       </div>
     </div>
 
+    <div class="flex items-center gap-2">
+      <label for="passphrase" class="text-sm text-(--color-text-muted)">Passphrase:</label>
+      <input
+        id="passphrase"
+        type="password"
+        bind:value={passphrase}
+        placeholder="Optional"
+        disabled={generating}
+        class="px-3 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none w-40"
+      />
+    </div>
+
     <button
       onclick={generateKeys}
       disabled={generating}
@@ -304,5 +374,6 @@
   <div class="mt-4 p-3 border border-(--color-border) bg-(--color-bg-alt) text-xs text-(--color-text-muted)">
     <p><strong>Note:</strong> Keys are generated locally in your browser using the Web Crypto API. They are never sent to any server.</p>
     <p class="mt-1">Larger key sizes (2048, 4096) provide better security but take longer to generate.</p>
+    <p class="mt-1">If a passphrase is provided, the private key will be encrypted with AES-256-GCM using PBKDF2 key derivation.</p>
   </div>
 </div>
