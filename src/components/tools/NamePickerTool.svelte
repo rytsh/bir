@@ -48,7 +48,8 @@
   let canvasHeight = $state(400);
   
   // Offscreen canvas for cached wheel (to avoid redrawing segments during spin)
-  let wheelCacheCanvas: HTMLCanvasElement | null = $state(null);
+  // Not reactive - just a cache for performance
+  let wheelCacheCanvas: HTMLCanvasElement | null = null;
 
   // Colors for wheel segments
   const colors = [
@@ -671,34 +672,34 @@
               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
             >
               <div
-                class="bg-(--color-bg) border border-(--color-border) p-8 max-w-md w-full mx-4 text-center"
+                class="bg-(--color-bg) border-2 border-(--color-border) p-12 pb-4 w-full mx-4 text-center"
               >
-                <h2 class="text-2xl font-bold text-(--color-text) mb-2">
-                  🎉 Winner!
+                <h2 class="text-4xl lg:text-8xl font-bold text-(--color-text) mb-4">
+                  🎉 {selectedName}
                 </h2>
-                <p class="text-3xl font-bold text-(--color-accent) mb-2">
-                  {selectedName}
-                </p>
                 {#if currentPrize}
-                  <p class="text-lg text-(--color-text-muted) mb-6">
+                  <p class="text-2xl lg:text-5xl text-(--color-text-muted) mb-8">
                     Wins: <span class="text-(--color-text) font-medium"
                       >{currentPrize}</span
                     >
                   </p>
                 {:else}
-                  <div class="mb-6"></div>
+                  <div class="mb-8"></div>
                 {/if}
 
-                <div class="flex gap-3 justify-center">
-                  <button
-                    onclick={confirmWinner}
-                    class="px-6 py-2 bg-(--color-accent) text-(--color-btn-text) font-medium hover:bg-(--color-accent-hover) transition-colors"
-                  >
-                    Remove from list
-                  </button>
+                <div class="flex gap-4 justify-center">
+                  {#key selectedName}
+                    <button
+                      autofocus
+                      onclick={confirmWinner}
+                      class="px-4 py-2 border border-(--color-border) text-(--color-text) font-medium hover:bg-(--color-bg-alt) transition-colors"
+                    >
+                      Remove from list
+                    </button>
+                  {/key}
                   <button
                     onclick={keepInList}
-                    class="px-6 py-2 border border-(--color-border) text-(--color-text) font-medium hover:bg-(--color-bg-alt) transition-colors"
+                    class="px-4 py-2 border border-(--color-border) text-(--color-text) font-medium hover:bg-(--color-bg-alt) transition-colors"
                   >
                     Retry
                   </button>
