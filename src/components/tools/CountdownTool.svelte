@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
+
   interface Preset {
     name: string;
     hours: number;
@@ -47,40 +49,170 @@
   ];
 
   const colorPresets = [
-    { name: "Default", bg: "#1a1a1a", timer: "#ffffff", font: "Quantico", size: 8 },
+    {
+      name: "Default",
+      bg: "#1a1a1a",
+      timer: "#ffffff",
+      font: "Quantico",
+      size: 8,
+    },
     { name: "Flu", bg: "#ffbc0b", timer: "#000000", font: "Quantico", size: 8 },
-    { name: "Retro LCD", bg: "#a8c64e", timer: "#3c412c", font: "DSEG7 Classic", size: 8 },
-    { name: "Mint", bg: "#0d1f0d", timer: "#98fb98", font: "Micro 5", size: 16 },
-    { name: "Stealth", bg: "#0a0a0a", timer: "#2a2a2a", font: "Quantico", size: 8 },
-    { name: "Blueprint", bg: "#003366", timer: "#ffffff", font: "Quantico", size: 8 },
-    { name: "Sunset", bg: "#2d1b1b", timer: "#ffab91", font: "Quantico", size: 8 },
-    { name: "Minimal", bg: "#ffffff", timer: "#333333", font: "Quantico", size: 8 },
-    { name: "Minimal2", bg: "#ffffff", timer: "#333333", font: "Tourney", size: 8 },
-    { name: "Terminal", bg: "#0d1117", timer: "#00ff00", font: "DSEG7 Modern", size: 8 },
-    { name: "Fire", bg: "#1a0a0a", timer: "#ff5722", font: "Quantico", size: 8 },
-    { name: "Cyberpunk", bg: "#000000", timer: "#fcee09", font: "DSEG14 Modern", size: 8 },
-    { name: "Amber CRT", bg: "#fb7c00", timer: "#222222", font: "DSEG7 Classic", size: 8 },
+    {
+      name: "Retro LCD",
+      bg: "#a8c64e",
+      timer: "#3c412c",
+      font: "DSEG7 Classic",
+      size: 8,
+    },
+    {
+      name: "Mint",
+      bg: "#0d1f0d",
+      timer: "#98fb98",
+      font: "Micro 5",
+      size: 16,
+    },
+    {
+      name: "Stealth",
+      bg: "#0a0a0a",
+      timer: "#2a2a2a",
+      font: "Quantico",
+      size: 8,
+    },
+    {
+      name: "Blueprint",
+      bg: "#003366",
+      timer: "#ffffff",
+      font: "Quantico",
+      size: 8,
+    },
+    {
+      name: "Sunset",
+      bg: "#2d1b1b",
+      timer: "#ffab91",
+      font: "Quantico",
+      size: 8,
+    },
+    {
+      name: "Minimal",
+      bg: "#ffffff",
+      timer: "#333333",
+      font: "Quantico",
+      size: 8,
+    },
+    {
+      name: "Minimal2",
+      bg: "#ffffff",
+      timer: "#333333",
+      font: "Tourney",
+      size: 8,
+    },
+    {
+      name: "Terminal",
+      bg: "#0d1117",
+      timer: "#00ff00",
+      font: "DSEG7 Modern",
+      size: 8,
+    },
+    {
+      name: "Fire",
+      bg: "#1a0a0a",
+      timer: "#ff5722",
+      font: "Quantico",
+      size: 8,
+    },
+    {
+      name: "Cyberpunk",
+      bg: "#000000",
+      timer: "#fcee09",
+      font: "DSEG14 Modern",
+      size: 8,
+    },
+    {
+      name: "Amber CRT",
+      bg: "#fb7c00",
+      timer: "#222222",
+      font: "DSEG7 Classic",
+      size: 8,
+    },
     { name: "Ice", bg: "#e8f4f8", timer: "#0077b6", font: "Iceberg", size: 8 },
-    { name: "Vintage", bg: "#f5e6d3", timer: "#8b4513", font: "Love Ya Like A Sister", size: 8 },
-    { name: "Arctic", bg: "#1c2541", timer: "#a8dadc", font: "Iceberg", size: 8 },
-    { name: "Lava", bg: "#1a0000", timer: "#ff4500", font: "DSEG14 Classic", size: 8 },
+    {
+      name: "Vintage",
+      bg: "#f5e6d3",
+      timer: "#8b4513",
+      font: "Love Ya Like A Sister",
+      size: 8,
+    },
+    {
+      name: "Arctic",
+      bg: "#1c2541",
+      timer: "#a8dadc",
+      font: "Iceberg",
+      size: 8,
+    },
+    {
+      name: "Lava",
+      bg: "#1a0000",
+      timer: "#ff4500",
+      font: "DSEG14 Classic",
+      size: 8,
+    },
   ];
 
   const fontPresets = [
-    { name: "Quantico", family: "'Quantico', sans-serif", url: "https://fonts.googleapis.com/css2?family=Quantico&display=swap" },
-    { name: "Iceberg", family: "'Iceberg', sans-serif", url: "https://fonts.googleapis.com/css2?family=Iceberg&display=swap" },
-    { name: "Tourney", family: "'Tourney', sans-serif", url: "https://fonts.googleapis.com/css2?family=Tourney:wght@100&display=swap" },
+    {
+      name: "Quantico",
+      family: "'Quantico', sans-serif",
+      url: "https://fonts.googleapis.com/css2?family=Quantico&display=swap",
+    },
+    {
+      name: "Iceberg",
+      family: "'Iceberg', sans-serif",
+      url: "https://fonts.googleapis.com/css2?family=Iceberg&display=swap",
+    },
+    {
+      name: "Tourney",
+      family: "'Tourney', sans-serif",
+      url: "https://fonts.googleapis.com/css2?family=Tourney:wght@100&display=swap",
+    },
     { name: "System Mono", family: "ui-monospace, monospace", url: "" },
     { name: "DSEG7 Classic", family: "'DSEG7 Classic', monospace", url: "" },
     { name: "DSEG7 Modern", family: "'DSEG7 Modern', monospace", url: "" },
     { name: "DSEG14 Classic", family: "'DSEG14 Classic', monospace", url: "" },
     { name: "DSEG14 Modern", family: "'DSEG14 Modern', monospace", url: "" },
-    { name: "Micro 5", family: "'Micro 5', monospace", url: "https://fonts.googleapis.com/css2?family=Micro+5&display=swap" },
-    { name: "Love Ya Like A Sister", family: "'Love Ya Like A Sister', cursive", url: "https://fonts.googleapis.com/css2?family=Love+Ya+Like+A+Sister&display=swap" },
-    { name: "New Rocker", family: "'New Rocker', system-ui", url: "https://fonts.googleapis.com/css2?family=New+Rocker&display=swap", weight: 200 },
-    { name: "Jersey 10", family: "'Jersey 10', system-ui", url: "https://fonts.googleapis.com/css2?family=Jersey+10&display=swap", weight: 200 },
-    { name: "Monoton", family: "'Monoton', system-ui", url: "https://fonts.googleapis.com/css2?family=Monoton&display=swap", weight: 200 },
-    { name: "Press Start 2P", family: "'Press Start 2P', system-ui", url: "https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap", weight: 200 },
+    {
+      name: "Micro 5",
+      family: "'Micro 5', monospace",
+      url: "https://fonts.googleapis.com/css2?family=Micro+5&display=swap",
+    },
+    {
+      name: "Love Ya Like A Sister",
+      family: "'Love Ya Like A Sister', cursive",
+      url: "https://fonts.googleapis.com/css2?family=Love+Ya+Like+A+Sister&display=swap",
+    },
+    {
+      name: "New Rocker",
+      family: "'New Rocker', system-ui",
+      url: "https://fonts.googleapis.com/css2?family=New+Rocker&display=swap",
+      weight: 200,
+    },
+    {
+      name: "Jersey 10",
+      family: "'Jersey 10', system-ui",
+      url: "https://fonts.googleapis.com/css2?family=Jersey+10&display=swap",
+      weight: 200,
+    },
+    {
+      name: "Monoton",
+      family: "'Monoton', system-ui",
+      url: "https://fonts.googleapis.com/css2?family=Monoton&display=swap",
+      weight: 200,
+    },
+    {
+      name: "Press Start 2P",
+      family: "'Press Start 2P', system-ui",
+      url: "https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap",
+      weight: 200,
+    },
   ];
 
   // Timer state
@@ -109,6 +241,9 @@
   let isFlashing = $state(false);
   let flashIntervalId: ReturnType<typeof setInterval> | null = null;
 
+  // Hint timer
+  let showHint = $state(true);
+
   // Settings loaded flag to prevent saving during initial load
   let settingsLoaded = $state(false);
 
@@ -124,13 +259,17 @@
         if (settings.hours !== undefined) hours = settings.hours;
         if (settings.minutes !== undefined) minutes = settings.minutes;
         if (settings.seconds !== undefined) seconds = settings.seconds;
-        if (settings.backgroundColor) backgroundColor = settings.backgroundColor;
+        if (settings.backgroundColor)
+          backgroundColor = settings.backgroundColor;
         if (settings.timerColor) timerColor = settings.timerColor;
-        if (settings.selectedColorPreset) selectedColorPreset = settings.selectedColorPreset;
+        if (settings.selectedColorPreset)
+          selectedColorPreset = settings.selectedColorPreset;
         if (settings.selectedFont) selectedFont = settings.selectedFont;
         if (settings.fontSize !== undefined) fontSize = settings.fontSize;
-        if (settings.enableSound !== undefined) enableSound = settings.enableSound;
-        if (settings.enableFlashing !== undefined) enableFlashing = settings.enableFlashing;
+        if (settings.enableSound !== undefined)
+          enableSound = settings.enableSound;
+        if (settings.enableFlashing !== undefined)
+          enableFlashing = settings.enableFlashing;
       }
     } catch (e) {
       console.warn("Failed to load settings:", e);
@@ -189,11 +328,17 @@
   // Auto-save settings when they change
   $effect(() => {
     // Access all settings to track them
-    hours; minutes; seconds;
-    backgroundColor; timerColor; selectedColorPreset;
-    selectedFont; fontSize;
-    enableSound; enableFlashing;
-    
+    hours;
+    minutes;
+    seconds;
+    backgroundColor;
+    timerColor;
+    selectedColorPreset;
+    selectedFont;
+    fontSize;
+    enableSound;
+    enableFlashing;
+
     saveSettings();
   });
 
@@ -214,7 +359,11 @@
   };
 
   const displayTime = $derived(
-    timerFinished ? "00:00" : (isRunning || remainingMs > 0 ? formatTime(remainingMs) : formatTime(getTotalMs()))
+    timerFinished
+      ? "00:00"
+      : isRunning || remainingMs > 0
+        ? formatTime(remainingMs)
+        : formatTime(getTotalMs()),
   );
 
   const playBeep = () => {
@@ -235,7 +384,10 @@
       oscillator.type = "sine";
 
       gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + 0.5,
+      );
 
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.5);
@@ -250,7 +402,10 @@
           osc2.frequency.value = 800;
           osc2.type = "sine";
           gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+          gain2.gain.exponentialRampToValueAtTime(
+            0.01,
+            audioContext.currentTime + 0.5,
+          );
           osc2.start(audioContext.currentTime);
           osc2.stop(audioContext.currentTime + 0.5);
         }
@@ -265,7 +420,10 @@
           osc3.frequency.value = 1000;
           osc3.type = "sine";
           gain3.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+          gain3.gain.exponentialRampToValueAtTime(
+            0.01,
+            audioContext.currentTime + 0.8,
+          );
           osc3.start(audioContext.currentTime);
           osc3.stop(audioContext.currentTime + 0.8);
         }
@@ -399,7 +557,9 @@
     if (preset) {
       // Load font if it has a URL
       if (preset.url) {
-        const existingLink = document.querySelector(`link[href="${preset.url}"]`);
+        const existingLink = document.querySelector(
+          `link[href="${preset.url}"]`,
+        );
         if (!existingLink) {
           const link = document.createElement("link");
           link.rel = "stylesheet";
@@ -432,36 +592,82 @@
   let isFullscreen = $state(false);
 
   const progress = $derived(
-    getTotalMs() > 0 ? (remainingMs / getTotalMs()) * 100 : 0
+    getTotalMs() > 0 ? (remainingMs / getTotalMs()) * 100 : 0,
   );
 
-  const isTimerSet = $derived(hours > 0 || minutes > 0 || seconds > 0 || remainingMs > 0);
+  const isTimerSet = $derived(
+    hours > 0 || minutes > 0 || seconds > 0 || remainingMs > 0,
+  );
 
   const toggleFullscreen = async () => {
     if (!timerContainer) return;
 
     try {
       if (!document.fullscreenElement) {
-        await timerContainer.requestFullscreen();
+        // Try standard fullscreen API
+        if (timerContainer.requestFullscreen) {
+          await timerContainer.requestFullscreen();
+        } else if ((timerContainer as any).webkitRequestFullscreen) {
+          // iOS Safari fallback
+          await (timerContainer as any).webkitRequestFullscreen();
+        } else if ((timerContainer as any).mozRequestFullScreen) {
+          // Firefox fallback
+          await (timerContainer as any).mozRequestFullScreen();
+        } else if ((timerContainer as any).msRequestFullscreen) {
+          // IE fallback
+          await (timerContainer as any).msRequestFullscreen();
+        }
         isFullscreen = true;
       } else {
-        await document.exitFullscreen();
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
         isFullscreen = false;
       }
     } catch (e) {
       console.warn("Fullscreen failed:", e);
+      // Fallback: try to simulate fullscreen with CSS
+      if (!document.fullscreenElement) {
+        timerContainer.style.position = "fixed";
+        timerContainer.style.top = "0";
+        timerContainer.style.left = "0";
+        timerContainer.style.width = "100vw";
+        timerContainer.style.height = "100vh";
+        timerContainer.style.zIndex = "9999";
+        isFullscreen = true;
+      } else {
+        timerContainer.style.position = "";
+        timerContainer.style.top = "";
+        timerContainer.style.left = "";
+        timerContainer.style.width = "";
+        timerContainer.style.height = "";
+        timerContainer.style.zIndex = "";
+        isFullscreen = false;
+      }
     }
   };
 
   // Listen for fullscreen changes and keyboard events
   $effect(() => {
     const handleFullscreenChange = () => {
-      isFullscreen = !!document.fullscreenElement;
+      isFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
       if (!isFullscreen) return;
-      
+
       if (e.code === "Space") {
         e.preventDefault();
         if (isRunning) {
@@ -473,21 +679,54 @@
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
     document.addEventListener("keydown", handleKeydown);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        handleFullscreenChange,
+      );
+      document.removeEventListener(
+        "mozfullscreenchange",
+        handleFullscreenChange,
+      );
+      document.removeEventListener(
+        "MSFullscreenChange",
+        handleFullscreenChange,
+      );
       document.removeEventListener("keydown", handleKeydown);
     };
   });
 
   // Show frame corners when timer is ready but not started
-  const showFrameCorners = $derived(isFullscreen && !isRunning && !timerFinished && isTimerSet);
+  const showFrameCorners = $derived(
+    isFullscreen && !isRunning && !timerFinished && isTimerSet,
+  );
+
+  $effect(() => {
+    // Hide hint after 2 seconds
+    if (showFrameCorners) {
+      showHint = true;
+      const hintTimeout = setTimeout(() => {
+        showHint = false;
+      }, 2000);
+      return () => {
+        clearTimeout(hintTimeout);
+      };
+    } else {
+      showHint = false;
+    }
+  });
 </script>
 
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Customizable countdown timer with color themes, presets, and end-of-time alerts.
+      Customizable countdown timer with color themes, presets, and end-of-time
+      alerts.
     </p>
   </header>
 
@@ -575,8 +814,20 @@
             class="px-3 py-2 border border-(--color-border) text-(--color-text) text-sm hover:bg-(--color-bg-alt) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Clear all settings and reset to defaults"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+              />
             </svg>
           </button>
         </div>
@@ -599,12 +850,20 @@
             onkeydown={(e) => {
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 e.preventDefault();
-                const currentIndex = colorPresets.findIndex((p) => p.name === selectedColorPreset);
+                const currentIndex = colorPresets.findIndex(
+                  (p) => p.name === selectedColorPreset,
+                );
                 let newIndex;
                 if (e.key === "ArrowUp") {
-                  newIndex = currentIndex <= 0 ? colorPresets.length - 1 : currentIndex - 1;
+                  newIndex =
+                    currentIndex <= 0
+                      ? colorPresets.length - 1
+                      : currentIndex - 1;
                 } else {
-                  newIndex = currentIndex >= colorPresets.length - 1 ? 0 : currentIndex + 1;
+                  newIndex =
+                    currentIndex >= colorPresets.length - 1
+                      ? 0
+                      : currentIndex + 1;
                 }
                 selectedColorPreset = colorPresets[newIndex].name;
               }
@@ -629,13 +888,13 @@
               id="bg-color"
               type="color"
               bind:value={backgroundColor}
-              oninput={() => selectedColorPreset = "Custom"}
+              oninput={() => (selectedColorPreset = "Custom")}
               class="w-10 h-10 border border-(--color-border) cursor-pointer"
             />
             <input
               type="text"
               bind:value={backgroundColor}
-              oninput={() => selectedColorPreset = "Custom"}
+              oninput={() => (selectedColorPreset = "Custom")}
               class="w-24 px-2 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-xs font-mono focus:outline-none focus:border-(--color-accent)"
             />
           </div>
@@ -653,13 +912,13 @@
               id="timer-color"
               type="color"
               bind:value={timerColor}
-              oninput={() => selectedColorPreset = "Custom"}
+              oninput={() => (selectedColorPreset = "Custom")}
               class="w-10 h-10 border border-(--color-border) cursor-pointer"
             />
             <input
               type="text"
               bind:value={timerColor}
-              oninput={() => selectedColorPreset = "Custom"}
+              oninput={() => (selectedColorPreset = "Custom")}
               class="w-24 px-2 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-xs font-mono focus:outline-none focus:border-(--color-accent)"
             />
           </div>
@@ -679,8 +938,20 @@
             class="px-3 py-2 border border-(--color-border) text-(--color-text) text-sm hover:bg-(--color-bg) transition-colors"
             title="Switch background and timer colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L21 16M17 20L13 16"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L21 16M17 20L13 16"
+              />
             </svg>
           </button>
         </div>
@@ -698,12 +969,20 @@
             onkeydown={(e) => {
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 e.preventDefault();
-                const currentIndex = fontPresets.findIndex((p) => p.name === selectedFont);
+                const currentIndex = fontPresets.findIndex(
+                  (p) => p.name === selectedFont,
+                );
                 let newIndex;
                 if (e.key === "ArrowUp") {
-                  newIndex = currentIndex <= 0 ? fontPresets.length - 1 : currentIndex - 1;
+                  newIndex =
+                    currentIndex <= 0
+                      ? fontPresets.length - 1
+                      : currentIndex - 1;
                 } else {
-                  newIndex = currentIndex >= fontPresets.length - 1 ? 0 : currentIndex + 1;
+                  newIndex =
+                    currentIndex >= fontPresets.length - 1
+                      ? 0
+                      : currentIndex + 1;
                 }
                 selectedFont = fontPresets[newIndex].name;
               }
@@ -778,7 +1057,10 @@
 
           <button
             onclick={handleReset}
-            disabled={remainingMs === 0 && !isRunning && !isFlashing && !timerFinished}
+            disabled={remainingMs === 0 &&
+              !isRunning &&
+              !isFlashing &&
+              !timerFinished}
             class="px-6 py-2 border border-(--color-border) text-(--color-text) text-sm font-medium hover:bg-(--color-bg-alt) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Reset
@@ -786,13 +1068,51 @@
 
           <button
             onclick={toggleFullscreen}
-            class="p-2 border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors"
+            ontouchstart={toggleFullscreen}
+            class="p-3 border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            style="touch-action: manipulation;"
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >
             {#if isFullscreen}
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 4 20 10 20"></polyline><polyline points="20 10 20 4 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><polyline points="4 14 4 20 10 20"></polyline><polyline
+                  points="20 10 20 4 14 4"
+                ></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line
+                  x1="3"
+                  y1="21"
+                  x2="10"
+                  y2="14"
+                ></line></svg
+              >
             {:else}
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                ><polyline points="15 3 21 3 21 9"></polyline><polyline
+                  points="9 21 3 21 3 15"
+                ></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line
+                  x1="3"
+                  y1="21"
+                  x2="10"
+                  y2="14"
+                ></line></svg
+              >
             {/if}
           </button>
         </div>
@@ -804,23 +1124,47 @@
   <div class="flex-1 flex flex-col min-h-[300px]">
     <div
       bind:this={timerContainer}
-      class="flex-1 flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-200 {isFullscreen ? '' : 'border border-(--color-border)'}"
-      style="background-color: {isFlashing ? (backgroundColor === '#ffffff' ? '#ff0000' : '#ffffff') : backgroundColor};"
+      class="flex-1 flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-200 {isFullscreen
+        ? 'min-h-screen w-full'
+        : 'border border-(--color-border)'}"
+      style="background-color: {isFlashing
+        ? backgroundColor === '#ffffff'
+          ? '#ff0000'
+          : '#ffffff'
+        : backgroundColor};"
     >
       <!-- Frame corners (shown in fullscreen when ready to start) -->
       {#if showFrameCorners}
         <!-- Top left corner -->
-        <div class="absolute top-8 left-8 w-16 h-16 border-l-4 border-t-4 transition-opacity duration-300" style="border-color: {timerColor}; opacity: 0.6;"></div>
+        <div
+          class="absolute top-8 left-8 w-16 h-16 border-l-4 border-t-4 transition-opacity duration-300"
+          style="border-color: {timerColor}; opacity: 0.6;"
+        ></div>
         <!-- Top right corner -->
-        <div class="absolute top-8 right-8 w-16 h-16 border-r-4 border-t-4 transition-opacity duration-300" style="border-color: {timerColor}; opacity: 0.6;"></div>
+        <div
+          class="absolute top-8 right-8 w-16 h-16 border-r-4 border-t-4 transition-opacity duration-300"
+          style="border-color: {timerColor}; opacity: 0.6;"
+        ></div>
         <!-- Bottom left corner -->
-        <div class="absolute bottom-8 left-8 w-16 h-16 border-l-4 border-b-4 transition-opacity duration-300" style="border-color: {timerColor}; opacity: 0.6;"></div>
+        <div
+          class="absolute bottom-8 left-8 w-16 h-16 border-l-4 border-b-4 transition-opacity duration-300"
+          style="border-color: {timerColor}; opacity: 0.6;"
+        ></div>
         <!-- Bottom right corner -->
-        <div class="absolute bottom-8 right-8 w-16 h-16 border-r-4 border-b-4 transition-opacity duration-300" style="border-color: {timerColor}; opacity: 0.6;"></div>
+        <div
+          class="absolute bottom-8 right-8 w-16 h-16 border-r-4 border-b-4 transition-opacity duration-300"
+          style="border-color: {timerColor}; opacity: 0.6;"
+        ></div>
         <!-- Spacebar hint -->
-        <div class="absolute bottom-12 text-sm uppercase tracking-widest transition-opacity duration-300" style="color: {timerColor}; opacity: 0.4;">
-          Press Space to Start
-        </div>
+        {#if showFrameCorners && showHint}
+          <div
+            class="absolute bottom-12 text-sm uppercase tracking-widest transition-opacity duration-300"
+            style="color: {timerColor}; opacity: 0.4;"
+            out:fade={{ duration: 500 }}
+          >
+            Press Space to Start
+          </div>
+        {/if}
       {/if}
 
       <!-- Progress bar -->
@@ -834,7 +1178,8 @@
       <!-- Timer -->
       <div
         class="tracking-wider transition-colors duration-200"
-        style="color: {timerColor}; font-family: {timerFontFamily}; font-size: {fontSize}rem; font-weight: {timerFontWeight ?? 'bold'};"
+        style="color: {timerColor}; font-family: {timerFontFamily}; font-size: {fontSize}rem; font-weight: {timerFontWeight ??
+          'bold'};"
       >
         {displayTime}
       </div>
