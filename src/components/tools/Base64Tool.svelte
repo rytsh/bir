@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -142,27 +142,33 @@
     });
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createInputEditor();
+          createOutputEditor();
+        }
+      });
+
+      tick().then(() => {
         createInputEditor();
         createOutputEditor();
-      }
-    });
+      });
 
-    tick().then(() => {
-      createInputEditor();
-      createOutputEditor();
-    });
-
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-      outputEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        inputEditor?.destroy();
+        outputEditor?.destroy();
+      };
+    }
   });
 
   // Re-convert when mode changes
@@ -202,7 +208,7 @@
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
-      setTimeout(() => (copied = false), 2000);
+      setTimeout(() => { copied = false; }, 2000);
     }
   };
 

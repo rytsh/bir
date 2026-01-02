@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -371,7 +371,7 @@
     if (text) {
       navigator.clipboard.writeText(text);
       copied = true;
-      setTimeout(() => (copied = false), 2000);
+      setTimeout(() => { copied = false; }, 2000);
     }
   };
 
@@ -418,42 +418,48 @@
            searchResultsArray[currentSearchIndex] === offset;
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createInputEditor();
+          createBase64Editor();
+        }
+      });
+
+      tick().then(() => {
         createInputEditor();
         createBase64Editor();
-      }
-    });
+        if (containerEl) {
+          containerHeight = containerEl.clientHeight;
+        }
+      });
 
-    tick().then(() => {
-      createInputEditor();
-      createBase64Editor();
+      // ResizeObserver for container
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          containerHeight = entry.contentRect.height;
+        }
+      });
+
       if (containerEl) {
-        containerHeight = containerEl.clientHeight;
+        resizeObserver.observe(containerEl);
       }
-    });
 
-    // ResizeObserver for container
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        containerHeight = entry.contentRect.height;
-      }
-    });
-    
-    if (containerEl) {
-      resizeObserver.observe(containerEl);
+      return () => {
+        cleanup();
+        inputEditor?.destroy();
+        base64Editor?.destroy();
+        resizeObserver.disconnect();
+      };
     }
-
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-      base64Editor?.destroy();
-      resizeObserver.disconnect();
-    };
   });
 
   $effect(() => {

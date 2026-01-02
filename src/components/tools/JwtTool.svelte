@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import { json } from "@codemirror/lang-json";
   import {
     EditorView,
@@ -212,29 +212,35 @@
     });
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createHeaderEditor(!isSigningEnabled);
+          createPayloadEditor(!isSigningEnabled);
+        }
+      });
+
+      tick().then(() => {
         createHeaderEditor(!isSigningEnabled);
         createPayloadEditor(!isSigningEnabled);
-      }
-    });
+        mounted = true;
+      });
 
-    tick().then(() => {
-      createHeaderEditor(!isSigningEnabled);
-      createPayloadEditor(!isSigningEnabled);
-      mounted = true;
-    });
-
-    return () => {
-      cleanup();
-      if (signTimeout) clearTimeout(signTimeout);
-      headerEditor?.destroy();
-      payloadEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        if (signTimeout) clearTimeout(signTimeout);
+        headerEditor?.destroy();
+        payloadEditor?.destroy();
+      };
+    }
   });
 
   // Decode when token input changes from external source (not from signing)
@@ -271,7 +277,7 @@
     if (tokenInput) {
       navigator.clipboard.writeText(tokenInput);
       copiedToken = true;
-      setTimeout(() => (copiedToken = false), 2000);
+      setTimeout(() => { copiedToken = false; }, 2000);
     }
   };
 

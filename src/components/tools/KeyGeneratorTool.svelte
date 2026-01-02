@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -115,27 +115,33 @@
     });
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createPublicKeyEditor();
+          createPrivateKeyEditor();
+        }
+      });
+
+      tick().then(() => {
         createPublicKeyEditor();
         createPrivateKeyEditor();
-      }
-    });
+      });
 
-    tick().then(() => {
-      createPublicKeyEditor();
-      createPrivateKeyEditor();
-    });
-
-    return () => {
-      cleanup();
-      publicKeyEditor?.destroy();
-      privateKeyEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        publicKeyEditor?.destroy();
+        privateKeyEditor?.destroy();
+      };
+    }
   });
 
   const handleCopyPublic = () => {
@@ -143,7 +149,7 @@
     if (content) {
       navigator.clipboard.writeText(content);
       copiedPublic = true;
-      setTimeout(() => (copiedPublic = false), 2000);
+      setTimeout(() => { copiedPublic = false; }, 2000);
     }
   };
 
@@ -152,7 +158,7 @@
     if (content) {
       navigator.clipboard.writeText(content);
       copiedPrivate = true;
-      setTimeout(() => (copiedPrivate = false), 2000);
+      setTimeout(() => { copiedPrivate = false; }, 2000);
     }
   };
 

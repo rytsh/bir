@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -124,27 +124,33 @@
     });
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createOldEditor();
+          createNewEditor();
+        }
+      });
+
+      tick().then(() => {
         createOldEditor();
         createNewEditor();
-      }
-    });
+      });
 
-    tick().then(() => {
-      createOldEditor();
-      createNewEditor();
-    });
-
-    return () => {
-      cleanup();
-      oldEditor?.destroy();
-      newEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        oldEditor?.destroy();
+        newEditor?.destroy();
+      };
+    }
   });
 
   const handleClearOld = () => {

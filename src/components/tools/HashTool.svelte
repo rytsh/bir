@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -147,7 +147,7 @@
     if (value) {
       navigator.clipboard.writeText(value);
       copied = type;
-      setTimeout(() => (copied = null), 2000);
+      setTimeout(() => { copied = null; }, 2000);
     }
   };
 
@@ -171,24 +171,30 @@
     }
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createInputEditor();
+        }
+      });
+
+      tick().then(() => {
         createInputEditor();
-      }
-    });
+      });
 
-    tick().then(() => {
-      createInputEditor();
-    });
-
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        inputEditor?.destroy();
+      };
+    }
   });
 
   const hashTypes: { key: keyof HashResult; label: string }[] = [

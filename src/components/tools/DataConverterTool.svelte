@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import * as TOON from "@toon-format/toon";
@@ -230,36 +230,42 @@
     return true;
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createSourceEditor();
-        createOutputEditor();
-      }
-    });
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
 
-    const initEditors = () => {
-      const sourceOk = createSourceEditor();
-      const outputOk = createOutputEditor();
-      if (sourceOk && outputOk) {
-        mounted = true;
-      } else {
-        requestAnimationFrame(initEditors);
-      }
-    };
-    tick().then(initEditors);
+      isDark = getInitialDarkMode();
 
-    return () => {
-      cleanup();
-      if (convertTimeout) {
-        clearTimeout(convertTimeout);
-      }
-      sourceEditor?.destroy();
-      outputEditor?.destroy();
-    };
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createSourceEditor();
+          createOutputEditor();
+        }
+      });
+
+      const initEditors = () => {
+        const sourceOk = createSourceEditor();
+        const outputOk = createOutputEditor();
+        if (sourceOk && outputOk) {
+          mounted = true;
+        } else {
+          requestAnimationFrame(initEditors);
+        }
+      };
+      tick().then(initEditors);
+
+      return () => {
+        cleanup();
+        if (convertTimeout) {
+          clearTimeout(convertTimeout);
+        }
+        sourceEditor?.destroy();
+        outputEditor?.destroy();
+      };
+    }
   });
 
   let mounted = $state(false);
@@ -296,7 +302,7 @@
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
-      setTimeout(() => (copied = false), 2000);
+      setTimeout(() => { copied = false; }, 2000);
     }
   };
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -195,7 +195,7 @@
     if (output) {
       navigator.clipboard.writeText(output);
       copied = true;
-      setTimeout(() => (copied = false), 2000);
+      setTimeout(() => { copied = false; }, 2000);
     }
   };
 
@@ -203,24 +203,30 @@
     updateEditorContent(outputEditor, "");
   };
 
-  onMount(() => {
-    isDark = getInitialDarkMode();
+  let hasMounted = $state(false);
 
-    const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+
+      isDark = getInitialDarkMode();
+
+      const cleanup = createDarkModeObserver((newIsDark) => {
+        if (newIsDark !== isDark) {
+          isDark = newIsDark;
+          createOutputEditor();
+        }
+      });
+
+      tick().then(() => {
         createOutputEditor();
-      }
-    });
+      });
 
-    tick().then(() => {
-      createOutputEditor();
-    });
-
-    return () => {
-      cleanup();
-      outputEditor?.destroy();
-    };
+      return () => {
+        cleanup();
+        outputEditor?.destroy();
+      };
+    }
   });
 
   let selectedDescription = $derived(
