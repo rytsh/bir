@@ -6,7 +6,8 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/timers/countdown");
 ---
 
-<Layout navbarTitle="Countdown Timer" title="Countdown Timer - Customizable Timer with Alerts" description={tool?.description} keywords={tool?.keywords} currentPath="/timers/countdown">
+<Layout title="Countdown Timer - Customizable Timer with Alerts" description={tool?.description} keywords={tool?.keywords} currentPath="/timers/countdown">
+  <span slot="navbar-title">Countdown Timer</span>
   <h1 class="sr-only">Countdown Timer</h1>
   <CountdownTool client:load />
 </Layout>

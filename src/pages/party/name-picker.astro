@@ -3,6 +3,7 @@ import Layout from "../../layouts/Layout.astro";
 import NamePickerTool from "../../components/tools/NamePickerTool.svelte";
 ---
 
-<Layout navbarTitle="Name Picker" title="Name Picker" currentPath="/party/name-picker">
+<Layout title="Name Picker" currentPath="/party/name-picker">
+  <span slot="navbar-title">Name Picker</span>
   <NamePickerTool client:load />
 </Layout>

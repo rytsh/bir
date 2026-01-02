@@ -6,7 +6,8 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/text/glyphs");
 ---
 
-<Layout navbarTitle="Font Glyphs Viewer" title="Font Glyphs Viewer - Unicode Character Map" description={tool?.description} keywords={tool?.keywords} currentPath="/text/glyphs">
+<Layout title="Font Glyphs Viewer - Unicode Character Map" description={tool?.description} keywords={tool?.keywords} currentPath="/text/glyphs">
+  <span slot="navbar-title">Font Glyphs Viewer</span>
   <h1 class="sr-only">Font Glyphs Viewer</h1>
   <GlyphsTool client:load />
 </Layout>

@@ -6,7 +6,8 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/generators/barcode");
 ---
 
-<Layout navbarTitle="Barcode & QR Code Generator" title="Barcode & QR Code Generator - WiFi QR Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/barcode">
+<Layout title="Barcode & QR Code Generator - WiFi QR Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/barcode">
+  <span slot="navbar-title">Barcode & QR Code Generator</span>
   <h1 class="sr-only">Barcode & QR Code Generator</h1>
   <BarcodeTool client:load />
 </Layout>

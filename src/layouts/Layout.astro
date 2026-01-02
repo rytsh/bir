@@ -5,13 +5,12 @@ import ThemeToggle from "../components/ThemeToggle.svelte";
 
 interface Props {
   title: string;
-  navbarTitle?: string;
   description?: string;
   keywords?: string;
   currentPath?: string;
 }
 
-const { title, navbarTitle, description, keywords, currentPath } = Astro.props;
+const { title, description, keywords, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
 const siteName = "Tools";
@@ -113,9 +112,9 @@ const twitterImage = new URL("/og.jpg", Astro.site);
             <path id="menu-icon" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-      <span class="w-full px-2 text-base tracking-tight">
-        {navbarTitle || "Collection of Tools"}
-      </span>
+       <span class="w-full px-2 text-base tracking-tight">
+         <slot name="navbar-title">Collection of Tools</slot>
+       </span>
       <div class="flex items-center gap-1">
         <ThemeToggle client:load />
       </div>

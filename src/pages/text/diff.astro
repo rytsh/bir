@@ -6,7 +6,8 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/text/diff");
 ---
 
-<Layout navbarTitle="Text Diff Tool" title="Online Text Diff Tool - Compare Text Files" description={tool?.description} keywords={tool?.keywords} currentPath="/text/diff">
+<Layout title="Online Text Diff Tool - Compare Text Files" description={tool?.description} keywords={tool?.keywords} currentPath="/text/diff">
+  <span slot="navbar-title">Text Diff Tool</span>
   <h1 class="sr-only">Text Diff Tool</h1>
   <TextDiffTool client:load />
 </Layout>
