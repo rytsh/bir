@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Sidebar collapsed styles */
+.sidebar-collapsed {
+  display: none;
+}
+
 /* DSEG Fonts for countdown timer */
 @font-face {
   font-family: "DSEG7 Classic";
@@ -109,6 +114,19 @@ button {
 ::selection {
   background-color: var(--color-text);
   color: var(--color-bg);
+}
+
+/* Sidebar collapsed styles */
+.sidebar-collapsed {
+  width: 3rem;
+}
+
+.sidebar-collapsed h3 {
+  display: none;
+}
+
+.sidebar-collapsed .tool-name {
+  display: none;
 }
 
 /* Custom scrollbar for sidebar */

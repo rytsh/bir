@@ -114,7 +114,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
           </svg>
         </button>
       <span class="text-base font-medium tracking-tight">
-          {navbarTitle}
+          {navbarTitle || "Collection of Tools"}
       </span>
       <div class="flex items-center gap-1">
         <ThemeToggle client:load />
@@ -130,35 +130,83 @@ const twitterImage = new URL("/og.jpg", Astro.site);
     <script>
       const menuToggle = document.getElementById('menu-toggle');
       const sidebar = document.getElementById('sidebar');
+      const sidebarContent = document.getElementById('sidebar-content');
       const overlay = document.getElementById('overlay');
+      const menuIcon = document.getElementById('menu-icon');
 
-      const toggleMenu = () => {
-        const isOpen = sidebar?.classList.contains('translate-x-0');
+      const isLargeScreen = () => window.innerWidth >= 1024;
+      const isCollapsed = () => localStorage.getItem('sidebar-collapsed') === 'true';
 
-        if (isOpen) {
-          sidebar?.classList.remove('translate-x-0');
-          sidebar?.classList.add('-translate-x-full');
+      const updateSidebarState = () => {
+        if (isLargeScreen()) {
+          if (isCollapsed()) {
+            sidebarContent?.classList.add('sidebar-collapsed');
+            updateMenuIcon(true);
+          } else {
+            sidebarContent?.classList.remove('sidebar-collapsed');
+            updateMenuIcon(false);
+          }
+          // Ensure overlay is hidden on large screens
           overlay?.classList.add('hidden');
           document.body.style.overflow = '';
         } else {
-          sidebar?.classList.remove('-translate-x-full');
-          sidebar?.classList.add('translate-x-0');
-          overlay?.classList.remove('hidden');
-          document.body.style.overflow = 'hidden';
+          // Mobile behavior
+          sidebarContent?.classList.remove('sidebar-collapsed');
+          updateMenuIcon(false);
         }
       };
+
+      const updateMenuIcon = (collapsed:boolean) => {
+        if (!menuIcon) return;
+
+        if (collapsed) {
+          // Show expand icon (double chevron right)
+          menuIcon.setAttribute('d', 'M13 5l7 7-7 7M5 5l7 7-7 7');
+        } else {
+          // Show collapse icon (double chevron left)
+          menuIcon.setAttribute('d', 'M11 19l-7-7 7-7M19 19l-7-7 7-7');
+        }
+      };
+
+      const toggleMenu = () => {
+        if (isLargeScreen()) {
+          // Large screen: toggle collapsed state
+          const currentlyCollapsed = sidebarContent?.classList.contains('sidebar-collapsed');
+          const newCollapsed = !currentlyCollapsed;
+
+          if (newCollapsed) {
+            sidebarContent?.classList.add('sidebar-collapsed');
+          } else {
+            sidebarContent?.classList.remove('sidebar-collapsed');
+          }
+
+          localStorage.setItem('sidebar-collapsed', newCollapsed.toString());
+          updateMenuIcon(newCollapsed);
+        } else {
+          // Mobile: toggle slide in/out
+          const isOpen = sidebar?.classList.contains('translate-x-0');
+
+          if (isOpen) {
+            sidebar?.classList.remove('translate-x-0');
+            sidebar?.classList.add('-translate-x-full');
+            overlay?.classList.add('hidden');
+            document.body.style.overflow = '';
+          } else {
+            sidebar?.classList.remove('-translate-x-full');
+            sidebar?.classList.add('translate-x-0');
+            overlay?.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+          }
+        }
+      };
+
+      // Initialize state
+      updateSidebarState();
 
       menuToggle?.addEventListener('click', toggleMenu);
       overlay?.addEventListener('click', toggleMenu);
 
-      window.addEventListener('resize', () => {
-        if (window.innerWidth >= 1024) {
-          sidebar?.classList.remove('translate-x-0');
-          sidebar?.classList.add('-translate-x-full');
-          overlay?.classList.add('hidden');
-          document.body.style.overflow = '';
-        }
-      });
+      window.addEventListener('resize', updateSidebarState);
     </script>
   </body>
 </html>
