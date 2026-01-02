@@ -656,6 +656,9 @@
 
   // Listen for fullscreen changes and keyboard events
   $effect(() => {
+    let lastTouchTime = 0;
+    const doubleTapThreshold = 300; // ms
+
     const handleFullscreenChange = () => {
       isFullscreen = !!(
         document.fullscreenElement ||
@@ -678,11 +681,36 @@
       }
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      if (!isFullscreen) return;
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastTouchTime;
+
+      if (timeDiff < doubleTapThreshold && timeDiff > 0) {
+        // Double tap detected
+        e.preventDefault();
+        if (isRunning) {
+          handlePause();
+        } else if (isTimerSet && !timerFinished) {
+          handleStart();
+        }
+      }
+
+      lastTouchTime = currentTime;
+    };
+
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
     document.addEventListener("mozfullscreenchange", handleFullscreenChange);
     document.addEventListener("MSFullscreenChange", handleFullscreenChange);
     document.addEventListener("keydown", handleKeydown);
+
+    // Add touch event listener to the timer container
+    if (timerContainer) {
+      timerContainer.addEventListener("touchstart", handleTouchStart, { passive: false });
+    }
+
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener(
@@ -698,6 +726,10 @@
         handleFullscreenChange,
       );
       document.removeEventListener("keydown", handleKeydown);
+
+      if (timerContainer) {
+        timerContainer.removeEventListener("touchstart", handleTouchStart);
+      }
     };
   });
 
@@ -723,7 +755,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="mb-4">
+  <header class="mb-2">
     <p class="text-sm text-(--color-text-muted)">
       Customizable countdown timer with color themes, presets, and end-of-time
       alerts.
@@ -731,7 +763,7 @@
   </header>
 
   <!-- Controls -->
-  <div class="mb-4 flex flex-col gap-4">
+  <div class="mb-4 flex flex-col gap-2">
     <!-- Time Input Row -->
     <div class="flex flex-row flex-wrap gap-4 items-end">
       <div>
@@ -835,7 +867,7 @@
     </div>
 
     <!-- Appearance Settings -->
-    <div class="px-4 py-3 border border-(--color-border) bg-(--color-bg-alt)">
+    <div class="px-2 py-1 border border-(--color-border) bg-(--color-bg-alt)">
       <div class="flex flex-wrap gap-4 items-center">
         <div>
           <label
@@ -1016,7 +1048,7 @@
     </div>
 
     <!-- End of Time Settings & Controls -->
-    <div class="px-4 py-3 border border-(--color-border) bg-(--color-bg-alt)">
+    <div class="px-2 py-1 border border-(--color-border) bg-(--color-bg-alt)">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex flex-wrap gap-x-6 gap-y-3">
           <label class="flex items-center gap-2 cursor-pointer">
@@ -1069,7 +1101,7 @@
           <button
             onclick={toggleFullscreen}
             ontouchstart={toggleFullscreen}
-            class="p-3 border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            class="p-3 border border-(--color-border) text-(--color-text) transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-[var(--color-bg)]"
             style="touch-action: manipulation;"
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >

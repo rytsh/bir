@@ -1,0 +1,202 @@
+<script lang="ts">
+  import { categories } from "../data/tools";
+
+  type Tool = {
+    name: string;
+    description: string;
+    path: string;
+    icon: string;
+    category: string;
+  };
+
+  let searchQuery = $state("");
+  let selectedCategory = $state("");
+
+  // Get all unique categories
+  const allCategories = categories.map((cat) => cat.name);
+  const allTools: Tool[] = categories.flatMap((cat) =>
+    cat.tools.map((tool) => ({ ...tool, category: cat.name })),
+  );
+
+  // Reactive filtered and grouped data
+  let filteredTools = $state(allTools);
+  let groupedTools = $state(getGroupedTools(allTools));
+
+  // Update filtered tools when search or category changes
+  $effect(() => {
+    let tools = allTools;
+
+    // Filter by category if selected
+    if (selectedCategory) {
+      tools = tools.filter((tool) => tool.category === selectedCategory);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      tools = tools.filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(query) ||
+          tool.description.toLowerCase().includes(query) ||
+          tool.category.toLowerCase().includes(query),
+      );
+    }
+
+    filteredTools = tools;
+    groupedTools = getGroupedTools(tools);
+  });
+
+  function getGroupedTools(tools: Tool[]) {
+    const groups: Record<string, Tool[]> = {};
+
+    tools.forEach((tool: Tool) => {
+      if (!groups[tool.category]) {
+        groups[tool.category] = [];
+      }
+      groups[tool.category].push(tool);
+    });
+
+    return Object.entries(groups).map(([categoryName, tools]) => ({
+      name: categoryName,
+      tools: tools as Tool[],
+    }));
+  }
+
+  const clearFilters = () => {
+    searchQuery = "";
+    selectedCategory = "";
+  };
+</script>
+
+<div>
+  <header>
+    <h1 class="sr-only">Tools Collection</h1>
+    <p class="text-(--color-text-muted) text-sm">
+      A collection of open-source useful tools for everyday tasks.
+    </p>
+    <hr class="border-(--color-border) my-2" />
+  </header>
+
+  <!-- Search and Filter Controls -->
+  <div class="mb-3 px-3 py-1 border border-(--color-border) bg-(--color-bg-alt)">
+    <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+      <!-- Search Input -->
+      <div class="flex-1">
+        <label
+          for="search-input"
+          class="block text-xs text-(--color-text-light) mb-2"
+        >
+          Search Tools
+        </label>
+        <div class="relative">
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Search by name, description, or category..."
+            bind:value={searchQuery}
+            class="w-full pl-9 pr-4 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent)"
+          />
+          <div
+            class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+          >
+            <svg
+              class="w-4 h-4 text-(--color-text-light)"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Filter -->
+      <div class="min-w-[180px]">
+        <label
+          for="category-select"
+          class="block text-xs text-(--color-text-light) mb-2"
+        >
+          Filter by Category
+        </label>
+        <select
+          id="category-select"
+          bind:value={selectedCategory}
+          class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
+        >
+          <option value="">All Categories</option>
+          {#each allCategories as category}
+            <option value={category}>{category}</option>
+          {/each}
+        </select>
+      </div>
+
+      <!-- Clear Filters -->
+      <div class="flex items-end self-end">
+        <button
+          onclick={clearFilters}
+          class="px-4 py-2 border border-(--color-border) text-(--color-text) text-sm hover:bg-(--color-bg) transition-colors"
+          title="Clear all filters"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <!-- Results Summary -->
+    <div class="mt-3 text-xs text-(--color-text-light)">
+      {#if filteredTools.length === 0}
+        No tools found matching your search.
+      {:else if filteredTools.length === allTools.length}
+        Showing all {allTools.length} tools
+      {:else}
+        Showing {filteredTools.length} of {allTools.length} tools
+      {/if}
+    </div>
+  </div>
+
+  <!-- Tools Grid -->
+  {#if groupedTools.length > 0}
+    {#each groupedTools as category}
+      <section class="mb-4">
+        <h2
+          class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 font-medium"
+        >
+          {category.name}
+        </h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {#each category.tools as tool}
+            <a
+              href={tool.path}
+              class="group block p-3 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
+            >
+              <div class="flex items-center gap-3">
+                <span class="text-lg">{tool.icon}</span>
+                <div class="min-w-0">
+                  <h3
+                    class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors truncate"
+                  >
+                    {tool.name}
+                  </h3>
+                  <p class="text-xs text-(--color-text-light) mt-0.5 truncate">
+                    {tool.description}
+                  </p>
+                </div>
+              </div>
+            </a>
+          {/each}
+        </div>
+      </section>
+    {/each}
+  {:else}
+    <div class="text-center py-12 text-(--color-text-light)">
+      <p>No tools available yet.</p>
+    </div>
+  {/if}
+</div>

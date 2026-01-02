@@ -700,7 +700,7 @@
                     onclick={keepInList}
                     class="px-6 py-2 border border-(--color-border) text-(--color-text) font-medium hover:bg-(--color-bg-alt) transition-colors"
                   >
-                    Keep in list
+                    Retry
                   </button>
                 </div>
               </div>

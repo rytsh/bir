@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import ToolsIndex from "../components/ToolsIndex.svelte";
 import { categories } from "../data/tools";
 
 // Structured data for homepage
@@ -20,7 +21,7 @@ const structuredData = {
     "@type": "Organization",
     "name": "Tools"
   },
-  "featureList": categories.flatMap(cat => 
+  "featureList": categories.flatMap(cat =>
     cat.tools.map(tool => `${tool.name}: ${tool.description}`)
   ).join("; ")
 };
@@ -33,54 +34,6 @@ const structuredData = {
 >
   <!-- Structured Data -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
-  <div>
-    <header class="mb-4">
-      <h1 class="sr-only">
-        Tools Collection
-      </h1>
-      <p class="text-(--color-text-muted) text-sm">
-        A collection of open-source useful tools for everyday tasks.
-      </p>
-      <hr class="border-(--color-border) my-4" />
-    </header>
 
-    {
-      categories.map((category) => (
-        <section class="mb-8">
-          <h2 class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 font-medium">
-            {category.name}
-          </h2>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {category.tools.map((tool) => (
-              <a
-                href={tool.path}
-                class="group block p-3 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
-              >
-                <div class="flex items-center gap-3">
-                  <span class="text-lg">{tool.icon}</span>
-                  <div class="min-w-0">
-                    <h3 class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors truncate">
-                      {tool.name}
-                    </h3>
-                    <p class="text-xs text-(--color-text-light) mt-0.5 truncate">
-                      {tool.description}
-                    </p>
-                  </div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </section>
-      ))
-    }
-
-    {
-      categories.length === 0 && (
-        <div class="text-center py-12 text-(--color-text-light)">
-          <p>No tools available yet.</p>
-        </div>
-      )
-    }
-  </div>
+  <ToolsIndex client:load />
 </Layout>
