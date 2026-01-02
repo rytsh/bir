@@ -87,6 +87,11 @@
   --color-diff-removed-text: #fca5a5;
 }
 
+/* Prevent flash of unstyled content during theme initialization */
+html.theme-loading {
+  visibility: hidden;
+}
+
 html,
 body {
   height: 100%;

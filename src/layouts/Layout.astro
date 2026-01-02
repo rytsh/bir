@@ -1,4 +1,5 @@
 ---
+import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import Sidebar from "../components/Sidebar.astro";
 import ThemeToggle from "../components/ThemeToggle.svelte";
@@ -25,7 +26,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class="theme-loading">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -82,12 +83,33 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         </script>
       </>
     )}
-    <!-- Prevent flash of wrong theme -->
+    <!-- Prevent flash of wrong theme - must run before any rendering -->
     <script is:inline>
-      const theme = localStorage.getItem('theme');
-      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-      }
+      (function() {
+        const theme = localStorage.getItem('theme');
+        const isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        document.documentElement.classList.remove('theme-loading');
+      })();
+    </script>
+    <!-- Client-side navigation -->
+    <ClientRouter transition:animate="none" />
+    <!-- Apply theme before page swap during client-side navigation -->
+    <script is:inline>
+      document.addEventListener('astro:before-swap', (event) => {
+        const theme = localStorage.getItem('theme');
+        const isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
+          event.newDocument.documentElement.classList.add('dark');
+        } else {
+          event.newDocument.documentElement.classList.remove('dark');
+        }
+        event.newDocument.documentElement.classList.remove('theme-loading');
+      });
     </script>
   </head>
   <body class="h-full bg-(--color-bg) flex flex-col">
@@ -96,7 +118,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 
     <div class="flex flex-1 h-full overflow-auto">
       <!-- Sidebar -->
-      <div id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out h-full">
+      <div id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out h-full" transition:persist>
         <Sidebar currentPath={currentPath} />
       </div>
 
@@ -127,88 +149,116 @@ const twitterImage = new URL("/og.jpg", Astro.site);
     </div>
 
     <script>
-      const menuToggle = document.getElementById('menu-toggle');
-      const sidebar = document.getElementById('sidebar');
-      const sidebarContent = document.getElementById('sidebar-content');
-      const overlay = document.getElementById('overlay');
-      const menuIcon = document.getElementById('menu-icon');
+      function updateActiveLink() {
+        const currentPath = window.location.pathname;
+        const sidebar = document.getElementById('sidebar-content');
+        if (!sidebar) return;
 
-      const isLargeScreen = () => window.innerWidth >= 1024;
-      const isCollapsed = () => localStorage.getItem('sidebar-collapsed') === 'true';
-
-      const updateSidebarState = () => {
-        if (isLargeScreen()) {
-          if (isCollapsed()) {
-            sidebarContent?.classList.add('sidebar-collapsed');
-            updateMenuIcon(true);
+        const links = sidebar.querySelectorAll('nav a');
+        links.forEach((link) => {
+          const href = link.getAttribute('href');
+          const isActive = href === currentPath || (href && currentPath.startsWith(href + '/'));
+          
+          if (isActive) {
+            link.classList.remove('text-white/60', 'hover:text-white', 'hover:bg-white/5');
+            link.classList.add('text-white', 'bg-white/10');
           } else {
-            sidebarContent?.classList.remove('sidebar-collapsed');
-            updateMenuIcon(false);
+            link.classList.remove('text-white', 'bg-white/10');
+            link.classList.add('text-white/60', 'hover:text-white', 'hover:bg-white/5');
           }
-          // Ensure overlay is hidden on large screens
-          overlay?.classList.add('hidden');
-          document.body.style.overflow = '';
-        } else {
-          // Mobile behavior
-          sidebarContent?.classList.remove('sidebar-collapsed');
-          updateMenuIcon(false);
-        }
-      };
+        });
+      }
 
-      const updateMenuIcon = (collapsed:boolean) => {
-        if (!menuIcon) return;
+      function initSidebar() {
+        const menuToggle = document.getElementById('menu-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarContent = document.getElementById('sidebar-content');
+        const overlay = document.getElementById('overlay');
+        const menuIcon = document.getElementById('menu-icon');
 
-        if (!isLargeScreen()) {
-          // Show menu icon (hamburger) on mobile
-          menuIcon.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
-        } else if (collapsed) {
-          // Show expand icon (double chevron right)
-          menuIcon.setAttribute('d', 'M13 5l7 7-7 7M5 5l7 7-7 7');
-        } else {
-          // Show collapse icon (double chevron left)
-          menuIcon.setAttribute('d', 'M11 19l-7-7 7-7M19 19l-7-7 7-7');
-        }
-      };
+        const isLargeScreen = () => window.innerWidth >= 1024;
+        const isCollapsed = () => localStorage.getItem('sidebar-collapsed') === 'true';
 
-      const toggleMenu = () => {
-        if (isLargeScreen()) {
-          // Large screen: toggle collapsed state
-          const currentlyCollapsed = sidebarContent?.classList.contains('sidebar-collapsed');
-          const newCollapsed = !currentlyCollapsed;
-
-          if (newCollapsed) {
-            sidebarContent?.classList.add('sidebar-collapsed');
-          } else {
-            sidebarContent?.classList.remove('sidebar-collapsed');
-          }
-
-          localStorage.setItem('sidebar-collapsed', newCollapsed.toString());
-          updateMenuIcon(newCollapsed);
-        } else {
-          // Mobile: toggle slide in/out
-          const isOpen = sidebar?.classList.contains('translate-x-0');
-
-          if (isOpen) {
-            sidebar?.classList.remove('translate-x-0');
-            sidebar?.classList.add('-translate-x-full');
+        const updateSidebarState = () => {
+          if (isLargeScreen()) {
+            if (isCollapsed()) {
+              sidebarContent?.classList.add('sidebar-collapsed');
+              updateMenuIcon(true);
+            } else {
+              sidebarContent?.classList.remove('sidebar-collapsed');
+              updateMenuIcon(false);
+            }
+            // Ensure overlay is hidden on large screens
             overlay?.classList.add('hidden');
             document.body.style.overflow = '';
           } else {
-            sidebar?.classList.remove('-translate-x-full');
-            sidebar?.classList.add('translate-x-0');
-            overlay?.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
+            // Mobile behavior
+            sidebarContent?.classList.remove('sidebar-collapsed');
+            updateMenuIcon(false);
           }
-        }
-      };
+        };
 
-      // Initialize state
-      updateSidebarState();
+        const updateMenuIcon = (collapsed:boolean) => {
+          if (!menuIcon) return;
 
-      menuToggle?.addEventListener('click', toggleMenu);
-      overlay?.addEventListener('click', toggleMenu);
+          if (!isLargeScreen()) {
+            // Show menu icon (hamburger) on mobile
+            menuIcon.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
+          } else if (collapsed) {
+            // Show expand icon (double chevron right)
+            menuIcon.setAttribute('d', 'M13 5l7 7-7 7M5 5l7 7-7 7');
+          } else {
+            // Show collapse icon (double chevron left)
+            menuIcon.setAttribute('d', 'M11 19l-7-7 7-7M19 19l-7-7 7-7');
+          }
+        };
 
-      window.addEventListener('resize', updateSidebarState);
+        const toggleMenu = () => {
+          if (isLargeScreen()) {
+            // Large screen: toggle collapsed state
+            const currentlyCollapsed = sidebarContent?.classList.contains('sidebar-collapsed');
+            const newCollapsed = !currentlyCollapsed;
+
+            if (newCollapsed) {
+              sidebarContent?.classList.add('sidebar-collapsed');
+            } else {
+              sidebarContent?.classList.remove('sidebar-collapsed');
+            }
+
+            localStorage.setItem('sidebar-collapsed', newCollapsed.toString());
+            updateMenuIcon(newCollapsed);
+          } else {
+            // Mobile: toggle slide in/out
+            const isOpen = sidebar?.classList.contains('translate-x-0');
+
+            if (isOpen) {
+              sidebar?.classList.remove('translate-x-0');
+              sidebar?.classList.add('-translate-x-full');
+              overlay?.classList.add('hidden');
+              document.body.style.overflow = '';
+            } else {
+              sidebar?.classList.remove('-translate-x-full');
+              sidebar?.classList.add('translate-x-0');
+              overlay?.classList.remove('hidden');
+              document.body.style.overflow = 'hidden';
+            }
+          }
+        };
+
+        // Initialize state
+        updateSidebarState();
+
+        menuToggle?.addEventListener('click', toggleMenu);
+        overlay?.addEventListener('click', toggleMenu);
+
+        window.addEventListener('resize', updateSidebarState);
+      }
+
+      // Run on initial load and after each navigation
+      document.addEventListener('astro:page-load', () => {
+        initSidebar();
+        updateActiveLink();
+      });
     </script>
   </body>
 </html>
