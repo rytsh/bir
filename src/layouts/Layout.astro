@@ -356,8 +356,25 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         window.addEventListener("resize", updateSidebarState);
       }
 
+      // Close mobile sidebar before navigation
+      function closeMobileSidebar() {
+        const sidebar = document.getElementById("sidebar");
+        const overlay = document.getElementById("overlay");
+        const isLargeScreen = window.innerWidth >= 1024;
+
+        if (!isLargeScreen && sidebar?.classList.contains("translate-x-0")) {
+          sidebar.classList.remove("translate-x-0");
+          sidebar.classList.add("-translate-x-full");
+          overlay?.classList.add("hidden");
+          document.body.style.overflow = "";
+        }
+      }
+
       // Save sidebar scroll position before navigation
-      document.addEventListener("astro:before-preparation", saveSidebarScroll);
+      document.addEventListener("astro:before-preparation", () => {
+        saveSidebarScroll();
+        closeMobileSidebar();
+      });
 
       // Restore sidebar scroll position after navigation
       document.addEventListener("astro:page-load", () => {
