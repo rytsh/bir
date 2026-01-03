@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -7,6 +6,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   interface DiffLine {
@@ -92,8 +92,8 @@
     diffLines = computeDiff(oldText, newText);
   };
 
-  const createOldEditor = () => {
-    if (!oldEditorContainer) return;
+  const createOldEditor = (): boolean => {
+    if (!oldEditorContainer) return false;
     const content = getEditorContent(oldEditor);
     if (oldEditor) oldEditor.destroy();
 
@@ -106,10 +106,11 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
-  const createNewEditor = () => {
-    if (!newEditorContainer) return;
+  const createNewEditor = (): boolean => {
+    if (!newEditorContainer) return false;
     const content = getEditorContent(newEditor);
     if (newEditor) newEditor.destroy();
 
@@ -122,6 +123,7 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
   $effect(() => {
@@ -135,10 +137,7 @@
       }
     });
 
-    tick().then(() => {
-      createOldEditor();
-      createNewEditor();
-    });
+    initEditorsWithRetry([createOldEditor, createNewEditor]);
 
     return () => {
       cleanup();

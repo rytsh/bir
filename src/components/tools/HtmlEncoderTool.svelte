@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import { html } from "@codemirror/lang-html";
   import {
     EditorView,
@@ -8,6 +7,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   let mode = $state<"encode" | "decode">("encode");
@@ -96,8 +96,8 @@
     }
   };
 
-  const createInputEditor = () => {
-    if (!inputEditorContainer) return;
+  const createInputEditor = (): boolean => {
+    if (!inputEditorContainer) return false;
     const content = getEditorContent(inputEditor);
     if (inputEditor) inputEditor.destroy();
 
@@ -113,10 +113,11 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
-  const createOutputEditor = () => {
-    if (!outputEditorContainer) return;
+  const createOutputEditor = (): boolean => {
+    if (!outputEditorContainer) return false;
     const content = getEditorContent(outputEditor);
     if (outputEditor) outputEditor.destroy();
 
@@ -130,6 +131,7 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
   $effect(() => {
@@ -143,10 +145,7 @@
       }
     });
 
-    tick().then(() => {
-      createInputEditor();
-      createOutputEditor();
-    });
+    initEditorsWithRetry([createInputEditor, createOutputEditor]);
 
     return () => {
       cleanup();

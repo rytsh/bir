@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import * as TOON from "@toon-format/toon";
@@ -12,6 +11,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   type Format = "json" | "yaml" | "toml" | "toon";
@@ -241,16 +241,9 @@
       }
     });
 
-    const initEditors = () => {
-      const sourceOk = createSourceEditor();
-      const outputOk = createOutputEditor();
-      if (sourceOk && outputOk) {
-        mounted = true;
-      } else {
-        requestAnimationFrame(initEditors);
-      }
-    };
-    tick().then(initEditors);
+    initEditorsWithRetry([createSourceEditor, createOutputEditor], () => {
+      mounted = true;
+    });
 
     return () => {
       cleanup();

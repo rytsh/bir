@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ObfuscatorTool from "../../components/tools/ObfuscatorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/obfuscator");
+---
+
+<Layout title="Text Obfuscator" description={tool?.description} keywords={tool?.keywords} currentPath="/text/obfuscator">
+  <h1 slot="navbar-title">Text Obfuscator</h1>
+  <ObfuscatorTool client:load />
+</Layout>

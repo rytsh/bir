@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TextTransformTool from "../../components/tools/TextTransformTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/transform");
+---
+
+<Layout title="Text Transform - Sort & Format Text" description={tool?.description} keywords={tool?.keywords} currentPath="/text/transform">
+  <h1 slot="navbar-title">Text Transform</h1>
+  <TextTransformTool client:load />
+</Layout>

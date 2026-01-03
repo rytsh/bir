@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -7,6 +6,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
   import {
     v1 as uuidv1,
@@ -19,6 +19,7 @@
     v6ToV1,
   } from "uuid";
   import { ulid } from "ulid";
+  import { nanoid } from "nanoid";
 
   type IdType =
     | "uuid-v1"
@@ -29,7 +30,8 @@
     | "uuid-v7"
     | "uuid-v1-to-v6"
     | "uuid-v6-to-v1"
-    | "ulid";
+    | "ulid"
+    | "nanoid";
 
   let selectedType = $state<IdType>("ulid");
   let count = $state(1);
@@ -100,6 +102,11 @@
       label: "ULID",
       description: "Universally Unique Lexicographically Sortable Identifier",
     },
+    {
+      value: "nanoid",
+      label: "Nano ID",
+      description: "Small, secure, URL-friendly unique string ID",
+    },
   ];
 
   const getNamespaceUuid = (): string => {
@@ -130,11 +137,13 @@
         return inputUuid.trim() ? v6ToV1(inputUuid.trim()) : "";
       case "ulid":
         return ulid();
+      case "nanoid":
+        return nanoid();
     }
   };
 
-  const createOutputEditor = () => {
-    if (!outputEditorContainer) return;
+  const createOutputEditor = (): boolean => {
+    if (!outputEditorContainer) return false;
     const content = getEditorContent(outputEditor);
     if (outputEditor) outputEditor.destroy();
 
@@ -147,6 +156,7 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
   const isConversionType = (type: IdType): boolean => {
@@ -213,9 +223,7 @@
       }
     });
 
-    tick().then(() => {
-      createOutputEditor();
-    });
+    initEditorsWithRetry([createOutputEditor]);
 
     return () => {
       cleanup();
@@ -231,7 +239,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate UUIDs (v1, v3, v4, v5, v6, v7), convert between formats, and create ULIDs.
+      Generate UUIDs (v1, v3, v4, v5, v6, v7), convert between formats, create ULIDs, and Nano IDs.
     </p>
   </header>
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import { json } from "@codemirror/lang-json";
   import {
     EditorView,
@@ -9,6 +8,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
   import * as jose from "jose";
 
@@ -168,8 +168,8 @@
     }, 300);
   };
 
-  const createHeaderEditor = (readOnly: boolean) => {
-    if (!headerEditorContainer) return;
+  const createHeaderEditor = (readOnly: boolean): boolean => {
+    if (!headerEditorContainer) return false;
     const content = getEditorContent(headerEditor);
     if (headerEditor) headerEditor.destroy();
 
@@ -188,10 +188,11 @@
       }),
       parent: headerEditorContainer,
     });
+    return true;
   };
 
-  const createPayloadEditor = (readOnly: boolean) => {
-    if (!payloadEditorContainer) return;
+  const createPayloadEditor = (readOnly: boolean): boolean => {
+    if (!payloadEditorContainer) return false;
     const content = getEditorContent(payloadEditor);
     if (payloadEditor) payloadEditor.destroy();
 
@@ -210,6 +211,7 @@
       }),
       parent: payloadEditorContainer,
     });
+    return true;
   };
 
   $effect(() => {
@@ -223,9 +225,10 @@
       }
     });
 
-    tick().then(() => {
-      createHeaderEditor(!isSigningEnabled);
-      createPayloadEditor(!isSigningEnabled);
+    initEditorsWithRetry([
+      () => createHeaderEditor(!isSigningEnabled),
+      () => createPayloadEditor(!isSigningEnabled),
+    ], () => {
       mounted = true;
     });
 
@@ -260,10 +263,10 @@
   $effect(() => {
     if (mounted && isSigningEnabled !== prevSigningEnabled) {
       prevSigningEnabled = isSigningEnabled;
-      tick().then(() => {
-        createHeaderEditor(!isSigningEnabled);
-        createPayloadEditor(!isSigningEnabled);
-      });
+      initEditorsWithRetry([
+        () => createHeaderEditor(!isSigningEnabled),
+        () => createPayloadEditor(!isSigningEnabled),
+      ]);
     }
   });
 

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   type InputMode = "text" | "file" | "base64";
@@ -62,8 +62,8 @@
     return rows;
   });
 
-  const createInputEditor = () => {
-    if (!inputEditorContainer) return;
+  const createInputEditor = (): boolean => {
+    if (!inputEditorContainer) return false;
     const content = getEditorContent(inputEditor);
     if (inputEditor) inputEditor.destroy();
 
@@ -78,10 +78,11 @@
       },
       initialContent: content || textInput,
     });
+    return true;
   };
 
-  const createBase64Editor = () => {
-    if (!base64EditorContainer) return;
+  const createBase64Editor = (): boolean => {
+    if (!base64EditorContainer) return false;
     const content = getEditorContent(base64Editor);
     if (base64Editor) base64Editor.destroy();
 
@@ -96,6 +97,7 @@
       },
       initialContent: content || base64Input,
     });
+    return true;
   };
 
   const formatHex = (byte: number): string => {
@@ -429,9 +431,7 @@
       }
     });
 
-    tick().then(() => {
-      createInputEditor();
-      createBase64Editor();
+    initEditorsWithRetry([createInputEditor, createBase64Editor], () => {
       if (containerEl) {
         containerHeight = containerEl.clientHeight;
       }
@@ -458,9 +458,9 @@
 
   $effect(() => {
     if (inputMode === "text") {
-      tick().then(() => createInputEditor());
+      initEditorsWithRetry([createInputEditor]);
     } else if (inputMode === "base64") {
-      tick().then(() => createBase64Editor());
+      initEditorsWithRetry([createBase64Editor]);
     }
   });
 

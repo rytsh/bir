@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import NumberConverterTool from "../../components/tools/NumberConverterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/number");
+---
+
+<Layout title="Number Base Converter - Binary, Hex, Decimal, Roman" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/number">
+  <h1 slot="navbar-title">Number Base Converter</h1>
+  <NumberConverterTool client:load />
+</Layout>

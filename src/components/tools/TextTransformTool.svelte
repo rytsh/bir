@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -9,6 +8,7 @@
     getEditorContent,
     createBaseExtensions,
     EditorState,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   let text = $state("");
@@ -173,6 +173,180 @@
     updateText(result);
   };
 
+  // Format operations
+  const wrapSingleQuotes = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => `'${line}'`).join("\n");
+    updateText(result);
+  };
+
+  const wrapDoubleQuotes = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => `"${line}"`).join("\n");
+    updateText(result);
+  };
+
+  const wrapBackticks = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => `\`${line}\``).join("\n");
+    updateText(result);
+  };
+
+  const addCommas = () => {
+    const lines = text.split("\n");
+    const result = lines.map((line, i) => i < lines.length - 1 ? `${line},` : line).join("\n");
+    updateText(result);
+  };
+
+  const singleQuotesWithCommas = () => {
+    const lines = text.split("\n");
+    const result = lines.map((line, i) => {
+      const quoted = `'${line}'`;
+      return i < lines.length - 1 ? `${quoted},` : quoted;
+    }).join("\n");
+    updateText(result);
+  };
+
+  const doubleQuotesWithCommas = () => {
+    const lines = text.split("\n");
+    const result = lines.map((line, i) => {
+      const quoted = `"${line}"`;
+      return i < lines.length - 1 ? `${quoted},` : quoted;
+    }).join("\n");
+    updateText(result);
+  };
+
+  const uniqueLines = () => {
+    const lines = text.split("\n");
+    const unique = [...new Set(lines)];
+    updateText(unique.join("\n"));
+  };
+
+  const removeDuplicateLines = () => {
+    const lines = text.split("\n");
+    const seen = new Set<string>();
+    const result = lines.filter(line => {
+      if (seen.has(line)) return false;
+      seen.add(line);
+      return true;
+    });
+    updateText(result.join("\n"));
+  };
+
+  const removeEmptyLines = () => {
+    const lines = text.split("\n");
+    const result = lines.filter(line => line.trim() !== "");
+    updateText(result.join("\n"));
+  };
+
+  const trimLines = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => line.trim());
+    updateText(result.join("\n"));
+  };
+
+  const trimAllWhitespace = () => {
+    const result = text.replace(/\s+/g, " ").trim();
+    updateText(result);
+  };
+
+  const addLineNumbers = () => {
+    const lines = text.split("\n");
+    const padWidth = String(lines.length).length;
+    const result = lines.map((line, i) => `${String(i + 1).padStart(padWidth, " ")}. ${line}`);
+    updateText(result.join("\n"));
+  };
+
+  const removeLineNumbers = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => line.replace(/^\s*\d+[\.\)\-:\s]+/, ""));
+    updateText(result.join("\n"));
+  };
+
+  const addPrefix = (prefix: string) => {
+    const lines = text.split("\n");
+    const result = lines.map(line => `${prefix}${line}`);
+    updateText(result.join("\n"));
+  };
+
+  const addSuffix = (suffix: string) => {
+    const lines = text.split("\n");
+    const result = lines.map(line => `${line}${suffix}`);
+    updateText(result.join("\n"));
+  };
+
+  const joinLines = (separator: string) => {
+    const lines = text.split("\n");
+    updateText(lines.join(separator));
+  };
+
+  const splitToLines = (separator: string) => {
+    const result = text.split(separator).join("\n");
+    updateText(result);
+  };
+
+  const sortByLength = () => {
+    const lines = text.split("\n");
+    const sorted = lines.sort((a, b) => a.length - b.length);
+    updateText(sorted.join("\n"));
+  };
+
+  const sortByLengthDesc = () => {
+    const lines = text.split("\n");
+    const sorted = lines.sort((a, b) => b.length - a.length);
+    updateText(sorted.join("\n"));
+  };
+
+  const sortNumeric = () => {
+    const lines = text.split("\n");
+    const sorted = lines.sort((a, b) => {
+      const numA = parseFloat(a) || 0;
+      const numB = parseFloat(b) || 0;
+      return numA - numB;
+    });
+    updateText(sorted.join("\n"));
+  };
+
+  const reverseEachLine = () => {
+    const lines = text.split("\n");
+    const result = lines.map(line => line.split("").reverse().join(""));
+    updateText(result.join("\n"));
+  };
+
+  const encodeUri = () => {
+    updateText(encodeURIComponent(text));
+  };
+
+  const decodeUri = () => {
+    try {
+      updateText(decodeURIComponent(text));
+    } catch {
+      // Invalid URI, do nothing
+    }
+  };
+
+  const escapeHtml = () => {
+    const result = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    updateText(result);
+  };
+
+  const unescapeHtml = () => {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = text;
+    updateText(textarea.value);
+  };
+
+  // Prefix/suffix input state
+  let prefixValue = $state("");
+  let suffixValue = $state("");
+  let joinSeparator = $state(", ");
+  let splitSeparator = $state(", ");
+
   // Helper to update text and sync with editor
   const updateText = (newText: string) => {
     text = newText;
@@ -201,8 +375,8 @@
     }
   };
 
-  const createTextEditor = () => {
-    if (!editorContainer) return;
+  const createTextEditor = (): boolean => {
+    if (!editorContainer) return false;
     const content = getEditorContent(editor);
     if (editor) editor.destroy();
 
@@ -234,6 +408,7 @@
       }),
       parent: editorContainer,
     });
+    return true;
   };
 
   $effect(() => {
@@ -246,9 +421,7 @@
       }
     });
 
-    tick().then(() => {
-      createTextEditor();
-    });
+    initEditorsWithRetry([createTextEditor]);
 
     return () => {
       cleanup();
@@ -388,6 +561,66 @@
       >
         Randomize
       </button>
+      <button
+        onclick={uniqueLines}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Unique Lines
+      </button>
+      <button
+        onclick={removeEmptyLines}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Remove Empty
+      </button>
+      <button
+        onclick={trimLines}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Trim Lines
+      </button>
+      <button
+        onclick={trimAllWhitespace}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Trim All Whitespace
+      </button>
+      <button
+        onclick={addLineNumbers}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Add Line Numbers
+      </button>
+      <button
+        onclick={removeLineNumbers}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Remove Line Numbers
+      </button>
+      <button
+        onclick={sortByLength}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Sort by Length
+      </button>
+      <button
+        onclick={sortByLengthDesc}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Sort by Length (Desc)
+      </button>
+      <button
+        onclick={sortNumeric}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Numeric Sort
+      </button>
+      <button
+        onclick={reverseEachLine}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Reverse Each Line
+      </button>
     </div>
   </div>
 
@@ -450,8 +683,159 @@
     </div>
   </div>
 
+  <!-- Format Operations -->
+  <div class="mb-4">
+    <div
+      class="text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
+    >
+      Format Operations
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button
+        onclick={wrapSingleQuotes}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        'Single Quotes'
+      </button>
+      <button
+        onclick={wrapDoubleQuotes}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        "Double Quotes"
+      </button>
+      <button
+        onclick={wrapBackticks}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        `Backticks`
+      </button>
+      <button
+        onclick={addCommas}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        Add Commas
+      </button>
+      <button
+        onclick={singleQuotesWithCommas}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        'Quotes' + Commas
+      </button>
+      <button
+        onclick={doubleQuotesWithCommas}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        "Quotes" + Commas
+      </button>
+    </div>
+  </div>
+
+  <!-- Prefix/Suffix/Join/Split -->
+  <div class="mb-4">
+    <div
+      class="text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
+    >
+      Prefix / Suffix / Join / Split
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+      <div class="flex items-center gap-1">
+        <input
+          type="text"
+          bind:value={prefixValue}
+          placeholder="Prefix"
+          class="w-24 px-2 py-1.5 text-sm border border-(--color-border) bg-(--color-bg) text-(--color-text) placeholder:text-(--color-text-muted)"
+        />
+        <button
+          onclick={() => addPrefix(prefixValue)}
+          disabled={!prefixValue}
+          class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Add Prefix
+        </button>
+      </div>
+      <div class="flex items-center gap-1">
+        <input
+          type="text"
+          bind:value={suffixValue}
+          placeholder="Suffix"
+          class="w-24 px-2 py-1.5 text-sm border border-(--color-border) bg-(--color-bg) text-(--color-text) placeholder:text-(--color-text-muted)"
+        />
+        <button
+          onclick={() => addSuffix(suffixValue)}
+          disabled={!suffixValue}
+          class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Add Suffix
+        </button>
+      </div>
+      <div class="flex items-center gap-1">
+        <input
+          type="text"
+          bind:value={joinSeparator}
+          placeholder="Separator"
+          class="w-24 px-2 py-1.5 text-sm border border-(--color-border) bg-(--color-bg) text-(--color-text) placeholder:text-(--color-text-muted)"
+        />
+        <button
+          onclick={() => joinLines(joinSeparator)}
+          class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+        >
+          Join Lines
+        </button>
+      </div>
+      <div class="flex items-center gap-1">
+        <input
+          type="text"
+          bind:value={splitSeparator}
+          placeholder="Separator"
+          class="w-24 px-2 py-1.5 text-sm border border-(--color-border) bg-(--color-bg) text-(--color-text) placeholder:text-(--color-text-muted)"
+        />
+        <button
+          onclick={() => splitToLines(splitSeparator)}
+          class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+        >
+          Split to Lines
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Encode/Decode -->
+  <div class="mb-4">
+    <div
+      class="text-xs tracking-wider text-(--color-text-light) font-medium mb-2"
+    >
+      Encode / Decode
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button
+        onclick={encodeUri}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        URI Encode
+      </button>
+      <button
+        onclick={decodeUri}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        URI Decode
+      </button>
+      <button
+        onclick={escapeHtml}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        HTML Escape
+      </button>
+      <button
+        onclick={unescapeHtml}
+        class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+      >
+        HTML Unescape
+      </button>
+    </div>
+  </div>
+
   <!-- Text Editor and Stats Panel -->
-  <div class="flex-1 flex flex-col lg:flex-row gap-4 min-h-[300px]">
+  <div class="flex-1 flex flex-col lg:flex-row gap-4 min-h-auto">
     <!-- Editor -->
     <div class="flex-1 flex flex-col min-w-0">
       <div class="flex justify-between items-center mb-2">
@@ -463,16 +847,16 @@
       </div>
       <div
         bind:this={editorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
+        class="flex-1 border border-(--color-border)"
       ></div>
     </div>
 
     <!-- Statistics Panel -->
-    <div class="w-full lg:w-72 flex flex-col border border-(--color-border) bg-(--color-bg-alt) overflow-hidden">
+    <div class="w-full lg:w-72 flex flex-col border border-(--color-border) bg-(--color-bg-alt)">
       <div class="p-1 border-b border-(--color-border)">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Statistics</span>
       </div>
-      <div class="flex-1 overflow-auto space-y-4">
+      <div class="flex-1">
         <!-- Basic Stats -->
         <div class="text-xs border-b border-(--color-border)">
           <div class="flex justify-between py-1.5 px-2 bg-(--color-bg)">
@@ -512,12 +896,12 @@
         <!-- Word Distribution -->
         {#if stats.wordFreq.size > 0}
           <div class="border-b border-(--color-border)">
-            <div class="p-1 py-2 text-xs text-(--color-text-light) font-medium">Top Words</div>
+            <div class="px-1 py-2 text-xs text-(--color-text-light) font-medium">Top Words</div>
             <div>
               {#each getTopFrequencies(stats.wordFreq, 10) as [word, count], i}
                 <div class="flex items-center gap-2 text-xs py-1.5 px-2 {i % 2 === 0 ? 'bg-(--color-bg)' : ''}">
                   <span class="text-(--color-text) truncate flex-1">{word}</span>
-                  <div class="flex-1 h-1.5 bg-(--color-border) rounded overflow-hidden">
+                  <div class="flex-1 h-1.5 bg-(--color-border) rounded">
                     <div
                       class="h-full bg-(--color-accent)"
                       style="width: {(count / getTopFrequencies(stats.wordFreq, 1)[0][1]) * 100}%"
@@ -539,7 +923,7 @@
                 {@const maxCount = getTopFrequencies(stats.charFreq, 1)[0][1]}
                 {@const intensity = Math.round((count / maxCount) * 100)}
                 <div
-                  class="w-6 h-6 flex items-center justify-center text-xs font-mono border border-(--color-border) rounded relative overflow-hidden"
+                  class="w-6 h-6 flex items-center justify-center text-xs font-mono border border-(--color-border) rounded relative"
                   title="{char.toUpperCase()}: {count}"
                 >
                   <div

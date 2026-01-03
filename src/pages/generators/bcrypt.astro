@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BcryptTool from "../../components/tools/BcryptTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/bcrypt");
+---
+
+<Layout title="Bcrypt Hash Generator & Validator" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/bcrypt">
+  <h1 slot="navbar-title">Bcrypt Tool</h1>
+  <BcryptTool client:load />
+</Layout>

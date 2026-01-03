@@ -173,5 +173,26 @@ export const getInitialDarkMode = (): boolean => {
   return document.documentElement.classList.contains("dark");
 };
 
+/**
+ * Initializes editors with retry logic for View Transitions.
+ * Retries using requestAnimationFrame until all init functions succeed.
+ * @param initFns - Array of init functions that return true on success, false if container not ready
+ * @param onReady - Optional callback when all editors are initialized
+ */
+export const initEditorsWithRetry = (
+  initFns: (() => boolean)[],
+  onReady?: () => void
+): void => {
+  const tryInit = () => {
+    const results = initFns.map((fn) => fn());
+    if (results.every(Boolean)) {
+      onReady?.();
+    } else {
+      requestAnimationFrame(tryInit);
+    }
+  };
+  tryInit();
+};
+
 // Re-export commonly used items for convenience
 export { EditorView, EditorState, basicSetup, placeholder };

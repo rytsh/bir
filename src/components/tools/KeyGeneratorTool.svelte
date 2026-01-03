@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
@@ -7,6 +6,7 @@
     getInitialDarkMode,
     updateEditorContent,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
 
   type BitSize = 1024 | 2048 | 4096;
@@ -141,8 +141,8 @@
     }
   };
 
-  const createPublicKeyEditor = () => {
-    if (!publicKeyContainer) return;
+  const createPublicKeyEditor = (): boolean => {
+    if (!publicKeyContainer) return false;
     const content = getEditorContent(publicKeyEditor);
     if (publicKeyEditor) publicKeyEditor.destroy();
 
@@ -155,10 +155,11 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
-  const createPrivateKeyEditor = () => {
-    if (!privateKeyContainer) return;
+  const createPrivateKeyEditor = (): boolean => {
+    if (!privateKeyContainer) return false;
     const content = getEditorContent(privateKeyEditor);
     if (privateKeyEditor) privateKeyEditor.destroy();
 
@@ -171,6 +172,7 @@
       },
       initialContent: content,
     });
+    return true;
   };
 
   $effect(() => {
@@ -184,10 +186,7 @@
       }
     });
 
-    tick().then(() => {
-      createPublicKeyEditor();
-      createPrivateKeyEditor();
-    });
+    initEditorsWithRetry([createPublicKeyEditor, createPrivateKeyEditor]);
 
     return () => {
       cleanup();

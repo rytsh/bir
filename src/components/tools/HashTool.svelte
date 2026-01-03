@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import {
     EditorView,
     createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
     getEditorContent,
+    initEditorsWithRetry,
   } from "../../lib/codemirror.js";
   import CryptoJS from "crypto-js";
 
@@ -41,8 +41,8 @@
     sha512: "",
   });
 
-  const createInputEditor = () => {
-    if (!inputEditorContainer) return;
+  const createInputEditor = (): boolean => {
+    if (!inputEditorContainer) return false;
     const content = getEditorContent(inputEditor);
     if (inputEditor) inputEditor.destroy();
 
@@ -57,6 +57,7 @@
       },
       initialContent: content || textInput,
     });
+    return true;
   };
 
   const arrayBufferToWordArray = (
@@ -181,9 +182,7 @@
       }
     });
 
-    tick().then(() => {
-      createInputEditor();
-    });
+    initEditorsWithRetry([createInputEditor]);
 
     return () => {
       cleanup();
@@ -201,9 +200,7 @@
   // Recreate editor when switching back to text mode
   $effect(() => {
     if (inputMode === "text") {
-      tick().then(() => {
-        createInputEditor();
-      });
+      initEditorsWithRetry([createInputEditor]);
     }
   });
 
