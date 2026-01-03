@@ -28,7 +28,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 ---
 
 <!doctype html>
-<html lang="en" class="theme-loading">
+<html lang="en" class="loading">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -88,19 +88,29 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         </script>
       </>
     )}
-    <!-- Prevent flash of wrong theme - must run before any rendering -->
+    <!-- Critical: Hide page, set theme and sidebar state before any paint -->
+    <style is:inline>
+      html.loading { visibility: hidden; }
+      /* Disable transitions during initial load */
+      html.loading * { transition: none !important; }
+    </style>
     <script is:inline>
       (function () {
+        // Theme
         const theme = localStorage.getItem("theme");
-        const isDark =
-          theme === "dark" ||
-          (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        const isDark = theme === "dark" || (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
         if (isDark) {
           document.documentElement.classList.add("dark");
-        } else {
-          document.documentElement.classList.remove("dark");
         }
-        document.documentElement.classList.remove("theme-loading");
+        
+        // Sidebar state for menu icon and collapsed state
+        const isLargeScreen = window.innerWidth >= 1024;
+        const isCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+        if (isLargeScreen) {
+          document.documentElement.dataset.sidebarCollapsed = isCollapsed ? "true" : "false";
+        } else {
+          document.documentElement.dataset.sidebarCollapsed = "mobile";
+        }
       })();
     </script>
     <!-- Client-side navigation -->
@@ -108,16 +118,25 @@ const twitterImage = new URL("/og.jpg", Astro.site);
     <!-- Apply theme before page swap during client-side navigation -->
     <script is:inline>
       document.addEventListener("astro:before-swap", (event) => {
+        // Theme
         const theme = localStorage.getItem("theme");
-        const isDark =
-          theme === "dark" ||
-          (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        const isDark = theme === "dark" || (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
         if (isDark) {
           event.newDocument.documentElement.classList.add("dark");
         } else {
           event.newDocument.documentElement.classList.remove("dark");
         }
-        event.newDocument.documentElement.classList.remove("theme-loading");
+        // Remove loading class since we're doing client-side navigation
+        event.newDocument.documentElement.classList.remove("loading");
+
+        // Sidebar state
+        const isLargeScreen = window.innerWidth >= 1024;
+        const isCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+        if (isLargeScreen) {
+          event.newDocument.documentElement.dataset.sidebarCollapsed = isCollapsed ? "true" : "false";
+        } else {
+          event.newDocument.documentElement.dataset.sidebarCollapsed = "mobile";
+        }
       });
     </script>
   </head>
@@ -134,11 +153,25 @@ const twitterImage = new URL("/og.jpg", Astro.site);
       <!-- Sidebar -->
       <div
         id="sidebar"
-        class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out h-full"
+        class="fixed lg:static inset-y-0 left-0 z-50 transform -translate-x-full lg:translate-x-0 h-full"
         transition:persist
       >
         <Sidebar currentPath={currentPath} />
       </div>
+      <!-- Apply sidebar state immediately after sidebar is in DOM -->
+      <script is:inline>
+        (function() {
+          var sb = document.getElementById("sidebar-content");
+          if (!sb) return;
+          var isLarge = window.innerWidth >= 1024;
+          var isCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+          if (isLarge && isCollapsed) {
+            sb.classList.add("sidebar-collapsed");
+          }
+          // Show page now that sidebar state is correct
+          document.documentElement.classList.remove("loading");
+        })();
+      </script>
 
       <div class="flex flex-col flex-1 min-h-full">
         <!-- Navbar -->
@@ -156,12 +189,27 @@ const twitterImage = new URL("/og.jpg", Astro.site);
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
+              <!-- Hamburger icon (mobile) -->
               <path
-                id="menu-icon"
+                class="menu-icon-hamburger"
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
                 d="M4 6h16M4 12h16M4 18h16"></path>
+              <!-- Collapse icon (double chevron left - large screen, not collapsed) -->
+              <path
+                class="menu-icon-collapse"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 19l-7-7 7-7M19 19l-7-7 7-7"></path>
+              <!-- Expand icon (double chevron right - large screen, collapsed) -->
+              <path
+                class="menu-icon-expand"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
             </svg>
           </button>
           <span class="w-full px-2 text-base tracking-tight">
@@ -230,7 +278,6 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         const sidebar = document.getElementById("sidebar");
         const sidebarContent = document.getElementById("sidebar-content");
         const overlay = document.getElementById("overlay");
-        const menuIcon = document.getElementById("menu-icon");
 
         const isLargeScreen = () => window.innerWidth >= 1024;
         const isCollapsed = () =>
@@ -240,10 +287,10 @@ const twitterImage = new URL("/og.jpg", Astro.site);
           if (isLargeScreen()) {
             if (isCollapsed()) {
               sidebarContent?.classList.add("sidebar-collapsed");
-              updateMenuIcon(true);
+              document.documentElement.dataset.sidebarCollapsed = "true";
             } else {
               sidebarContent?.classList.remove("sidebar-collapsed");
-              updateMenuIcon(false);
+              document.documentElement.dataset.sidebarCollapsed = "false";
             }
             // Ensure overlay is hidden on large screens
             overlay?.classList.add("hidden");
@@ -251,22 +298,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
           } else {
             // Mobile behavior
             sidebarContent?.classList.remove("sidebar-collapsed");
-            updateMenuIcon(false);
-          }
-        };
-
-        const updateMenuIcon = (collapsed: boolean) => {
-          if (!menuIcon) return;
-
-          if (!isLargeScreen()) {
-            // Show menu icon (hamburger) on mobile
-            menuIcon.setAttribute("d", "M4 6h16M4 12h16M4 18h16");
-          } else if (collapsed) {
-            // Show expand icon (double chevron right)
-            menuIcon.setAttribute("d", "M13 5l7 7-7 7M5 5l7 7-7 7");
-          } else {
-            // Show collapse icon (double chevron left)
-            menuIcon.setAttribute("d", "M11 19l-7-7 7-7M19 19l-7-7 7-7");
+            document.documentElement.dataset.sidebarCollapsed = "mobile";
           }
         };
 
@@ -279,12 +311,13 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 
             if (newCollapsed) {
               sidebarContent?.classList.add("sidebar-collapsed");
+              document.documentElement.dataset.sidebarCollapsed = "true";
             } else {
               sidebarContent?.classList.remove("sidebar-collapsed");
+              document.documentElement.dataset.sidebarCollapsed = "false";
             }
 
             localStorage.setItem("sidebar-collapsed", newCollapsed.toString());
-            updateMenuIcon(newCollapsed);
           } else {
             // Mobile: toggle slide in/out
             const isOpen = sidebar?.classList.contains("translate-x-0");
@@ -305,6 +338,9 @@ const twitterImage = new URL("/og.jpg", Astro.site);
 
         // Initialize state
         updateSidebarState();
+        
+        // Add transition class to sidebar for future toggles
+        sidebar?.classList.add("transition-transform", "duration-200", "ease-in-out");
 
         menuToggle?.addEventListener("click", toggleMenu);
         overlay?.addEventListener("click", toggleMenu);

@@ -5,6 +5,42 @@
   display: none;
 }
 
+/* Menu icon visibility based on sidebar state */
+/* Default: hide all icons, then show based on state */
+.menu-icon-hamburger,
+.menu-icon-collapse,
+.menu-icon-expand {
+  display: none;
+}
+
+/* Mobile: show hamburger */
+:root[data-sidebar-collapsed="mobile"] .menu-icon-hamburger {
+  display: block;
+}
+
+/* Large screen, not collapsed: show collapse icon */
+:root[data-sidebar-collapsed="false"] .menu-icon-collapse {
+  display: block;
+}
+
+/* Large screen, collapsed: show expand icon */
+:root[data-sidebar-collapsed="true"] .menu-icon-expand {
+  display: block;
+}
+
+/* Fallback for when JS hasn't run yet - use media query */
+@media (max-width: 1023px) {
+  :root:not([data-sidebar-collapsed]) .menu-icon-hamburger {
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root:not([data-sidebar-collapsed]) .menu-icon-collapse {
+    display: block;
+  }
+}
+
 /* DSEG Fonts for countdown timer */
 @font-face {
   font-family: "DSEG7 Classic";
@@ -87,8 +123,8 @@
   --color-diff-removed-text: #fca5a5;
 }
 
-/* Prevent flash of unstyled content during theme initialization */
-html.theme-loading {
+/* Prevent flash of unstyled content during initialization */
+html.loading {
   visibility: hidden;
 }
 
@@ -109,7 +145,6 @@ html {
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
-  transition: background-color 0.2s, color 0.2s;
 }
 
 button {
@@ -132,6 +167,21 @@ button {
 
 .sidebar-collapsed .tool-name {
   display: none;
+}
+
+/* Apply collapsed sidebar immediately based on data attribute to prevent flicker */
+@media (min-width: 1024px) {
+  :root[data-sidebar-collapsed="true"] #sidebar-content {
+    width: 3rem;
+  }
+
+  :root[data-sidebar-collapsed="true"] #sidebar-content h3 {
+    display: none;
+  }
+
+  :root[data-sidebar-collapsed="true"] #sidebar-content .tool-name {
+    display: none;
+  }
 }
 
 /* Custom scrollbar for sidebar */
