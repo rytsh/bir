@@ -269,6 +269,14 @@ const twitterImage = new URL("/og.jpg", Astro.site);
       function restoreSidebarScroll() {
         const nav = document.querySelector("#sidebar-content nav");
         if (nav) {
+          if (sidebarScrollTop === 0) {
+            // Scroll to active link if no saved position
+            const activeLink = nav.querySelector("a.bg-white\\/10");
+            if (activeLink) {
+              activeLink.scrollIntoView({ block: "center", behavior: "instant" });
+              return;
+            }
+          }
           nav.scrollTop = sidebarScrollTop;
         }
       }
