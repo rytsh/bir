@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CronTool from "../../components/tools/CronTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/cron");
+---
+
+<Layout title="Cron Expression Parser" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/cron">
+  <h1 slot="navbar-title">Cron Expression Parser</h1>
+  <CronTool client:load />
+</Layout>
