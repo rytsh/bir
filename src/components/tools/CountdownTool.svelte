@@ -590,6 +590,7 @@
   // Fullscreen
   let timerContainer: HTMLDivElement | null = $state(null);
   let isFullscreen = $state(false);
+  let isOverlayFullscreen = $state(false); // Track if using CSS overlay fallback
 
   const progress = $derived(
     getTotalMs() > 0 ? (remainingMs / getTotalMs()) * 100 : 0,
@@ -599,27 +600,59 @@
     hours > 0 || minutes > 0 || seconds > 0 || remainingMs > 0,
   );
 
+  // Check if native fullscreen API is available
+  const canUseNativeFullscreen = (): boolean => {
+    return !!(
+      document.fullscreenEnabled ||
+      (document as any).webkitFullscreenEnabled ||
+      (document as any).mozFullScreenEnabled ||
+      (document as any).msFullscreenEnabled
+    );
+  };
+
+  // Enable CSS overlay fullscreen
+  const enableOverlayFullscreen = () => {
+    if (!timerContainer) return;
+    timerContainer.style.position = "fixed";
+    timerContainer.style.top = "0";
+    timerContainer.style.left = "0";
+    timerContainer.style.width = "100vw";
+    timerContainer.style.height = "100vh";
+    timerContainer.style.zIndex = "9999";
+    isOverlayFullscreen = true;
+    isFullscreen = true;
+    document.body.style.overflow = "hidden";
+  };
+
+  // Disable CSS overlay fullscreen
+  const disableOverlayFullscreen = () => {
+    if (!timerContainer) return;
+    timerContainer.style.position = "";
+    timerContainer.style.top = "";
+    timerContainer.style.left = "";
+    timerContainer.style.width = "";
+    timerContainer.style.height = "";
+    timerContainer.style.zIndex = "";
+    isOverlayFullscreen = false;
+    isFullscreen = false;
+    document.body.style.overflow = "";
+  };
+
   const toggleFullscreen = async () => {
     if (!timerContainer) return;
 
-    try {
-      if (!document.fullscreenElement) {
-        // Try standard fullscreen API
-        if (timerContainer.requestFullscreen) {
-          await timerContainer.requestFullscreen();
-        } else if ((timerContainer as any).webkitRequestFullscreen) {
-          // iOS Safari fallback
-          await (timerContainer as any).webkitRequestFullscreen();
-        } else if ((timerContainer as any).mozRequestFullScreen) {
-          // Firefox fallback
-          await (timerContainer as any).mozRequestFullScreen();
-        } else if ((timerContainer as any).msRequestFullscreen) {
-          // IE fallback
-          await (timerContainer as any).msRequestFullscreen();
-        }
-        isFullscreen = true;
-      } else {
-        // Exit fullscreen
+    // If currently in overlay mode, exit overlay
+    if (isOverlayFullscreen) {
+      disableOverlayFullscreen();
+      return;
+    }
+
+    // If currently in native fullscreen, exit it
+    if (document.fullscreenElement || 
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement) {
+      try {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
         } else if ((document as any).webkitExitFullscreen) {
@@ -629,28 +662,41 @@
         } else if ((document as any).msExitFullscreen) {
           await (document as any).msExitFullscreen();
         }
-        isFullscreen = false;
+      } catch (e) {
+        console.warn("Exit fullscreen failed:", e);
       }
-    } catch (e) {
-      console.warn("Fullscreen failed:", e);
-      // Fallback: try to simulate fullscreen with CSS
-      if (!document.fullscreenElement) {
-        timerContainer.style.position = "fixed";
-        timerContainer.style.top = "0";
-        timerContainer.style.left = "0";
-        timerContainer.style.width = "100vw";
-        timerContainer.style.height = "100vh";
-        timerContainer.style.zIndex = "9999";
-        isFullscreen = true;
+      isFullscreen = false;
+      return;
+    }
+
+    // Try to enter fullscreen
+    // First check if native fullscreen is available
+    if (!canUseNativeFullscreen()) {
+      // Native fullscreen not available, use overlay
+      enableOverlayFullscreen();
+      return;
+    }
+
+    // Try native fullscreen API
+    try {
+      if (timerContainer.requestFullscreen) {
+        await timerContainer.requestFullscreen();
+      } else if ((timerContainer as any).webkitRequestFullscreen) {
+        await (timerContainer as any).webkitRequestFullscreen();
+      } else if ((timerContainer as any).mozRequestFullScreen) {
+        await (timerContainer as any).mozRequestFullScreen();
+      } else if ((timerContainer as any).msRequestFullscreen) {
+        await (timerContainer as any).msRequestFullscreen();
       } else {
-        timerContainer.style.position = "";
-        timerContainer.style.top = "";
-        timerContainer.style.left = "";
-        timerContainer.style.width = "";
-        timerContainer.style.height = "";
-        timerContainer.style.zIndex = "";
-        isFullscreen = false;
+        // No fullscreen method available, use overlay
+        enableOverlayFullscreen();
+        return;
       }
+      isFullscreen = true;
+    } catch (e) {
+      console.warn("Fullscreen request failed, using overlay fallback:", e);
+      // Fallback to CSS overlay
+      enableOverlayFullscreen();
     }
   };
 
@@ -660,15 +706,26 @@
     const doubleTapThreshold = 300; // ms
 
     const handleFullscreenChange = () => {
-      isFullscreen = !!(
+      const inNativeFullscreen = !!(
         document.fullscreenElement ||
         (document as any).webkitFullscreenElement ||
         (document as any).mozFullScreenElement ||
         (document as any).msFullscreenElement
       );
+      // Only update isFullscreen if not in overlay mode
+      if (!isOverlayFullscreen) {
+        isFullscreen = inNativeFullscreen;
+      }
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
+      // Handle Escape key to exit overlay fullscreen
+      if (e.code === "Escape" && isOverlayFullscreen) {
+        e.preventDefault();
+        disableOverlayFullscreen();
+        return;
+      }
+
       if (!isFullscreen) return;
 
       if (e.code === "Space") {
@@ -729,6 +786,11 @@
 
       if (timerContainer) {
         timerContainer.removeEventListener("touchstart", handleTouchStart);
+      }
+
+      // Clean up overlay state if component unmounts
+      if (isOverlayFullscreen) {
+        document.body.style.overflow = "";
       }
     };
   });
@@ -1197,6 +1259,31 @@
             Press Space to Start
           </div>
         {/if}
+      {/if}
+
+      <!-- Close button for overlay fullscreen mode -->
+      {#if isOverlayFullscreen}
+        <button
+          onclick={disableOverlayFullscreen}
+          class="absolute top-4 right-4 p-2 rounded-full transition-opacity duration-200 hover:opacity-100"
+          style="color: {timerColor}; opacity: 0.5;"
+          title="Exit fullscreen (ESC)"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       {/if}
 
       <!-- Progress bar -->
