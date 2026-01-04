@@ -5,6 +5,7 @@ export interface Tool {
   icon: string;
   path: string;
   keywords: string;
+  wasm?: boolean;
 }
 
 export interface Category {
@@ -106,6 +107,15 @@ const rawCategories: Category[] = [
         icon: "📄",
         path: "/converter/data",
         keywords: "data converter, JSON converter, YAML converter, TOML converter, format conversion, data format, JSON to YAML, YAML to JSON, TOML converter",
+      },
+      {
+        id: "cron-parser",
+        name: "Cron",
+        description: "Parse and explain cron expressions with next and previous run times",
+        icon: "⏰",
+        path: "/converter/cron",
+        keywords: "cron parser, cron expression, cron schedule, cron syntax, crontab, cron converter, cron explainer, cron next run, cron previous run, scheduled tasks",
+        wasm: true,
       },
       {
         id: "julian-converter",

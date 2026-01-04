@@ -1,4 +1,22 @@
 <script lang="ts">
+  import { init, Cron } from "cron-js-wasm";
+
+  // WASM initialization state
+  let wasmReady = $state(false);
+  let wasmError = $state("");
+
+  // Initialize WASM module on component mount
+  $effect(() => {
+    // @ts-expect-error - browser entry accepts optional wasmUrl, but types default to node
+    init("/wasm/cron.wasm")
+      .then(() => {
+        wasmReady = true;
+      })
+      .catch((err: Error) => {
+        wasmError = `Failed to initialize cron parser: ${err.message}`;
+      });
+  });
+
   // Cron expression input
   let cronExpression = $state("");
 
@@ -8,18 +26,30 @@
   let selectedTimezone = $state("LOCAL");
   let customTimezone = $state("");
   let timezoneError = $state("");
-  let liveUpdate = $state(false);
-  let currentTime = $state(new Date());
+  let referenceTime = $state(new Date());
 
-  // Live update timer
-  $effect(() => {
-    if (liveUpdate) {
-      const interval = setInterval(() => {
-        currentTime = new Date();
-      }, 1000);
-      return () => clearInterval(interval);
+  // Format date for datetime-local input
+  function toDatetimeLocal(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hour}:${minute}`;
+  }
+
+  // Handle reference time input change
+  function handleReferenceTimeChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (input.value) {
+      referenceTime = new Date(input.value);
     }
-  });
+  }
+
+  // Reset to current time
+  function handleNow() {
+    referenceTime = new Date();
+  }
 
   // Base timezone options
   const baseTimezones = [
@@ -265,76 +295,40 @@
     return desc.charAt(0).toUpperCase() + desc.slice(1);
   }
 
-  // Check if a date matches the cron expression
-  function matchesCron(date: Date, parsed: ParsedCron): boolean {
-    const minute = date.getMinutes();
-    const hour = date.getHours();
-    const dayOfMonth = date.getDate();
-    const month = date.getMonth() + 1;
-    const dayOfWeek = date.getDay();
+  // Cache for Cron instances to avoid memory issues
+  let cronCache: { expr: string; cron: InstanceType<typeof Cron> } | null = null;
 
-    if (!parsed.minutes.includes(minute)) return false;
-    if (!parsed.hours.includes(hour)) return false;
-    if (!parsed.months.includes(month)) return false;
-
-    // Day matching: if both day-of-month and day-of-week are specified (not *),
-    // then either can match (OR logic). Otherwise, both must match.
-    const domSpecified = parsed.fields[2] !== "*";
-    const dowSpecified = parsed.fields[4] !== "*";
-
-    if (domSpecified && dowSpecified) {
-      // OR logic
-      if (!parsed.daysOfMonth.includes(dayOfMonth) && !parsed.daysOfWeek.includes(dayOfWeek)) {
-        return false;
-      }
-    } else {
-      // AND logic
-      if (!parsed.daysOfMonth.includes(dayOfMonth)) return false;
-      if (!parsed.daysOfWeek.includes(dayOfWeek)) return false;
+  function getCron(expr: string): InstanceType<typeof Cron> {
+    if (!cronCache || cronCache.expr !== expr) {
+      cronCache = { expr, cron: new Cron(expr) };
     }
-
-    return true;
+    return cronCache.cron;
   }
 
-  // Get next N run times
-  function getNextRuns(parsed: ParsedCron, count: number, startDate: Date = new Date()): Date[] {
-    const runs: Date[] = [];
-    const current = new Date(startDate);
-    current.setSeconds(0, 0);
-    current.setMinutes(current.getMinutes() + 1); // Start from next minute
-
-    const maxIterations = 525600; // Max 1 year of minutes
-    let iterations = 0;
-
-    while (runs.length < count && iterations < maxIterations) {
-      if (matchesCron(current, parsed)) {
-        runs.push(new Date(current));
-      }
-      current.setMinutes(current.getMinutes() + 1);
-      iterations++;
+  // Get next N run times using cron-js-wasm
+  function getNextRuns(expr: string, count: number, startDate: Date): Date[] {
+    if (!wasmReady) return [];
+    try {
+      const cron = getCron(expr);
+      const results = cron.nextN(count, startDate);
+      // Filter out invalid dates (year 1970 means no result)
+      return results.filter(d => d.getFullYear() > 1970);
+    } catch {
+      return [];
     }
-
-    return runs;
   }
 
-  // Get previous N run times
-  function getPrevRuns(parsed: ParsedCron, count: number, startDate: Date = new Date()): Date[] {
-    const runs: Date[] = [];
-    const current = new Date(startDate);
-    current.setSeconds(0, 0);
-
-    const maxIterations = 525600; // Max 1 year of minutes
-    let iterations = 0;
-
-    while (runs.length < count && iterations < maxIterations) {
-      current.setMinutes(current.getMinutes() - 1);
-      if (matchesCron(current, parsed)) {
-        runs.push(new Date(current));
-      }
-      iterations++;
+  // Get previous N run times using cron-js-wasm
+  function getPrevRuns(expr: string, count: number, startDate: Date): Date[] {
+    if (!wasmReady) return [];
+    try {
+      const cron = getCron(expr);
+      const results = cron.prevN(count, startDate);
+      // Filter out invalid dates (year 1970 means no result)
+      return results.filter(d => d.getFullYear() > 1970);
+    } catch {
+      return [];
     }
-
-    return runs;
   }
 
   // Format date for display in RFC3339 format
@@ -425,17 +419,16 @@
   let error = $derived(parseResult.error);
   let description = $derived(parsed ? generateDescription(parsed) : "");
 
-  // Use currentTime as dependency when live mode is on
+  // Use referenceTime for calculations
+  // Reactivity automatically triggers on referenceTime, numNextRuns, numPrevRuns changes
   let nextRuns = $derived.by(() => {
-    if (!parsed) return [];
-    const baseTime = liveUpdate ? currentTime : new Date();
-    return getNextRuns(parsed, numNextRuns, baseTime);
+    if (!parsed || !wasmReady) return [];
+    return getNextRuns(cronExpression, numNextRuns, referenceTime);
   });
 
   let prevRuns = $derived.by(() => {
-    if (!parsed) return [];
-    const baseTime = liveUpdate ? currentTime : new Date();
-    return getPrevRuns(parsed, numPrevRuns, baseTime);
+    if (!parsed || !wasmReady) return [];
+    return getPrevRuns(cronExpression, numPrevRuns, referenceTime);
   });
 
   // Handle preset selection
@@ -465,6 +458,17 @@
     </p>
   </header>
 
+  <!-- WASM Loading/Error -->
+  {#if wasmError}
+    <div class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">
+      {wasmError}
+    </div>
+  {:else if !wasmReady}
+    <div class="mb-4 p-3 bg-(--color-bg-alt) border border-(--color-border) text-(--color-text-muted) text-sm">
+      Loading cron parser...
+    </div>
+  {/if}
+
   <!-- Input Section -->
   <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border)">
     <div class="flex justify-between items-center mb-3">
@@ -491,7 +495,7 @@
       type="text"
       bind:value={cronExpression}
       placeholder="* * * * *"
-      class="w-full px-4 py-3 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-lg focus:border-(--color-text-light) outline-none mb-3"
+      class="w-full px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-lg focus:border-(--color-text-light) outline-none mb-3"
     />
 
     <!-- Field Reference -->
@@ -533,8 +537,8 @@
     </div>
 
     <!-- Configuration -->
-    <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border)">
-      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+    <div class="mb-4 px-4 py-2 bg-(--color-bg-alt) border border-(--color-border)">
+      <div class="flex flex-wrap gap-4">
         <div>
           <label for="timezone-select" class="block text-sm text-(--color-text-muted) mb-1">
             Timezone
@@ -563,6 +567,27 @@
           {/if}
         </div>
         <div>
+          <label for="reference-time" class="block text-sm text-(--color-text-muted) mb-1">
+            Reference Time
+          </label>
+          <div class="flex gap-1">
+            <input
+              id="reference-time"
+              type="datetime-local"
+              value={toDatetimeLocal(referenceTime)}
+              oninput={handleReferenceTimeChange}
+              class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
+            />
+            <button
+              onclick={handleNow}
+              class="px-2 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:border-(--color-text-light) transition-colors text-xs"
+              title="Set to now"
+            >
+              Now
+            </button>
+          </div>
+        </div>
+        <div>
           <label for="next-runs" class="block text-sm text-(--color-text-muted) mb-1">
             Next Runs
           </label>
@@ -588,18 +613,6 @@
             class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none"
           />
         </div>
-        <div>
-          <label for="live-update" class="block text-sm text-(--color-text-muted) mb-1">
-            Live Update
-          </label>
-          <button
-            id="live-update"
-            onclick={() => liveUpdate = !liveUpdate}
-            class="w-full px-3 py-2 bg-(--color-bg) border text-sm transition-colors {liveUpdate ? 'border-(--color-primary) text-(--color-primary)' : 'border-(--color-border) text-(--color-text-muted) hover:text-(--color-text)'}"
-          >
-            {liveUpdate ? "ON" : "OFF"}
-          </button>
-        </div>
       </div>
     </div>
 
@@ -612,17 +625,14 @@
         </h2>
         <div class="flex-1">
           {#if nextRuns.length > 0}
-            <div class="space-y-2">
-              {#each nextRuns as run, i}
-                <div class="flex justify-between items-center py-2 border-b border-(--color-border) last:border-0">
-                  <div class="flex items-center gap-3">
-                    <span class="text-xs text-(--color-text-muted) w-6">{i + 1}.</span>
-                    <span class="text-sm text-(--color-text) font-mono">
-                      {formatDate(run, effectiveTimezone)}
-                    </span>
-                  </div>
-                  <span class="text-xs text-(--color-text-muted)">
-                    {formatRelative(run, liveUpdate ? currentTime : new Date())}
+            <div class="border border-(--color-border) overflow-hidden">
+              {#each nextRuns as run}
+                <div class="flex justify-between items-center px-3 py-2 border-b border-(--color-border) last:border-b-0 odd:bg-(--color-bg-alt) even:bg-(--color-bg) hover:brightness-95 dark:hover:brightness-125 transition-all">
+                  <span class="text-sm text-(--color-text) font-mono">
+                    {formatDate(run, effectiveTimezone)}
+                  </span>
+                  <span class="text-xs text-(--color-text-muted) ml-4">
+                    {formatRelative(run, referenceTime)}
                   </span>
                 </div>
               {/each}
@@ -642,17 +652,14 @@
         </h2>
         <div class="flex-1">
           {#if prevRuns.length > 0}
-            <div class="space-y-2">
-              {#each prevRuns as run, i}
-                <div class="flex justify-between items-center py-2 border-b border-(--color-border) last:border-0">
-                  <div class="flex items-center gap-3">
-                    <span class="text-xs text-(--color-text-muted) w-6">{i + 1}.</span>
-                    <span class="text-sm text-(--color-text) font-mono">
-                      {formatDate(run, effectiveTimezone)}
-                    </span>
-                  </div>
-                  <span class="text-xs text-(--color-text-muted)">
-                    {formatRelative(run, liveUpdate ? currentTime : new Date())}
+            <div class="border border-(--color-border) overflow-hidden">
+              {#each prevRuns as run}
+                <div class="flex justify-between items-center px-3 py-2 border-b border-(--color-border) last:border-b-0 odd:bg-(--color-bg-alt) even:bg-(--color-bg) hover:brightness-95 dark:hover:brightness-125 transition-all">
+                  <span class="text-sm text-(--color-text) font-mono">
+                    {formatDate(run, effectiveTimezone)}
+                  </span>
+                  <span class="text-xs text-(--color-text-muted) ml-4">
+                    {formatRelative(run, referenceTime)}
                   </span>
                 </div>
               {/each}
