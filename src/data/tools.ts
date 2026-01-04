@@ -186,6 +186,14 @@ const rawCategories: Category[] = [
         path: "/codecs/luhn",
         keywords: "luhn algorithm, credit card validator, luhn check, card validation, credit card checker, luhn checksum, payment validation",
       },
+      {
+        id: "morse",
+        name: "Morse Code",
+        description: "Encode text to Morse code or decode Morse code to text with visual flash playback",
+        icon: "📡",
+        path: "/codecs/morse",
+        keywords: "morse code, morse encoder, morse decoder, morse converter, morse translator, dot dash, telegraph, signal, flash, visual morse",
+      },
     ],
   },
   {
