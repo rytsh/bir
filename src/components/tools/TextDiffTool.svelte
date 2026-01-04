@@ -1,12 +1,11 @@
 <script lang="ts">
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import {
-    EditorView,
-    createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
 
   interface DiffLine {
@@ -17,12 +16,10 @@
   }
 
   let inlineMode = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
 
-  let oldEditorContainer: HTMLDivElement;
-  let newEditorContainer: HTMLDivElement;
-  let oldEditor: EditorView;
-  let newEditor: EditorView;
+  let oldValue = $state("");
+  let newValue = $state("");
 
   let diffLines = $state<DiffLine[]>([]);
 
@@ -87,82 +84,50 @@
   };
 
   const updateDiff = () => {
-    const oldText = getEditorContent(oldEditor);
-    const newText = getEditorContent(newEditor);
-    diffLines = computeDiff(oldText, newText);
+    diffLines = computeDiff(oldValue, newValue);
   };
 
-  const createOldEditor = (): boolean => {
-    if (!oldEditorContainer) return false;
-    const content = getEditorContent(oldEditor);
-    if (oldEditor) oldEditor.destroy();
-
-    oldEditor = createEditor({
-      container: oldEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Enter original text...",
-        onUpdate: () => updateDiff(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createNewEditor = (): boolean => {
-    if (!newEditorContainer) return false;
-    const content = getEditorContent(newEditor);
-    if (newEditor) newEditor.destroy();
-
-    newEditor = createEditor({
-      container: newEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Enter new text...",
-        onUpdate: () => updateDiff(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
+  // Extensions for input editors
+  let editorExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createOldEditor();
-        createNewEditor();
-      }
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
-    initEditorsWithRetry([createOldEditor, createNewEditor]);
+    return cleanup;
+  });
 
-    return () => {
-      cleanup();
-      oldEditor?.destroy();
-      newEditor?.destroy();
-    };
+  // React to value changes
+  $effect(() => {
+    oldValue;
+    newValue;
+    updateDiff();
   });
 
   const handleClearOld = () => {
-    updateEditorContent(oldEditor, "");
+    oldValue = "";
   };
 
   const handleClearNew = () => {
-    updateEditorContent(newEditor, "");
+    newValue = "";
   };
 
   const handlePasteOld = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(oldEditor, text);
+      oldValue = text;
     });
   };
 
   const handlePasteNew = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(newEditor, text);
+      newValue = text;
     });
   };
 
@@ -220,10 +185,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={oldEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={oldValue}
+          placeholder="Enter original text..."
+          extensions={editorExtensions}
+        />
+      </div>
     </div>
 
     <!-- New Text Editor -->
@@ -247,10 +215,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={newEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={newValue}
+          placeholder="Enter new text..."
+          extensions={editorExtensions}
+        />
+      </div>
     </div>
   </div>
 

@@ -65,6 +65,9 @@ importers:
       svelte:
         specifier: ^5.46.1
         version: 5.46.1
+      svelte-codemirror-editor:
+        specifier: ^2.1.0
+        version: 2.1.0(codemirror@6.0.2)(svelte@5.46.1)
       tailwindcss:
         specifier: ^4.1.18
         version: 4.1.18
@@ -1718,6 +1721,12 @@ packages:
 
   style-mod@4.1.3:
     resolution: {integrity: sha512-i/n8VsZydrugj3Iuzll8+x/00GH2vnYsk1eomD8QiRrSAeW6ItbCQDtfXCeJHd0iwiNagqjQkvpvREEPtW3IoQ==}
+
+  svelte-codemirror-editor@2.1.0:
+    resolution: {integrity: sha512-WGkSsIYNpVcOVxaQPkmdBQhaGyKLmg6pgaS/b+7guRb4eikrbXYtvNFuW2AzKJi8ZbLhSngrf3SRiZOuwuskrQ==}
+    peerDependencies:
+      codemirror: ^6.0.0
+      svelte: ^5.0.0
 
   svelte2tsx@0.7.46:
     resolution: {integrity: sha512-S++Vw3w47a8rBuhbz4JK0fcGea8tOoX1boT53Aib8+oUO2EKeOG+geXprJVTDfBlvR+IJdf3jIpR2RGwT6paQA==}
@@ -3961,6 +3970,11 @@ snapshots:
       ansi-regex: 6.2.2
 
   style-mod@4.1.3: {}
+
+  svelte-codemirror-editor@2.1.0(codemirror@6.0.2)(svelte@5.46.1):
+    dependencies:
+      codemirror: 6.0.2
+      svelte: 5.46.1
 
   svelte2tsx@0.7.46(svelte@5.46.1)(typescript@5.9.3):
     dependencies:

@@ -1,12 +1,11 @@
 <script lang="ts">
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import {
-    EditorView,
-    createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
 
   type EscapeFormat = "json" | "html" | "url" | "regex" | "shell" | "sql" | "csv";
@@ -32,14 +31,17 @@
   let format = $state<EscapeFormat>("json");
   let error = $state("");
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
 
-  let inputEditorContainer: HTMLDivElement;
-  let outputEditorContainer: HTMLDivElement;
-  let inputEditor: EditorView;
-  let outputEditor: EditorView;
+  let inputValue = $state("");
+  let outputValue = $state("");
 
   // Escape functions
+  // Control characters regex patterns (built dynamically to avoid lint errors)
+  const formFeedRegex = new RegExp(String.fromCharCode(12), "g");
+  const backspaceRegex = new RegExp(String.fromCharCode(8), "g");
+  const controlCharsRegex = new RegExp("[\\x00-\\x1f\\x7f]", "g");
+
   const escapeJson = (str: string): string => {
     return str
       .replace(/\\/g, "\\\\")
@@ -47,9 +49,9 @@
       .replace(/\n/g, "\\n")
       .replace(/\r/g, "\\r")
       .replace(/\t/g, "\\t")
-      .replace(/\f/g, "\\f")
-      .replace(/\b/g, "\\b")
-      .replace(/[\x00-\x1f\x7f]/g, (char) => {
+      .replace(formFeedRegex, "\\f")
+      .replace(backspaceRegex, "\\b")
+      .replace(controlCharsRegex, (char) => {
         return "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0");
       });
   };
@@ -62,8 +64,8 @@
         case "\\n": return "\n";
         case "\\r": return "\r";
         case "\\t": return "\t";
-        case "\\f": return "\f";
-        case "\\b": return "\b";
+        case "\\f": return String.fromCharCode(12);
+        case "\\b": return String.fromCharCode(8);
         case "\\/": return "/";
         default:
           if (match.startsWith("\\u")) {
@@ -161,10 +163,9 @@
 
   const convert = () => {
     error = "";
-    const input = getEditorContent(inputEditor);
 
-    if (!input) {
-      updateEditorContent(outputEditor, "");
+    if (!inputValue) {
+      outputValue = "";
       return;
     }
 
@@ -173,87 +174,65 @@
 
       if (mode === "escape") {
         switch (format) {
-          case "json": result = escapeJson(input); break;
-          case "html": result = escapeHtml(input); break;
-          case "url": result = escapeUrl(input); break;
-          case "regex": result = escapeRegex(input); break;
-          case "shell": result = escapeShell(input); break;
-          case "sql": result = escapeSql(input); break;
-          case "csv": result = escapeCsv(input); break;
-          default: result = input;
+          case "json": result = escapeJson(inputValue); break;
+          case "html": result = escapeHtml(inputValue); break;
+          case "url": result = escapeUrl(inputValue); break;
+          case "regex": result = escapeRegex(inputValue); break;
+          case "shell": result = escapeShell(inputValue); break;
+          case "sql": result = escapeSql(inputValue); break;
+          case "csv": result = escapeCsv(inputValue); break;
+          default: result = inputValue;
         }
       } else {
         switch (format) {
-          case "json": result = unescapeJson(input); break;
-          case "html": result = unescapeHtml(input); break;
-          case "url": result = unescapeUrl(input); break;
-          case "regex": result = unescapeRegex(input); break;
-          case "shell": result = unescapeShell(input); break;
-          case "sql": result = unescapeSql(input); break;
-          case "csv": result = unescapeCsv(input); break;
-          default: result = input;
+          case "json": result = unescapeJson(inputValue); break;
+          case "html": result = unescapeHtml(inputValue); break;
+          case "url": result = unescapeUrl(inputValue); break;
+          case "regex": result = unescapeRegex(inputValue); break;
+          case "shell": result = unescapeShell(inputValue); break;
+          case "sql": result = unescapeSql(inputValue); break;
+          case "csv": result = unescapeCsv(inputValue); break;
+          default: result = inputValue;
         }
       }
 
-      updateEditorContent(outputEditor, result);
+      outputValue = result;
     } catch (e) {
       error = e instanceof Error ? e.message : "Conversion failed";
-      updateEditorContent(outputEditor, "");
+      outputValue = "";
     }
   };
 
-  const createInputEditor = (): boolean => {
-    if (!inputEditorContainer) return false;
-    const content = getEditorContent(inputEditor);
-    if (inputEditor) inputEditor.destroy();
+  // Extensions for input editor
+  let inputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+  ]);
 
-    inputEditor = createEditor({
-      container: inputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: mode === "escape" ? "Enter text to escape..." : "Enter escaped text to unescape...",
-        onUpdate: () => convert(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createOutputEditor = (): boolean => {
-    if (!outputEditorContainer) return false;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Result will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
+  // Extensions for output editor (read-only)
+  let outputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createInputEditor();
-        createOutputEditor();
-      }
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
-    initEditorsWithRetry([createInputEditor, createOutputEditor]);
+    return cleanup;
+  });
 
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-      outputEditor?.destroy();
-    };
+  // React to input value changes
+  $effect(() => {
+    inputValue;
+    convert();
   });
 
   // Re-convert when mode or format changes
@@ -264,23 +243,21 @@
   });
 
   const handleSwap = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      updateEditorContent(inputEditor, output);
+    if (outputValue) {
+      inputValue = outputValue;
       mode = mode === "escape" ? "unescape" : "escape";
       error = "";
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(inputEditor, "");
+    inputValue = "";
     error = "";
   };
 
   const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
+    if (outputValue) {
+      navigator.clipboard.writeText(outputValue);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     }
@@ -288,11 +265,15 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(inputEditor, text);
+      inputValue = text;
     });
   };
 
   const currentFormat = $derived(formats.find((f) => f.id === format));
+
+  let inputPlaceholder = $derived(
+    mode === "escape" ? "Enter text to escape..." : "Enter escaped text to unescape..."
+  );
 </script>
 
 <div class="h-full flex flex-col">
@@ -380,10 +361,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={inputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={inputValue}
+          placeholder={inputPlaceholder}
+          extensions={inputExtensions}
+        />
+      </div>
     </div>
 
     <!-- Output Editor -->
@@ -408,10 +392,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={outputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={outputValue}
+          placeholder="Result will appear here..."
+          extensions={outputExtensions}
+        />
+      </div>
     </div>
   </div>
 </div>

@@ -1,30 +1,38 @@
 <script lang="ts">
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
-  } from "../../lib/codemirror.js";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
+  import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
+  import { onMount } from "svelte";
 
   let mode = $state<"encode" | "decode">("encode");
   let urlSafe = $state(false);
   let error = $state("");
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
   let urlInput = $state("");
   let urlLoading = $state(false);
   let showUrlInput = $state(false);
   let downloadFilename = $state("decoded-file");
   let fileMode = $state(false);
 
-  let inputEditorContainer: HTMLDivElement;
-  let outputEditorContainer: HTMLDivElement;
-  let inputEditor: EditorView;
-  let outputEditor: EditorView;
+  let inputValue = $state("");
+  let outputValue = $state("");
   let fileInput: HTMLInputElement;
+
+  // CodeMirror extensions based on dark mode
+  let inputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+  ]);
+
+  let outputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+  ]);
 
   // Standard Base64 to URL-safe Base64
   const toUrlSafe = (base64: string): string => {
@@ -79,89 +87,50 @@
 
   const convert = () => {
     error = "";
-    const input = getEditorContent(inputEditor);
 
-    if (!input.trim()) {
-      updateEditorContent(outputEditor, "");
+    if (!inputValue.trim()) {
+      outputValue = "";
       return;
     }
 
     // Skip text conversion in file mode (decode mode)
     if (mode === "decode" && fileMode) {
-      updateEditorContent(outputEditor, "");
+      outputValue = "";
       return;
     }
 
     try {
       let result: string;
       if (mode === "encode") {
-        result = utf8ToBase64(input);
+        result = utf8ToBase64(inputValue);
       } else {
-        result = base64ToUtf8(input);
+        result = base64ToUtf8(inputValue);
       }
-      updateEditorContent(outputEditor, result);
+      outputValue = result;
     } catch (e) {
       error =
         mode === "decode" ? "Invalid Base64 string" : "Failed to encode string";
-      updateEditorContent(outputEditor, "");
+      outputValue = "";
     }
   };
 
-  const createInputEditor = (): boolean => {
-    if (!inputEditorContainer) return false;
-    const content = getEditorContent(inputEditor);
-    if (inputEditor) inputEditor.destroy();
-
-    inputEditor = createEditor({
-      container: inputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText:
-          mode === "encode"
-            ? "Enter text to encode..."
-            : "Enter Base64 string to decode...",
-        onUpdate: () => convert(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createOutputEditor = (): boolean => {
-    if (!outputEditorContainer) return false;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Result will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
   $effect(() => {
+    // Re-check on mount in case SSR value was wrong
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
       if (newIsDark !== isDark) {
         isDark = newIsDark;
-        createInputEditor();
-        createOutputEditor();
       }
     });
 
-    initEditorsWithRetry([createInputEditor, createOutputEditor]);
+    return cleanup;
+  });
 
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-      outputEditor?.destroy();
-    };
+  // Re-convert when input changes
+  $effect(() => {
+    inputValue;
+    convert();
   });
 
   // Re-convert when mode changes
@@ -183,23 +152,21 @@
   });
 
   const handleSwap = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      updateEditorContent(inputEditor, output);
+    if (outputValue) {
+      inputValue = outputValue;
       mode = mode === "encode" ? "decode" : "encode";
       error = "";
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(inputEditor, "");
+    inputValue = "";
     error = "";
   };
 
   const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
+    if (outputValue) {
+      navigator.clipboard.writeText(outputValue);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     }
@@ -207,7 +174,7 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(inputEditor, text);
+      inputValue = text;
     });
   };
 
@@ -226,8 +193,8 @@
 
       // When loading a file, switch to encode mode and show the base64
       mode = "encode";
-      updateEditorContent(inputEditor, `[Binary file: ${file.name}]`);
-      updateEditorContent(outputEditor, base64);
+      inputValue = `[Binary file: ${file.name}]`;
+      outputValue = base64;
       error = "";
     };
     reader.onerror = () => {
@@ -267,8 +234,8 @@
       downloadFilename = filename;
 
       mode = "encode";
-      updateEditorContent(inputEditor, `[Content from URL: ${urlInput}]`);
-      updateEditorContent(outputEditor, base64);
+      inputValue = `[Content from URL: ${urlInput}]`;
+      outputValue = base64;
       showUrlInput = false;
       urlInput = "";
     } catch (e) {
@@ -279,14 +246,13 @@
   };
 
   const handleDownloadAsFile = () => {
-    const input = getEditorContent(inputEditor);
-    if (!input.trim()) {
+    if (!inputValue.trim()) {
       error = "No Base64 content to decode";
       return;
     }
 
     try {
-      const buffer = base64ToArrayBuffer(input);
+      const buffer = base64ToArrayBuffer(inputValue);
       const blob = new Blob([buffer], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
 
@@ -463,10 +429,15 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={inputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={inputValue}
+          placeholder={mode === "encode"
+            ? "Enter text to encode..."
+            : "Enter Base64 string to decode..."}
+          extensions={inputExtensions}
+        />
+      </div>
     </div>
 
     <!-- Output Editor -->
@@ -494,10 +465,13 @@
             </button>
           </div>
         </div>
-        <div
-          bind:this={outputEditorContainer}
-          class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-        ></div>
+        <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+          <CodeMirror
+            bind:value={outputValue}
+            placeholder="Result will appear here..."
+            extensions={outputExtensions}
+          />
+        </div>
       </div>
     {/if}
   </div>

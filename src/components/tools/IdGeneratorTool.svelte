@@ -1,13 +1,7 @@
 <script lang="ts">
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
-  } from "../../lib/codemirror.js";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
+  import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
   import {
     v1 as uuidv1,
     v3 as uuidv3,
@@ -36,7 +30,8 @@
   let selectedType = $state<IdType>("ulid");
   let count = $state(1);
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
+  let outputValue = $state("");
 
   // For v3 and v5 UUIDs
   let namespace = $state("dns");
@@ -44,9 +39,6 @@
 
   // For v1ToV6 and v6ToV1 conversions
   let inputUuid = $state("");
-
-  let outputEditorContainer: HTMLDivElement;
-  let outputEditor: EditorView;
 
   const namespaceOptions = [
     { value: "dns", label: "DNS", uuid: uuidv3.DNS },
@@ -109,6 +101,15 @@
     },
   ];
 
+  // CodeMirror extensions based on dark mode
+  let editorExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+  ]);
+
   const getNamespaceUuid = (): string => {
     if (namespace === "custom") {
       return customNamespace;
@@ -142,23 +143,6 @@
     }
   };
 
-  const createOutputEditor = (): boolean => {
-    if (!outputEditorContainer) return false;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: 'Click "Generate" to create IDs...',
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
   const isConversionType = (type: IdType): boolean => {
     return type === "uuid-v1-to-v6" || type === "uuid-v6-to-v1";
   };
@@ -176,7 +160,7 @@
         // For conversion types, convert each line of input
         const inputLines = inputUuid.trim().split("\n").filter((line) => line.trim());
         if (inputLines.length === 0) {
-          updateEditorContent(outputEditor, "Please enter UUID(s) to convert");
+          outputValue = "Please enter UUID(s) to convert";
           return;
         }
         for (const line of inputLines) {
@@ -192,25 +176,23 @@
         }
       }
 
-      const output = ids.join("\n");
-      updateEditorContent(outputEditor, output);
+      outputValue = ids.join("\n");
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Generation failed";
-      updateEditorContent(outputEditor, `Error: ${errorMessage}`);
+      outputValue = `Error: ${errorMessage}`;
     }
   };
 
   const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
+    if (outputValue) {
+      navigator.clipboard.writeText(outputValue);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(outputEditor, "");
+    outputValue = "";
   };
 
   $effect(() => {
@@ -219,16 +201,10 @@
     const cleanup = createDarkModeObserver((newIsDark) => {
       if (newIsDark !== isDark) {
         isDark = newIsDark;
-        createOutputEditor();
       }
     });
 
-    initEditorsWithRetry([createOutputEditor]);
-
-    return () => {
-      cleanup();
-      outputEditor?.destroy();
-    };
+    return cleanup;
   });
 
   let selectedDescription = $derived(
@@ -396,9 +372,12 @@
         </button>
       </div>
     </div>
-    <div
-      bind:this={outputEditorContainer}
-      class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-    ></div>
+    <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+      <CodeMirror
+        bind:value={outputValue}
+        placeholder='Click "Generate" to create IDs...'
+        extensions={editorExtensions}
+      />
+    </div>
   </div>
 </div>

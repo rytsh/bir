@@ -2,16 +2,15 @@
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import * as TOON from "@toon-format/toon";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
   import {
-    EditorView,
-    createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
 
   type Format = "json" | "yaml" | "toml" | "toon";
@@ -23,17 +22,16 @@
   let sortKeys = $state(false);
   let error = $state("");
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
+
+  let sourceValue = $state("");
+  let outputValue = $state("");
 
   let sourceChars = $state(0);
   let sourceTokens = $state(0);
   let outputChars = $state(0);
   let outputTokens = $state(0);
 
-  let sourceEditorContainer: HTMLDivElement;
-  let outputEditorContainer: HTMLDivElement;
-  let sourceEditor: EditorView;
-  let outputEditor: EditorView;
   let convertTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const formatLabels: Record<Format, string> = {
@@ -67,15 +65,13 @@
   };
 
   const updateSourceStats = () => {
-    const text = getEditorContent(sourceEditor);
-    sourceChars = text.length;
-    sourceTokens = countTokens(text);
+    sourceChars = sourceValue.length;
+    sourceTokens = countTokens(sourceValue);
   };
 
   const updateOutputStats = () => {
-    const text = getEditorContent(outputEditor);
-    outputChars = text.length;
-    outputTokens = countTokens(text);
+    outputChars = outputValue.length;
+    outputTokens = countTokens(outputValue);
   };
 
   const tokenDiffPercent = $derived(() => {
@@ -162,19 +158,18 @@
 
   const convert = () => {
     error = "";
-    const input = getEditorContent(sourceEditor);
     updateSourceStats();
 
-    if (!input.trim()) {
-      updateEditorContent(outputEditor, "");
+    if (!sourceValue.trim()) {
+      outputValue = "";
       updateOutputStats();
       return;
     }
 
     try {
-      const parsed = parse(input, sourceFormat);
+      const parsed = parse(sourceValue, sourceFormat);
       const result = stringify(parsed, outputFormat);
-      updateEditorContent(outputEditor, result);
+      outputValue = result;
       updateOutputStats();
     } catch (e) {
       error =
@@ -194,55 +189,29 @@
     }, 150);
   };
 
-  const createSourceEditor = () => {
-    if (!sourceEditorContainer) return false;
-    const content = getEditorContent(sourceEditor);
-    if (sourceEditor) sourceEditor.destroy();
+  // Extensions for source editor (editable, with language)
+  let sourceExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    getLanguageExtension(sourceFormat),
+  ]);
 
-    sourceEditor = createEditor({
-      container: sourceEditorContainer,
-      config: {
-        dark: isDark,
-        language: getLanguageExtension(sourceFormat),
-        placeholderText: `Paste or type your ${formatLabels[sourceFormat]} here...`,
-        onUpdate: () => debouncedConvert(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createOutputEditor = () => {
-    if (!outputEditorContainer) return false;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        language: getLanguageExtension(outputFormat),
-        placeholderText: "Converted output will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
+  // Extensions for output editor (read-only, with language)
+  let outputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+    getLanguageExtension(outputFormat),
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createSourceEditor();
-        createOutputEditor();
-      }
-    });
-
-    initEditorsWithRetry([createSourceEditor, createOutputEditor], () => {
-      mounted = true;
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
     return () => {
@@ -250,44 +219,26 @@
       if (convertTimeout) {
         clearTimeout(convertTimeout);
       }
-      sourceEditor?.destroy();
-      outputEditor?.destroy();
     };
   });
 
-  let mounted = $state(false);
-  let prevSourceFormat = $state<Format>(sourceFormat);
-  let prevOutputFormat = $state<Format>(outputFormat);
-
-  // Recreate editors when format changes
+  // React to source value changes
   $effect(() => {
-    if (mounted && sourceFormat !== prevSourceFormat) {
-      prevSourceFormat = sourceFormat;
-      createSourceEditor();
-    }
+    sourceValue;
+    debouncedConvert();
   });
 
+  // Re-convert when format or options change
   $effect(() => {
-    if (mounted && outputFormat !== prevOutputFormat) {
-      prevOutputFormat = outputFormat;
-      createOutputEditor();
-      convert();
-    }
-  });
-
-  // Re-convert when options change
-  $effect(() => {
+    outputFormat;
     indentType;
     sortKeys;
-    if (mounted) {
-      convert();
-    }
+    convert();
   });
 
   const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
+    if (outputValue) {
+      navigator.clipboard.writeText(outputValue);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     }
@@ -295,19 +246,18 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(sourceEditor, text);
+      sourceValue = text;
     });
   };
 
   const handleClear = () => {
-    updateEditorContent(sourceEditor, "");
+    sourceValue = "";
     error = "";
   };
 
   const handleSwap = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      updateEditorContent(sourceEditor, output);
+    if (outputValue) {
+      sourceValue = outputValue;
       const temp = sourceFormat;
       sourceFormat = outputFormat;
       outputFormat = temp;
@@ -447,10 +397,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={sourceEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={sourceValue}
+          placeholder={`Paste or type your ${formatLabels[sourceFormat]} here...`}
+          extensions={sourceExtensions}
+        />
+      </div>
     </div>
 
     <!-- Output Editor -->
@@ -495,10 +448,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={outputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={outputValue}
+          placeholder="Converted output will appear here..."
+          extensions={outputExtensions}
+        />
+      </div>
     </div>
   </div>
 </div>

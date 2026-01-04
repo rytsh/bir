@@ -201,3 +201,7 @@ aside nav::-webkit-scrollbar-thumb {
 aside nav::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+.codemirror-wrapper {
+  height: 100%;
+}

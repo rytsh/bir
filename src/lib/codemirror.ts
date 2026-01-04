@@ -4,6 +4,32 @@ import { placeholder } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 
 /**
+ * Selection theme extension with red background and white text.
+ */
+const selectionTheme = EditorView.theme({
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+    backgroundColor: "#dc2626 !important",
+  },
+  "& .cm-line ::selection": {
+    backgroundColor: "#dc2626 !important",
+    color: "white !important",
+  },
+  "& .cm-line::selection": {
+    backgroundColor: "#dc2626 !important",
+    color: "white !important",
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: "#fca5a5 !important",
+  },
+  ".cm-content": {
+    "& ::selection": {
+      backgroundColor: "#dc2626",
+      color: "white",
+    },
+  },
+});
+
+/**
  * Creates theme extensions for CodeMirror based on dark/light mode.
  * Always returns an array for consistent spreading.
  */
@@ -11,6 +37,7 @@ export const createTheme = (dark: boolean): Extension[] => {
   if (dark) {
     return [
       oneDark,
+      selectionTheme,
       EditorView.theme({
         ".cm-placeholder": {
           color: "var(--color-text-light)",
@@ -20,6 +47,7 @@ export const createTheme = (dark: boolean): Extension[] => {
     ];
   }
   return [
+    selectionTheme,
     EditorView.theme({
       "&": {
         backgroundColor: "var(--color-bg-alt)",
@@ -168,30 +196,11 @@ export const createDarkModeObserver = (
 
 /**
  * Gets the current dark mode state from the document element.
+ * Returns false during SSR (when document is not available).
  */
 export const getInitialDarkMode = (): boolean => {
+  if (typeof document === "undefined") return false;
   return document.documentElement.classList.contains("dark");
-};
-
-/**
- * Initializes editors with retry logic for View Transitions.
- * Retries using requestAnimationFrame until all init functions succeed.
- * @param initFns - Array of init functions that return true on success, false if container not ready
- * @param onReady - Optional callback when all editors are initialized
- */
-export const initEditorsWithRetry = (
-  initFns: (() => boolean)[],
-  onReady?: () => void
-): void => {
-  const tryInit = () => {
-    const results = initFns.map((fn) => fn());
-    if (results.every(Boolean)) {
-      onReady?.();
-    } else {
-      requestAnimationFrame(tryInit);
-    }
-  };
-  tryInit();
 };
 
 // Re-export commonly used items for convenience

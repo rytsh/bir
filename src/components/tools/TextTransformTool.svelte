@@ -1,30 +1,38 @@
 <script lang="ts">
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    createBaseExtensions,
-    EditorState,
-    initEditorsWithRetry,
-  } from "../../lib/codemirror.js";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
+  import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
 
   let text = $state("");
   let originalText = $state("");
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
 
   // Selection state
   let cursorLine = $state(1);
   let cursorCol = $state(1);
   let selectionLength = $state(0);
 
-  let editorContainer: HTMLDivElement;
-  let editor: EditorView;
-
   const hasText = $derived(text.length > 0);
+
+  // Selection tracking extension
+  const selectionTracker = EditorView.updateListener.of((update) => {
+    const state = update.state;
+    const selection = state.selection.main;
+    const pos = selection.head;
+    const line = state.doc.lineAt(pos);
+    cursorLine = line.number;
+    cursorCol = pos - line.from + 1;
+    selectionLength = Math.abs(selection.to - selection.from);
+  });
+
+  // CodeMirror extensions based on dark mode
+  let editorExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    selectionTracker,
+  ]);
 
   // Statistics
   interface TextStats {
@@ -347,10 +355,9 @@
   let joinSeparator = $state(", ");
   let splitSeparator = $state(", ");
 
-  // Helper to update text and sync with editor
+  // Helper to update text
   const updateText = (newText: string) => {
     text = newText;
-    updateEditorContent(editor, newText);
   };
 
   // Store original and update text
@@ -359,7 +366,6 @@
       originalText = newText;
     }
     text = newText;
-    updateEditorContent(editor, newText);
   };
 
   const setOriginal = () => {
@@ -371,44 +377,7 @@
   const restoreOriginal = () => {
     if (originalText) {
       text = originalText;
-      updateEditorContent(editor, originalText);
     }
-  };
-
-  const createTextEditor = (): boolean => {
-    if (!editorContainer) return false;
-    const content = getEditorContent(editor);
-    if (editor) editor.destroy();
-
-    const baseConfig = {
-      dark: isDark,
-      placeholderText: "Enter or paste text here...",
-      onUpdate: (content: string) => {
-        if (!originalText && content) {
-          originalText = content;
-        }
-        text = content;
-      },
-    };
-
-    const selectionListener = EditorView.updateListener.of((update) => {
-      const state = update.state;
-      const selection = state.selection.main;
-      const pos = selection.head;
-      const line = state.doc.lineAt(pos);
-      cursorLine = line.number;
-      cursorCol = pos - line.from + 1;
-      selectionLength = Math.abs(selection.to - selection.from);
-    });
-
-    editor = new EditorView({
-      state: EditorState.create({
-        doc: content ?? "",
-        extensions: [...createBaseExtensions(baseConfig), selectionListener],
-      }),
-      parent: editorContainer,
-    });
-    return true;
   };
 
   $effect(() => {
@@ -417,16 +386,10 @@
     const cleanup = createDarkModeObserver((newIsDark) => {
       if (newIsDark !== isDark) {
         isDark = newIsDark;
-        createTextEditor();
       }
     });
 
-    initEditorsWithRetry([createTextEditor]);
-
-    return () => {
-      cleanup();
-      editor?.destroy();
-    };
+    return cleanup;
   });
 
   const handleCopy = () => {
@@ -448,7 +411,6 @@
   const handleClear = () => {
     text = "";
     originalText = "";
-    updateEditorContent(editor, "");
   };
 
   const handleFileLoad = (event: Event) => {
@@ -845,10 +807,13 @@
           <span class="border-l border-(--color-border) px-2 ml-2">{selectionLength} selected</span>
         </span>
       </div>
-      <div
-        bind:this={editorContainer}
-        class="flex-1 border border-(--color-border)"
-      ></div>
+      <div class="flex-1 border border-(--color-border)">
+        <CodeMirror
+          bind:value={text}
+          placeholder="Enter or paste text here..."
+          extensions={editorExtensions}
+        />
+      </div>
     </div>
 
     <!-- Statistics Panel -->

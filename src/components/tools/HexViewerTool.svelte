@@ -1,12 +1,7 @@
 <script lang="ts">
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    getEditorContent,
-    initEditorsWithRetry,
-  } from "../../lib/codemirror.js";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
+  import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
 
   type InputMode = "text" | "file" | "base64";
 
@@ -17,7 +12,7 @@
   let base64Input = $state("");
   let isProcessing = $state(false);
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
   let errorMessage = $state("");
   let rawBytes = $state<Uint8Array>(new Uint8Array(0));
   let hoveredOffset = $state<number | null>(null);
@@ -34,11 +29,6 @@
   let containerHeight = $state(400);
   const ROW_HEIGHT = 24;
   const BUFFER_ROWS = 5;
-
-  let inputEditorContainer: HTMLDivElement;
-  let base64EditorContainer: HTMLDivElement;
-  let inputEditor: EditorView;
-  let base64Editor: EditorView;
 
   // Search state
   let searchQuery = $state("");
@@ -62,43 +52,12 @@
     return rows;
   });
 
-  const createInputEditor = (): boolean => {
-    if (!inputEditorContainer) return false;
-    const content = getEditorContent(inputEditor);
-    if (inputEditor) inputEditor.destroy();
-
-    inputEditor = createEditor({
-      container: inputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Enter text to view as hex...",
-        onUpdate: (content) => {
-          textInput = content;
-        },
-      },
-      initialContent: content || textInput,
-    });
-    return true;
-  };
-
-  const createBase64Editor = (): boolean => {
-    if (!base64EditorContainer) return false;
-    const content = getEditorContent(base64Editor);
-    if (base64Editor) base64Editor.destroy();
-
-    base64Editor = createEditor({
-      container: base64EditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Paste Base64 encoded data...",
-        onUpdate: (content) => {
-          base64Input = content;
-        },
-      },
-      initialContent: content || base64Input,
-    });
-    return true;
-  };
+  // CodeMirror extensions based on dark mode
+  let editorExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+  ]);
 
   const formatHex = (byte: number): string => {
     const hex = byte.toString(16).padStart(2, "0");
@@ -395,16 +354,6 @@
     searchResultsArray = [];
     currentSearchIndex = 0;
     hoveredOffset = null;
-    if (inputEditor) {
-      inputEditor.dispatch({
-        changes: { from: 0, to: inputEditor.state.doc.length, insert: "" },
-      });
-    }
-    if (base64Editor) {
-      base64Editor.dispatch({
-        changes: { from: 0, to: base64Editor.state.doc.length, insert: "" },
-      });
-    }
   };
 
   const handleScroll = (e: Event) => {
@@ -421,19 +370,12 @@
   };
 
   $effect(() => {
+    // Set initial dark mode on client
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
       if (newIsDark !== isDark) {
         isDark = newIsDark;
-        createInputEditor();
-        createBase64Editor();
-      }
-    });
-
-    initEditorsWithRetry([createInputEditor, createBase64Editor], () => {
-      if (containerEl) {
-        containerHeight = containerEl.clientHeight;
       }
     });
 
@@ -446,22 +388,13 @@
 
     if (containerEl) {
       resizeObserver.observe(containerEl);
+      containerHeight = containerEl.clientHeight;
     }
 
     return () => {
       cleanup();
-      inputEditor?.destroy();
-      base64Editor?.destroy();
       resizeObserver.disconnect();
     };
-  });
-
-  $effect(() => {
-    if (inputMode === "text") {
-      initEditorsWithRetry([createInputEditor]);
-    } else if (inputMode === "base64") {
-      initEditorsWithRetry([createBase64Editor]);
-    }
   });
 
   let debounceTimer: ReturnType<typeof setTimeout>;
@@ -626,7 +559,13 @@
     </span>
 
     {#if inputMode === "text"}
-      <div bind:this={inputEditorContainer} class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={textInput}
+          placeholder="Enter text to view as hex..."
+          extensions={editorExtensions}
+        />
+      </div>
     {:else if inputMode === "file"}
       <div class="flex items-center border border-(--color-border) bg-(--color-bg) p-4">
         <input type="file" id="file-input" onchange={handleFileChange} class="hidden" />
@@ -638,7 +577,13 @@
         {/if}
       </div>
     {:else if inputMode === "base64"}
-      <div bind:this={base64EditorContainer} class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={base64Input}
+          placeholder="Paste Base64 encoded data..."
+          extensions={editorExtensions}
+        />
+      </div>
     {/if}
   </div>
 

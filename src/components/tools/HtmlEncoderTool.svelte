@@ -1,25 +1,22 @@
 <script lang="ts">
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import { html } from "@codemirror/lang-html";
   import {
-    EditorView,
-    createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
 
   let mode = $state<"encode" | "decode">("encode");
   let encodeAllChars = $state(false);
   let error = $state("");
   let copied = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
 
-  let inputEditorContainer: HTMLDivElement;
-  let outputEditorContainer: HTMLDivElement;
-  let inputEditor: EditorView;
-  let outputEditor: EditorView;
+  let inputValue = $state("");
+  let outputValue = $state("");
 
   const htmlEntities: Record<string, string> = {
     "&": "&amp;",
@@ -75,83 +72,58 @@
 
   const convert = () => {
     error = "";
-    const input = getEditorContent(inputEditor);
 
-    if (!input.trim()) {
-      updateEditorContent(outputEditor, "");
+    if (!inputValue.trim()) {
+      outputValue = "";
       return;
     }
 
     try {
       let result: string;
       if (mode === "encode") {
-        result = encodeHtml(input);
+        result = encodeHtml(inputValue);
       } else {
-        result = decodeHtml(input);
+        result = decodeHtml(inputValue);
       }
-      updateEditorContent(outputEditor, result);
+      outputValue = result;
     } catch (e) {
       error = e instanceof Error ? e.message : "Conversion failed";
-      updateEditorContent(outputEditor, "");
+      outputValue = "";
     }
   };
 
-  const createInputEditor = (): boolean => {
-    if (!inputEditorContainer) return false;
-    const content = getEditorContent(inputEditor);
-    if (inputEditor) inputEditor.destroy();
+  // Extensions for input editor (with HTML language)
+  let inputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    html(),
+  ]);
 
-    inputEditor = createEditor({
-      container: inputEditorContainer,
-      config: {
-        dark: isDark,
-        language: html(),
-        placeholderText: mode === "encode" 
-          ? "Enter text with special characters like <div>, \"quotes\", & ampersands..." 
-          : "Enter HTML entities like &lt;div&gt;, &quot;quotes&quot;, &amp; ampersands...",
-        onUpdate: () => convert(),
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createOutputEditor = (): boolean => {
-    if (!outputEditorContainer) return false;
-    const content = getEditorContent(outputEditor);
-    if (outputEditor) outputEditor.destroy();
-
-    outputEditor = createEditor({
-      container: outputEditorContainer,
-      config: {
-        dark: isDark,
-        language: html(),
-        placeholderText: "Result will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
+  // Extensions for output editor (read-only, with HTML language)
+  let outputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+    html(),
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createInputEditor();
-        createOutputEditor();
-      }
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
-    initEditorsWithRetry([createInputEditor, createOutputEditor]);
+    return cleanup;
+  });
 
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-      outputEditor?.destroy();
-    };
+  // React to input value changes
+  $effect(() => {
+    inputValue;
+    convert();
   });
 
   // Re-convert when mode or options change
@@ -162,23 +134,21 @@
   });
 
   const handleSwap = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      updateEditorContent(inputEditor, output);
+    if (outputValue) {
+      inputValue = outputValue;
       mode = mode === "encode" ? "decode" : "encode";
       error = "";
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(inputEditor, "");
+    inputValue = "";
     error = "";
   };
 
   const handleCopy = () => {
-    const output = getEditorContent(outputEditor);
-    if (output) {
-      navigator.clipboard.writeText(output);
+    if (outputValue) {
+      navigator.clipboard.writeText(outputValue);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     }
@@ -186,9 +156,15 @@
 
   const handlePaste = () => {
     navigator.clipboard.readText().then((text) => {
-      updateEditorContent(inputEditor, text);
+      inputValue = text;
     });
   };
+
+  let inputPlaceholder = $derived(
+    mode === "encode" 
+      ? 'Enter text with special characters like <div>, "quotes", & ampersands...' 
+      : 'Enter HTML entities like &lt;div&gt;, &quot;quotes&quot;, &amp; ampersands...'
+  );
 </script>
 
 <div class="h-full flex flex-col">
@@ -267,10 +243,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={inputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={inputValue}
+          placeholder={inputPlaceholder}
+          extensions={inputExtensions}
+        />
+      </div>
     </div>
 
     <!-- Output Editor -->
@@ -295,10 +274,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={outputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={outputValue}
+          placeholder="Result will appear here..."
+          extensions={outputExtensions}
+        />
+      </div>
     </div>
   </div>
 </div>

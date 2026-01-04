@@ -1,12 +1,11 @@
 <script lang="ts">
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import {
-    EditorView,
-    createEditor,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
 
   type BitSize = 1024 | 2048 | 4096;
@@ -17,13 +16,11 @@
   let error = $state("");
   let copiedPublic = $state(false);
   let copiedPrivate = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
   let hasKeys = $state(false);
 
-  let publicKeyContainer: HTMLDivElement;
-  let privateKeyContainer: HTMLDivElement;
-  let publicKeyEditor: EditorView;
-  let privateKeyEditor: EditorView;
+  let publicKeyValue = $state("");
+  let privateKeyValue = $state("");
 
   const bitSizes: BitSize[] = [1024, 2048, 4096];
 
@@ -96,8 +93,8 @@
     generating = true;
     error = "";
     hasKeys = false;
-    updateEditorContent(publicKeyEditor, "");
-    updateEditorContent(privateKeyEditor, "");
+    publicKeyValue = "";
+    privateKeyValue = "";
 
     try {
       // Generate RSA key pair using Web Crypto API
@@ -131,8 +128,8 @@
         privateKeyPem = formatPem(privateKeyBase64, "PRIVATE");
       }
 
-      updateEditorContent(publicKeyEditor, publicKeyPem);
-      updateEditorContent(privateKeyEditor, privateKeyPem);
+      publicKeyValue = publicKeyPem;
+      privateKeyValue = privateKeyPem;
       hasKeys = true;
     } catch (e) {
       error = e instanceof Error ? e.message : "Key generation failed";
@@ -141,73 +138,36 @@
     }
   };
 
-  const createPublicKeyEditor = (): boolean => {
-    if (!publicKeyContainer) return false;
-    const content = getEditorContent(publicKeyEditor);
-    if (publicKeyEditor) publicKeyEditor.destroy();
-
-    publicKeyEditor = createEditor({
-      container: publicKeyContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Public key will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
-
-  const createPrivateKeyEditor = (): boolean => {
-    if (!privateKeyContainer) return false;
-    const content = getEditorContent(privateKeyEditor);
-    if (privateKeyEditor) privateKeyEditor.destroy();
-
-    privateKeyEditor = createEditor({
-      container: privateKeyContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Private key will appear here...",
-        readOnly: true,
-      },
-      initialContent: content,
-    });
-    return true;
-  };
+  // Extensions for output editors (read-only)
+  let outputExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    EditorView.editable.of(false),
+    EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createPublicKeyEditor();
-        createPrivateKeyEditor();
-      }
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
-    initEditorsWithRetry([createPublicKeyEditor, createPrivateKeyEditor]);
-
-    return () => {
-      cleanup();
-      publicKeyEditor?.destroy();
-      privateKeyEditor?.destroy();
-    };
+    return cleanup;
   });
 
   const handleCopyPublic = () => {
-    const content = getEditorContent(publicKeyEditor);
-    if (content) {
-      navigator.clipboard.writeText(content);
+    if (publicKeyValue) {
+      navigator.clipboard.writeText(publicKeyValue);
       copiedPublic = true;
       setTimeout(() => { copiedPublic = false; }, 2000);
     }
   };
 
   const handleCopyPrivate = () => {
-    const content = getEditorContent(privateKeyEditor);
-    if (content) {
-      navigator.clipboard.writeText(content);
+    if (privateKeyValue) {
+      navigator.clipboard.writeText(privateKeyValue);
       copiedPrivate = true;
       setTimeout(() => { copiedPrivate = false; }, 2000);
     }
@@ -226,22 +186,20 @@
   };
 
   const handleDownloadPublic = () => {
-    const content = getEditorContent(publicKeyEditor);
-    if (content) {
-      downloadFile(content, "id_rsa.pub");
+    if (publicKeyValue) {
+      downloadFile(publicKeyValue, "id_rsa.pub");
     }
   };
 
   const handleDownloadPrivate = () => {
-    const content = getEditorContent(privateKeyEditor);
-    if (content) {
-      downloadFile(content, "id_rsa");
+    if (privateKeyValue) {
+      downloadFile(privateKeyValue, "id_rsa");
     }
   };
 
   const handleClear = () => {
-    updateEditorContent(publicKeyEditor, "");
-    updateEditorContent(privateKeyEditor, "");
+    publicKeyValue = "";
+    privateKeyValue = "";
     hasKeys = false;
     error = "";
   };
@@ -333,10 +291,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={publicKeyContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={publicKeyValue}
+          placeholder="Public key will appear here..."
+          extensions={outputExtensions}
+        />
+      </div>
     </div>
 
     <!-- Private Key -->
@@ -362,10 +323,13 @@
           </button>
         </div>
       </div>
-      <div
-        bind:this={privateKeyContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={privateKeyValue}
+          placeholder="Private key will appear here..."
+          extensions={outputExtensions}
+        />
+      </div>
     </div>
   </div>
 

@@ -1,12 +1,7 @@
 <script lang="ts">
-  import {
-    EditorView,
-    createEditor,
-    createDarkModeObserver,
-    getInitialDarkMode,
-    getEditorContent,
-    initEditorsWithRetry,
-  } from "../../lib/codemirror.js";
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
+  import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
   import CryptoJS from "crypto-js";
 
   type InputMode = "text" | "file" | "url";
@@ -21,11 +16,15 @@
   let outputFormat = $state<OutputFormat>("hex");
   let isProcessing = $state(false);
   let copied = $state<string | null>(null);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
   let errorMessage = $state("");
 
-  let inputEditorContainer: HTMLDivElement;
-  let inputEditor: EditorView;
+  // CodeMirror extensions based on dark mode
+  let editorExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+  ]);
 
   interface HashResult {
     md5: string;
@@ -40,25 +39,6 @@
     sha256: "",
     sha512: "",
   });
-
-  const createInputEditor = (): boolean => {
-    if (!inputEditorContainer) return false;
-    const content = getEditorContent(inputEditor);
-    if (inputEditor) inputEditor.destroy();
-
-    inputEditor = createEditor({
-      container: inputEditorContainer,
-      config: {
-        dark: isDark,
-        placeholderText: "Enter text to hash...",
-        onUpdate: (content) => {
-          textInput = content;
-        },
-      },
-      initialContent: content || textInput,
-    });
-    return true;
-  };
 
   const arrayBufferToWordArray = (
     arrayBuffer: ArrayBuffer,
@@ -165,11 +145,6 @@
     urlInput = "";
     hashResults = { md5: "", sha1: "", sha256: "", sha512: "" };
     errorMessage = "";
-    if (inputEditor) {
-      inputEditor.dispatch({
-        changes: { from: 0, to: inputEditor.state.doc.length, insert: "" },
-      });
-    }
   };
 
   $effect(() => {
@@ -178,16 +153,10 @@
     const cleanup = createDarkModeObserver((newIsDark) => {
       if (newIsDark !== isDark) {
         isDark = newIsDark;
-        createInputEditor();
       }
     });
 
-    initEditorsWithRetry([createInputEditor]);
-
-    return () => {
-      cleanup();
-      inputEditor?.destroy();
-    };
+    return cleanup;
   });
 
   const hashTypes: { key: keyof HashResult; label: string }[] = [
@@ -196,13 +165,6 @@
     { key: "sha256", label: "SHA-256" },
     { key: "sha512", label: "SHA-512" },
   ];
-
-  // Recreate editor when switching back to text mode
-  $effect(() => {
-    if (inputMode === "text") {
-      initEditorsWithRetry([createInputEditor]);
-    }
-  });
 
   // Auto-hash with debouncing
   let debounceTimer: ReturnType<typeof setTimeout>;
@@ -394,10 +356,13 @@
     </span>
 
     {#if inputMode === "text"}
-      <div
-        bind:this={inputEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden bg-(--color-bg)">
+        <CodeMirror
+          bind:value={textInput}
+          placeholder="Enter text to hash..."
+          extensions={editorExtensions}
+        />
+      </div>
     {:else if inputMode === "file"}
       <div class="flex items-center border border-(--color-border) bg-(--color-bg) py-2 px-4">
         <input

@@ -2,6 +2,21 @@
   let showExtended = $state(false);
   let selectedCode = $state<number | null>(null);
   let copiedField = $state<string | null>(null);
+  let isDark = $state(false);
+
+  $effect(() => {
+    const checkDark = () => document.documentElement.classList.contains("dark");
+    isDark = checkDark();
+
+    const observer = new MutationObserver(() => {
+      isDark = checkDark();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  });
 
   const controlCharNames: Record<number, { name: string; escape: string; abbr: string }> = {
     0: { name: "NUL (Null)", escape: "\\0", abbr: "NUL" },
@@ -65,18 +80,21 @@
   };
 
   const getCellColor = (code: number): string => {
+    // Higher opacity in dark mode for better visibility
+    const opacity = isDark ? 0.35 : 0.15;
+    
     if (code < 32 || code === 127) {
-      return "rgba(239, 68, 68, 0.15)";
+      return `rgba(239, 68, 68, ${opacity})`;
     } else if (code === 32) {
-      return "rgba(107, 114, 128, 0.15)";
+      return `rgba(107, 114, 128, ${opacity})`;
     } else if (code >= 48 && code <= 57) {
-      return "rgba(59, 130, 246, 0.15)";
+      return `rgba(59, 130, 246, ${opacity})`;
     } else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
-      return "rgba(34, 197, 94, 0.15)";
+      return `rgba(34, 197, 94, ${opacity})`;
     } else if (code >= 128) {
-      return "rgba(168, 85, 247, 0.15)";
+      return `rgba(168, 85, 247, ${opacity})`;
     } else {
-      return "rgba(234, 179, 8, 0.15)";
+      return `rgba(234, 179, 8, ${opacity})`;
     }
   };
 
@@ -304,28 +322,28 @@
     <!-- Legend -->
     <div class="mt-4 flex flex-wrap gap-4 text-xs text-(--color-text-muted)">
       <div class="flex items-center gap-2">
-        <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(239, 68, 68, 0.15)"></span>
+        <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(0)}"></span>
         <span>Control</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(107, 114, 128, 0.15)"></span>
+        <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(32)}"></span>
         <span>Space</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(59, 130, 246, 0.15)"></span>
+        <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(48)}"></span>
         <span>Digits</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(34, 197, 94, 0.15)"></span>
+        <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(65)}"></span>
         <span>Letters</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(234, 179, 8, 0.15)"></span>
+        <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(33)}"></span>
         <span>Symbols</span>
       </div>
       {#if showExtended}
         <div class="flex items-center gap-2">
-          <span class="w-4 h-4 border border-(--color-border)" style="background-color: rgba(168, 85, 247, 0.15)"></span>
+          <span class="w-4 h-4 border border-(--color-border)" style="background-color: {getCellColor(128)}"></span>
           <span>Extended</span>
         </div>
       {/if}

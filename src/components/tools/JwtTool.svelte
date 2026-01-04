@@ -1,14 +1,12 @@
 <script lang="ts">
+  import CodeMirror from "svelte-codemirror-editor";
+  import { EditorView } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
   import {
-    EditorView,
-    EditorState,
-    createBaseExtensions,
     createDarkModeObserver,
     getInitialDarkMode,
-    updateEditorContent,
-    getEditorContent,
-    initEditorsWithRetry,
+    createTheme,
+    editorHeightExtension,
   } from "../../lib/codemirror.js";
   import * as jose from "jose";
 
@@ -19,13 +17,11 @@
   let algorithm = $state<Algorithm>("HS256");
   let error = $state("");
   let copiedToken = $state(false);
-  let isDark = $state(false);
+  let isDark = $state(getInitialDarkMode());
   let isSigningEnabled = $state(false);
 
-  let headerEditorContainer: HTMLDivElement;
-  let payloadEditorContainer: HTMLDivElement;
-  let headerEditor: EditorView;
-  let payloadEditor: EditorView;
+  let headerValue = $state("");
+  let payloadValue = $state("");
   let mounted = $state(false);
   let signTimeout: ReturnType<typeof setTimeout> | null = null;
   
@@ -71,8 +67,8 @@
 
     const token = tokenInput.trim();
     if (!token) {
-      updateEditorContent(headerEditor, "");
-      updateEditorContent(payloadEditor, "");
+      headerValue = "";
+      payloadValue = "";
       return;
     }
 
@@ -85,8 +81,8 @@
       const header = JSON.parse(atob(parts[0].replace(/-/g, "+").replace(/_/g, "/")));
       const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
 
-      updateEditorContent(headerEditor, JSON.stringify(header, null, 2));
-      updateEditorContent(payloadEditor, JSON.stringify(payload, null, 2));
+      headerValue = JSON.stringify(header, null, 2);
+      payloadValue = JSON.stringify(payload, null, 2);
 
       // Update algorithm from header
       if (header.alg && algorithmOptions.includes(header.alg)) {
@@ -94,18 +90,15 @@
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to decode JWT";
-      updateEditorContent(headerEditor, "");
-      updateEditorContent(payloadEditor, "");
+      headerValue = "";
+      payloadValue = "";
     }
   };
 
   const signToken = async () => {
     if (!isSigningEnabled) return;
-    
-    const headerContent = getEditorContent(headerEditor);
-    const payloadContent = getEditorContent(payloadEditor);
 
-    if (!payloadContent.trim()) {
+    if (!payloadValue.trim()) {
       tokenInput = "";
       lastTokenFromSign = "";
       return;
@@ -119,12 +112,12 @@
     error = "";
 
     try {
-      const payload = JSON.parse(payloadContent);
+      const payload = JSON.parse(payloadValue);
       let header: jose.JWTHeaderParameters = { alg: algorithm, typ: "JWT" };
       
-      if (headerContent.trim()) {
+      if (headerValue.trim()) {
         try {
-          const parsedHeader = JSON.parse(headerContent);
+          const parsedHeader = JSON.parse(headerValue);
           header = { ...header, ...parsedHeader, alg: algorithm };
         } catch {
           // Use default header if parsing fails
@@ -168,75 +161,42 @@
     }, 300);
   };
 
-  const createHeaderEditor = (readOnly: boolean): boolean => {
-    if (!headerEditorContainer) return false;
-    const content = getEditorContent(headerEditor);
-    if (headerEditor) headerEditor.destroy();
+  // Extensions for header editor - toggle between editable and read-only
+  let headerExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    json(),
+    ...(isSigningEnabled ? [] : [
+      EditorView.editable.of(false),
+      EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+    ]),
+  ]);
 
-    const extensions = createBaseExtensions({
-      dark: isDark,
-      language: json(),
-      placeholderText: '{"alg": "HS256", "typ": "JWT"}',
-      readOnly: readOnly,
-      onUpdate: readOnly ? undefined : () => debouncedSignToken(),
-    });
-
-    headerEditor = new EditorView({
-      state: EditorState.create({
-        doc: content,
-        extensions,
-      }),
-      parent: headerEditorContainer,
-    });
-    return true;
-  };
-
-  const createPayloadEditor = (readOnly: boolean): boolean => {
-    if (!payloadEditorContainer) return false;
-    const content = getEditorContent(payloadEditor);
-    if (payloadEditor) payloadEditor.destroy();
-
-    const extensions = createBaseExtensions({
-      dark: isDark,
-      language: json(),
-      placeholderText: '{\n  "sub": "1234567890",\n  "name": "John Doe",\n  "iat": 1516239022\n}',
-      readOnly: readOnly,
-      onUpdate: readOnly ? undefined : () => debouncedSignToken(),
-    });
-
-    payloadEditor = new EditorView({
-      state: EditorState.create({
-        doc: content,
-        extensions,
-      }),
-      parent: payloadEditorContainer,
-    });
-    return true;
-  };
+  // Extensions for payload editor - toggle between editable and read-only
+  let payloadExtensions = $derived([
+    ...createTheme(isDark),
+    editorHeightExtension,
+    EditorView.lineWrapping,
+    json(),
+    ...(isSigningEnabled ? [] : [
+      EditorView.editable.of(false),
+      EditorView.contentAttributes.of({ "aria-readonly": "true" }),
+    ]),
+  ]);
 
   $effect(() => {
     isDark = getInitialDarkMode();
 
     const cleanup = createDarkModeObserver((newIsDark) => {
-      if (newIsDark !== isDark) {
-        isDark = newIsDark;
-        createHeaderEditor(!isSigningEnabled);
-        createPayloadEditor(!isSigningEnabled);
-      }
+      if (newIsDark !== isDark) isDark = newIsDark;
     });
 
-    initEditorsWithRetry([
-      () => createHeaderEditor(!isSigningEnabled),
-      () => createPayloadEditor(!isSigningEnabled),
-    ], () => {
-      mounted = true;
-    });
+    mounted = true;
 
     return () => {
       cleanup();
       if (signTimeout) clearTimeout(signTimeout);
-      headerEditor?.destroy();
-      payloadEditor?.destroy();
     };
   });
 
@@ -258,15 +218,12 @@
     }
   });
 
-  // Recreate editors when signing mode changes
-  let prevSigningEnabled = $state(isSigningEnabled);
+  // Re-sign when header/payload changes in signing mode
   $effect(() => {
-    if (mounted && isSigningEnabled !== prevSigningEnabled) {
-      prevSigningEnabled = isSigningEnabled;
-      initEditorsWithRetry([
-        () => createHeaderEditor(!isSigningEnabled),
-        () => createPayloadEditor(!isSigningEnabled),
-      ]);
+    headerValue;
+    payloadValue;
+    if (mounted && isSigningEnabled) {
+      debouncedSignToken();
     }
   });
 
@@ -290,8 +247,8 @@
     tokenInput = "";
     secret = "";
     error = "";
-    updateEditorContent(headerEditor, "");
-    updateEditorContent(payloadEditor, "");
+    headerValue = "";
+    payloadValue = "";
   };
 
   const handleSampleToken = () => {
@@ -432,10 +389,13 @@
           <span class="text-xs text-(--color-text-muted)">Editable</span>
         {/if}
       </div>
-      <div
-        bind:this={headerEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={headerValue}
+          placeholder={'{"alg": "HS256", "typ": "JWT"}'}
+          extensions={headerExtensions}
+        />
+      </div>
     </div>
 
     <!-- Payload -->
@@ -448,10 +408,13 @@
           <span class="text-xs text-(--color-text-muted)">Editable</span>
         {/if}
       </div>
-      <div
-        bind:this={payloadEditorContainer}
-        class="flex-1 border border-(--color-border) overflow-hidden"
-      ></div>
+      <div class="flex-1 border border-(--color-border) overflow-hidden">
+        <CodeMirror
+          bind:value={payloadValue}
+          placeholder={'{\n  "sub": "1234567890",\n  "name": "John Doe",\n  "iat": 1516239022\n}'}
+          extensions={payloadExtensions}
+        />
+      </div>
     </div>
   </div>
 
