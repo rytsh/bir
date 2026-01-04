@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AnsiTool from "../../components/tools/AnsiTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/ansi");
+---
+
+<Layout title="ANSI Colors - Terminal Color Codes" description={tool?.description} keywords={tool?.keywords} currentPath="/text/ansi">
+  <h1 slot="navbar-title">ANSI Colors</h1>
+  <AnsiTool client:load />
+</Layout>

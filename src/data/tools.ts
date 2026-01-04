@@ -21,6 +21,22 @@ const rawCategories: Category[] = [
     icon: "📝",
     tools: [
       {
+        id: "ascii-table",
+        name: "ASCII Table",
+        description: "ASCII character reference table with decimal, hex, octal, and binary codes",
+        icon: "📋",
+        path: "/text/ascii",
+        keywords: "ascii table, ascii chart, character codes, ascii reference, hex codes, binary, octal, control characters, character map",
+      },
+      {
+        id: "ansi-colors",
+        name: "ANSI Colors",
+        description: "Generate ANSI escape codes for colored terminal text with live preview",
+        icon: "🎨",
+        path: "/text/ansi",
+        keywords: "ansi colors, terminal colors, escape codes, ansi escape, color codes, terminal styling, console colors, shell colors",
+      },
+      {
         id: "text-diff",
         name: "Diff",
         description: "Compare two texts and highlight differences",
