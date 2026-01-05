@@ -43,7 +43,7 @@
   let activeTab = $state<TabType>("barcode");
   let selectedType = $state("qrcode");
   let inputText = $state("Hello World");
-  let outputFormat = $state<OutputFormat>("png");
+  let outputFormat = $state<OutputFormat>("svg");
   let foregroundColor = $state("#000000");
   let backgroundColor = $state("#ffffff");
   let transparentBackground = $state(false);

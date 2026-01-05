@@ -137,7 +137,7 @@ const rawCategories: Category[] = [
         id: "timestamp-converter",
         name: "Timestamp",
         description: "Convert Unix timestamps to human-readable dates and formats",
-        icon: "⏰",
+        icon: "🕰️",
         path: "/converter/timestamp",
         keywords: "timestamp converter, unix timestamp, epoch time, date converter, unix time, epoch converter, time converter, rfc3339, iso8601",
       },
