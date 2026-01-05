@@ -173,10 +173,10 @@ const twitterImage = new URL("/og.jpg", Astro.site);
         })();
       </script>
 
-      <div class="flex flex-col flex-1 min-h-full">
+      <div class="flex flex-col flex-1 min-h-full h-fit lg:h-full">
         <!-- Navbar -->
         <header
-          class="shrink-0 bg-(--color-sidebar) text-white flex items-center justify-between"
+          class="shrink-0 bg-(--color-sidebar) text-white flex items-center justify-between sticky top-0 z-10"
         >
           <button
             id="menu-toggle"
@@ -220,7 +220,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
           </div>
         </header>
         <!-- Main Content -->
-        <main class="flex-1 p-4 pt-1 w-full mx-auto overflow-auto">
+        <main class="flex-1 p-4 pt-1 w-full mx-auto lg:overflow-auto lg:grid">
           <slot />
         </main>
       </div>
