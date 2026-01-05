@@ -93,6 +93,14 @@ const rawCategories: Category[] = [
         path: "/text/obfuscator",
         keywords: "text obfuscator, mask text, hide text, asterisk, rot13, leetspeak, 1337, scramble text, censor text, redact text, privacy, obfuscation",
       },
+      {
+        id: "ascii-art",
+        name: "ASCII Art",
+        description: "Generate ASCII art text using various stylized fonts like Banner, Doom, and Graffiti",
+        icon: "🪧",
+        path: "/text/ascii-art",
+        keywords: "ascii art, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text",
+      },
     ],
   },
   {

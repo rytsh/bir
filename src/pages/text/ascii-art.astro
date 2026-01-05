@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AsciiArtTool from "../../components/tools/AsciiArtTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/ascii-art");
+---
+
+<Layout title="ASCII Art Generator" description={tool?.description} keywords={tool?.keywords} currentPath="/text/ascii-art">
+  <h1 slot="navbar-title">ASCII Art</h1>
+  <AsciiArtTool client:load />
+</Layout>
