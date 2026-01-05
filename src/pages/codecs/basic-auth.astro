@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BasicAuthTool from "../../components/tools/BasicAuthTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/basic-auth");
+---
+
+<Layout title="Basic Auth Encoder & Decoder - HTTP Authorization Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/basic-auth">
+  <h1 slot="navbar-title">Basic Auth Encoder & Decoder</h1>
+  <BasicAuthTool client:load />
+</Layout>

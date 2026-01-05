@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import KeyCodeTool from "../../components/tools/KeyCodeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/key-code");
+---
+
+<Layout title="Key Code - JavaScript Keyboard Event Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/key-code">
+  <h1 slot="navbar-title">Key Code</h1>
+  <KeyCodeTool client:load />
+</Layout>
