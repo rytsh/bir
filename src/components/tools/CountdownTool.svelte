@@ -19,6 +19,7 @@
     fontSize: number;
     enableSound: boolean;
     enableFlashing: boolean;
+    showProgressBar: boolean;
   }
 
   const STORAGE_KEY = "countdown-timer-settings";
@@ -35,6 +36,7 @@
     fontSize: 8,
     enableSound: true,
     enableFlashing: true,
+    showProgressBar: true,
   };
 
   const presets: Preset[] = [
@@ -238,6 +240,7 @@
   // End of time settings
   let enableSound = $state(defaults.enableSound);
   let enableFlashing = $state(defaults.enableFlashing);
+  let showProgressBar = $state(defaults.showProgressBar);
   let isFlashing = $state(false);
   let flashIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -247,8 +250,207 @@
   // Settings loaded flag to prevent saving during initial load
   let settingsLoaded = $state(false);
 
+  // Cast Mode state
+  type ViewMode = "timer" | "cast";
+  let viewMode = $state<ViewMode>("timer");
+  let castCanvas = $state<HTMLCanvasElement | null>(null);
+  let castVideo = $state<HTMLVideoElement | null>(null);
+  let mediaStream: MediaStream | null = null;
+  let canvasAnimationId: number | null = null;
+  let castAudioContext: AudioContext | null = null;
+  let castAudioDestination: MediaStreamAudioDestinationNode | null = null;
+  let castAudioEnabled = $state(false);
+
   // Audio context for beep sound
   let audioContext: AudioContext | null = null;
+
+  // Enable audio for cast mode (requires user interaction on iOS)
+  const enableCastAudio = async () => {
+    if (castVideo) {
+      castVideo.muted = false;
+      try {
+        await castVideo.play();
+      } catch (e) {
+        console.warn("Video play failed:", e);
+      }
+    }
+    // Resume audio contexts if suspended (iOS requirement)
+    if (castAudioContext?.state === "suspended") {
+      await castAudioContext.resume();
+    }
+    if (audioContext?.state === "suspended") {
+      await audioContext.resume();
+    }
+    castAudioEnabled = true;
+  };
+
+  // Canvas rendering for Cast Mode
+  const renderCanvasFrame = () => {
+    if (!castCanvas) return;
+
+    const ctx = castCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = castCanvas.width;
+    const height = castCanvas.height;
+
+    // Get current background color (handle flashing)
+    const currentBg = isFlashing
+      ? backgroundColor === "#ffffff"
+        ? "#ff0000"
+        : "#ffffff"
+      : backgroundColor;
+
+    // Clear and fill background
+    ctx.fillStyle = currentBg;
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw timer text
+    ctx.fillStyle = timerColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Calculate font size relative to canvas (scale from rem to px, then to canvas)
+    // fontSize is in rem, we'll use a base calculation for canvas
+    const canvasFontSize = Math.min(width, height) * 0.2 * (fontSize / 8);
+    ctx.font = `${timerFontWeight ?? "bold"} ${canvasFontSize}px ${timerFontFamily}`;
+
+    ctx.fillText(displayTime, width / 2, height / 2);
+
+    // Draw progress bar
+    if (showProgressBar && (isRunning || remainingMs > 0)) {
+      const barHeight = 4;
+      const barWidth = (progress / 100) * width;
+      ctx.fillStyle = timerColor;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(0, height - barHeight, barWidth, barHeight);
+      ctx.globalAlpha = 1.0;
+    }
+  };
+
+  // Start canvas animation loop for Cast Mode
+  const startCanvasLoop = () => {
+    const animate = () => {
+      renderCanvasFrame();
+      canvasAnimationId = requestAnimationFrame(animate);
+    };
+    animate();
+  };
+
+  // Stop canvas animation loop
+  const stopCanvasLoop = () => {
+    if (canvasAnimationId !== null) {
+      cancelAnimationFrame(canvasAnimationId);
+      canvasAnimationId = null;
+    }
+  };
+
+  // Initialize Cast Mode stream
+  const initCastMode = () => {
+    if (!castCanvas || !castVideo) return;
+
+    // Set canvas size for good video quality
+    castCanvas.width = 1920;
+    castCanvas.height = 1080;
+
+    // Render initial frame
+    renderCanvasFrame();
+
+    // Create media stream from canvas
+    try {
+      mediaStream = castCanvas.captureStream(30); // 30 FPS
+
+      // Create audio context and destination for cast audio
+      castAudioContext = new AudioContext();
+      castAudioDestination = castAudioContext.createMediaStreamDestination();
+
+      // Add audio track to the media stream
+      const audioTrack = castAudioDestination.stream.getAudioTracks()[0];
+      if (audioTrack) {
+        mediaStream.addTrack(audioTrack);
+      }
+
+      castVideo.srcObject = mediaStream;
+      castVideo
+        .play()
+        .catch((e: Error) => console.warn("Video play failed:", e));
+
+      // Start render loop
+      startCanvasLoop();
+    } catch (e) {
+      console.error("Failed to initialize cast mode:", e);
+    }
+  };
+
+  // Cleanup Cast Mode
+  const cleanupCastMode = () => {
+    stopCanvasLoop();
+
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      mediaStream = null;
+    }
+
+    if (castVideo) {
+      castVideo.srcObject = null;
+    }
+
+    if (castAudioContext) {
+      castAudioContext.close();
+      castAudioContext = null;
+      castAudioDestination = null;
+    }
+    castAudioEnabled = false;
+  };
+
+  // Effect to handle Cast Mode initialization/cleanup
+  $effect(() => {
+    if (viewMode === "cast" && castCanvas && castVideo) {
+      // Small delay to ensure DOM is ready
+      const timeoutId = setTimeout(() => {
+        initCastMode();
+      }, 100);
+
+      return () => {
+        clearTimeout(timeoutId);
+        cleanupCastMode();
+      };
+    }
+  });
+
+  // Toggle native video fullscreen (best for AirPlay/Cast)
+  // const toggleVideoFullscreen = async () => {
+  //   if (!castVideo) return;
+
+  //   try {
+  //     // Check if video is currently in fullscreen
+  //     if (
+  //       document.fullscreenElement === castVideo ||
+  //       (document as any).webkitFullscreenElement === castVideo
+  //     ) {
+  //       // Exit fullscreen
+  //       if (document.exitFullscreen) {
+  //         await document.exitFullscreen();
+  //       } else if ((document as any).webkitExitFullscreen) {
+  //         await (document as any).webkitExitFullscreen();
+  //       }
+  //     } else {
+  //       // Enter fullscreen on the video element
+  //       if (castVideo.requestFullscreen) {
+  //         await castVideo.requestFullscreen();
+  //       } else if ((castVideo as any).webkitRequestFullscreen) {
+  //         await (castVideo as any).webkitRequestFullscreen();
+  //       } else if ((castVideo as any).webkitEnterFullscreen) {
+  //         // iOS Safari specific
+  //         await (castVideo as any).webkitEnterFullscreen();
+  //       }
+  //     }
+  //   } catch (e) {
+  //     console.warn("Video fullscreen failed:", e);
+  //   }
+  // };
 
   // Load settings from localStorage
   const loadSettings = () => {
@@ -270,6 +472,8 @@
           enableSound = settings.enableSound;
         if (settings.enableFlashing !== undefined)
           enableFlashing = settings.enableFlashing;
+        if (settings.showProgressBar !== undefined)
+          showProgressBar = settings.showProgressBar;
       }
     } catch (e) {
       console.warn("Failed to load settings:", e);
@@ -292,6 +496,7 @@
         fontSize,
         enableSound,
         enableFlashing,
+        showProgressBar,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch (e) {
@@ -318,6 +523,7 @@
     fontSize = defaults.fontSize;
     enableSound = defaults.enableSound;
     enableFlashing = defaults.enableFlashing;
+    showProgressBar = defaults.showProgressBar;
   };
 
   // Load settings on mount
@@ -338,6 +544,7 @@
     fontSize;
     enableSound;
     enableFlashing;
+    showProgressBar;
 
     saveSettings();
   });
@@ -369,65 +576,46 @@
   const playBeep = () => {
     if (!enableSound) return;
 
+    // Helper to play beep on a given audio context and destination
+    const playBeepOn = (
+      ctx: AudioContext,
+      dest: AudioNode,
+      delayMs: number,
+      freq: number,
+      duration: number,
+    ) => {
+      setTimeout(() => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.frequency.value = freq;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(
+          0.01,
+          ctx.currentTime + duration,
+        );
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + duration);
+      }, delayMs);
+    };
+
     try {
+      // Play on main audio context (device speakers)
       if (!audioContext) {
         audioContext = new AudioContext();
       }
+      playBeepOn(audioContext, audioContext.destination, 0, 800, 0.5);
+      playBeepOn(audioContext, audioContext.destination, 600, 800, 0.5);
+      playBeepOn(audioContext, audioContext.destination, 1200, 1000, 0.8);
 
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.value = 800;
-      oscillator.type = "sine";
-
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        audioContext.currentTime + 0.5,
-      );
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
-
-      // Play 3 beeps
-      setTimeout(() => {
-        if (audioContext) {
-          const osc2 = audioContext.createOscillator();
-          const gain2 = audioContext.createGain();
-          osc2.connect(gain2);
-          gain2.connect(audioContext.destination);
-          osc2.frequency.value = 800;
-          osc2.type = "sine";
-          gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gain2.gain.exponentialRampToValueAtTime(
-            0.01,
-            audioContext.currentTime + 0.5,
-          );
-          osc2.start(audioContext.currentTime);
-          osc2.stop(audioContext.currentTime + 0.5);
-        }
-      }, 600);
-
-      setTimeout(() => {
-        if (audioContext) {
-          const osc3 = audioContext.createOscillator();
-          const gain3 = audioContext.createGain();
-          osc3.connect(gain3);
-          gain3.connect(audioContext.destination);
-          osc3.frequency.value = 1000;
-          osc3.type = "sine";
-          gain3.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gain3.gain.exponentialRampToValueAtTime(
-            0.01,
-            audioContext.currentTime + 0.8,
-          );
-          osc3.start(audioContext.currentTime);
-          osc3.stop(audioContext.currentTime + 0.8);
-        }
-      }, 1200);
+      // Also play on cast audio context if in cast mode (for AirPlay audio)
+      if (viewMode === "cast" && castAudioContext && castAudioDestination) {
+        playBeepOn(castAudioContext, castAudioDestination, 0, 800, 0.5);
+        playBeepOn(castAudioContext, castAudioDestination, 600, 800, 0.5);
+        playBeepOn(castAudioContext, castAudioDestination, 1200, 1000, 0.8);
+      }
     } catch (e) {
       console.warn("Audio playback failed:", e);
     }
@@ -531,10 +719,26 @@
     }
   };
 
-  // React to color preset selection changes
+  // React to color preset selection changes (only apply size when preset changes, not on initial load)
+  let lastColorPreset: string | null = null;
+  
   $effect(() => {
     if (selectedColorPreset && selectedColorPreset !== "Custom") {
-      applyColorPreset(selectedColorPreset);
+      const isInitialLoad = lastColorPreset === null;
+      const presetChanged = lastColorPreset !== null && lastColorPreset !== selectedColorPreset;
+      
+      if (isInitialLoad) {
+        // Initial load: apply colors/font but preserve saved fontSize
+        const savedFontSize = fontSize;
+        applyColorPreset(selectedColorPreset);
+        fontSize = savedFontSize;
+      } else if (presetChanged) {
+        // User changed preset: apply everything including size
+        applyColorPreset(selectedColorPreset);
+      }
+      // If neither (same preset, not initial): don't apply anything
+      
+      lastColorPreset = selectedColorPreset;
     }
   });
 
@@ -589,8 +793,14 @@
 
   // Fullscreen
   let timerContainer: HTMLDivElement | null = $state(null);
+  let castContainer: HTMLDivElement | null = $state(null);
   let isFullscreen = $state(false);
   let isOverlayFullscreen = $state(false); // Track if using CSS overlay fallback
+
+  // Get the active container based on view mode
+  const getActiveContainer = (): HTMLDivElement | null => {
+    return viewMode === "cast" ? castContainer : timerContainer;
+  };
 
   const progress = $derived(
     getTotalMs() > 0 ? (remainingMs / getTotalMs()) * 100 : 0,
@@ -612,13 +822,14 @@
 
   // Enable CSS overlay fullscreen
   const enableOverlayFullscreen = () => {
-    if (!timerContainer) return;
-    timerContainer.style.position = "fixed";
-    timerContainer.style.top = "0";
-    timerContainer.style.left = "0";
-    timerContainer.style.width = "100vw";
-    timerContainer.style.height = "100vh";
-    timerContainer.style.zIndex = "9999";
+    const container = getActiveContainer();
+    if (!container) return;
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.zIndex = "9999";
     isOverlayFullscreen = true;
     isFullscreen = true;
     document.body.style.overflow = "hidden";
@@ -626,20 +837,25 @@
 
   // Disable CSS overlay fullscreen
   const disableOverlayFullscreen = () => {
-    if (!timerContainer) return;
-    timerContainer.style.position = "";
-    timerContainer.style.top = "";
-    timerContainer.style.left = "";
-    timerContainer.style.width = "";
-    timerContainer.style.height = "";
-    timerContainer.style.zIndex = "";
+    // Reset both containers to be safe
+    [timerContainer, castContainer].forEach((container) => {
+      if (container) {
+        container.style.position = "";
+        container.style.top = "";
+        container.style.left = "";
+        container.style.width = "";
+        container.style.height = "";
+        container.style.zIndex = "";
+      }
+    });
     isOverlayFullscreen = false;
     isFullscreen = false;
     document.body.style.overflow = "";
   };
 
   const toggleFullscreen = async () => {
-    if (!timerContainer) return;
+    const container = getActiveContainer();
+    if (!container) return;
 
     // If currently in overlay mode, exit overlay
     if (isOverlayFullscreen) {
@@ -648,10 +864,12 @@
     }
 
     // If currently in native fullscreen, exit it
-    if (document.fullscreenElement || 
-        (document as any).webkitFullscreenElement ||
-        (document as any).mozFullScreenElement ||
-        (document as any).msFullscreenElement) {
+    if (
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    ) {
       try {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
@@ -679,14 +897,14 @@
 
     // Try native fullscreen API
     try {
-      if (timerContainer.requestFullscreen) {
-        await timerContainer.requestFullscreen();
-      } else if ((timerContainer as any).webkitRequestFullscreen) {
-        await (timerContainer as any).webkitRequestFullscreen();
-      } else if ((timerContainer as any).mozRequestFullScreen) {
-        await (timerContainer as any).mozRequestFullScreen();
-      } else if ((timerContainer as any).msRequestFullscreen) {
-        await (timerContainer as any).msRequestFullscreen();
+      if (container.requestFullscreen) {
+        await container.requestFullscreen();
+      } else if ((container as any).webkitRequestFullscreen) {
+        await (container as any).webkitRequestFullscreen();
+      } else if ((container as any).mozRequestFullScreen) {
+        await (container as any).mozRequestFullScreen();
+      } else if ((container as any).msRequestFullscreen) {
+        await (container as any).msRequestFullscreen();
       } else {
         // No fullscreen method available, use overlay
         enableOverlayFullscreen();
@@ -763,9 +981,16 @@
     document.addEventListener("MSFullscreenChange", handleFullscreenChange);
     document.addEventListener("keydown", handleKeydown);
 
-    // Add touch event listener to the timer container
+    // Add touch event listener to both containers
     if (timerContainer) {
-      timerContainer.addEventListener("touchstart", handleTouchStart, { passive: false });
+      timerContainer.addEventListener("touchstart", handleTouchStart, {
+        passive: false,
+      });
+    }
+    if (castContainer) {
+      castContainer.addEventListener("touchstart", handleTouchStart, {
+        passive: false,
+      });
     }
 
     return () => {
@@ -786,6 +1011,9 @@
 
       if (timerContainer) {
         timerContainer.removeEventListener("touchstart", handleTouchStart);
+      }
+      if (castContainer) {
+        castContainer.removeEventListener("touchstart", handleTouchStart);
       }
 
       // Clean up overlay state if component unmounts
@@ -1129,6 +1357,14 @@
             />
             <span class="text-sm text-(--color-text)">Flash Screen</span>
           </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              bind:checked={showProgressBar}
+              class="w-4 h-4 accent-(--color-accent)"
+            />
+            <span class="text-sm text-(--color-text)">Progress Bar</span>
+          </label>
         </div>
 
         <div class="flex gap-2">
@@ -1216,92 +1452,178 @@
 
   <!-- Timer Display -->
   <div class="flex-1 flex flex-col min-h-[300px]">
-    <div
-      bind:this={timerContainer}
-      class="flex-1 flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-200 {isFullscreen
-        ? 'min-h-screen w-full'
-        : 'border border-(--color-border)'}"
-      style="background-color: {isFlashing
-        ? backgroundColor === '#ffffff'
-          ? '#ff0000'
-          : '#ffffff'
-        : backgroundColor};"
-    >
-      <!-- Frame corners (shown in fullscreen when ready to start) -->
-      {#if showFrameCorners}
-        <!-- Top left corner -->
-        <div
-          class="absolute top-8 left-8 w-16 h-16 border-l-4 border-t-4 transition-opacity duration-300"
-          style="border-color: {timerColor}; opacity: 0.6;"
-        ></div>
-        <!-- Top right corner -->
-        <div
-          class="absolute top-8 right-8 w-16 h-16 border-r-4 border-t-4 transition-opacity duration-300"
-          style="border-color: {timerColor}; opacity: 0.6;"
-        ></div>
-        <!-- Bottom left corner -->
-        <div
-          class="absolute bottom-8 left-8 w-16 h-16 border-l-4 border-b-4 transition-opacity duration-300"
-          style="border-color: {timerColor}; opacity: 0.6;"
-        ></div>
-        <!-- Bottom right corner -->
-        <div
-          class="absolute bottom-8 right-8 w-16 h-16 border-r-4 border-b-4 transition-opacity duration-300"
-          style="border-color: {timerColor}; opacity: 0.6;"
-        ></div>
-        <!-- Spacebar hint -->
-        {#if showFrameCorners && showHint}
-          <div
-            class="absolute bottom-12 text-sm uppercase tracking-widest transition-opacity duration-300"
-            style="color: {timerColor}; opacity: 0.4;"
-            out:fade={{ duration: 500 }}
-          >
-            Press Space to Start
-          </div>
-        {/if}
-      {/if}
-
-      <!-- Close button for overlay fullscreen mode -->
-      {#if isOverlayFullscreen}
-        <button
-          onclick={disableOverlayFullscreen}
-          class="absolute top-4 right-4 p-2 rounded-full transition-opacity duration-200 hover:opacity-100"
-          style="color: {timerColor}; opacity: 0.5;"
-          title="Exit fullscreen (ESC)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      {/if}
-
-      <!-- Progress bar -->
-      {#if isRunning || remainingMs > 0}
-        <div
-          class="absolute bottom-0 left-0 h-1 transition-all duration-100"
-          style="width: {progress}%; background-color: {timerColor}; opacity: 0.5;"
-        ></div>
-      {/if}
-
-      <!-- Timer -->
-      <div
-        class="tracking-wider transition-colors duration-200"
-        style="color: {timerColor}; font-family: {timerFontFamily}; font-size: {fontSize}rem; font-weight: {timerFontWeight ??
-          'bold'};"
+    <!-- View Mode Tabs -->
+    <div class="flex border-b border-(--color-border) mb-0">
+      <button
+        onclick={() => (viewMode = "timer")}
+        class="px-4 py-2 text-sm font-medium transition-colors {viewMode ===
+        'timer'
+          ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
       >
-        {displayTime}
-      </div>
+        Timer
+      </button>
+      <button
+        onclick={() => (viewMode = "cast")}
+        class="px-4 py-2 text-sm font-medium transition-colors {viewMode ===
+        'cast'
+          ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+      >
+        Cast / AirPlay
+      </button>
     </div>
+
+    {#if viewMode === "timer"}
+      <!-- Normal Timer View -->
+      <div
+        bind:this={timerContainer}
+        class="flex-1 flex flex-col items-center justify-center relative overflow-hidden transition-colors duration-200 {isFullscreen
+          ? 'min-h-screen w-full'
+          : 'border border-t-0 border-(--color-border)'}"
+        style="background-color: {isFlashing
+          ? backgroundColor === '#ffffff'
+            ? '#ff0000'
+            : '#ffffff'
+          : backgroundColor};"
+      >
+        <!-- Frame corners (shown in fullscreen when ready to start) -->
+        {#if showFrameCorners}
+          <!-- Top left corner -->
+          <div
+            class="absolute top-8 left-8 w-16 h-16 border-l-4 border-t-4 transition-opacity duration-300"
+            style="border-color: {timerColor}; opacity: 0.6;"
+          ></div>
+          <!-- Top right corner -->
+          <div
+            class="absolute top-8 right-8 w-16 h-16 border-r-4 border-t-4 transition-opacity duration-300"
+            style="border-color: {timerColor}; opacity: 0.6;"
+          ></div>
+          <!-- Bottom left corner -->
+          <div
+            class="absolute bottom-8 left-8 w-16 h-16 border-l-4 border-b-4 transition-opacity duration-300"
+            style="border-color: {timerColor}; opacity: 0.6;"
+          ></div>
+          <!-- Bottom right corner -->
+          <div
+            class="absolute bottom-8 right-8 w-16 h-16 border-r-4 border-b-4 transition-opacity duration-300"
+            style="border-color: {timerColor}; opacity: 0.6;"
+          ></div>
+          <!-- Spacebar hint -->
+          {#if showFrameCorners && showHint}
+            <div
+              class="absolute bottom-12 text-sm uppercase tracking-widest transition-opacity duration-300"
+              style="color: {timerColor}; opacity: 0.4;"
+              out:fade={{ duration: 500 }}
+            >
+              Press Space to Start
+            </div>
+          {/if}
+        {/if}
+
+        <!-- Close button for overlay fullscreen mode -->
+        {#if isOverlayFullscreen}
+          <button
+            onclick={disableOverlayFullscreen}
+            class="absolute top-4 right-4 p-2 rounded-full transition-opacity duration-200 hover:opacity-100"
+            style="color: {timerColor}; opacity: 0.5;"
+            title="Exit fullscreen (ESC)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        {/if}
+
+        <!-- Progress bar -->
+        {#if showProgressBar && (isRunning || remainingMs > 0)}
+          <div
+            class="absolute bottom-0 left-0 h-1 transition-all duration-100"
+            style="width: {progress}%; background-color: {timerColor}; opacity: 0.5;"
+          ></div>
+        {/if}
+
+        <!-- Timer -->
+        <div
+          class="tracking-wider transition-colors duration-200"
+          style="color: {timerColor}; font-family: {timerFontFamily}; font-size: {fontSize}rem; font-weight: {timerFontWeight ??
+            'bold'};"
+        >
+          {displayTime}
+        </div>
+      </div>
+    {:else}
+      <!-- Cast Mode View -->
+      <div
+        bind:this={castContainer}
+        class="flex-1 flex flex-col border border-t-0 border-(--color-border) {isFullscreen
+          ? 'min-h-screen w-full !border-0'
+          : ''}"
+        style="background-color: {backgroundColor};"
+      >
+        <!-- Hidden canvas for rendering -->
+        <canvas bind:this={castCanvas} class="hidden" width="1920" height="1080"
+        ></canvas>
+
+        <!-- Close button for overlay fullscreen mode in cast view -->
+        {#if isOverlayFullscreen && viewMode === "cast"}
+          <button
+            onclick={disableOverlayFullscreen}
+            class="absolute top-4 right-4 p-2 rounded-full transition-opacity duration-200 hover:opacity-100 z-10"
+            style="color: {timerColor}; opacity: 0.5;"
+            title="Exit fullscreen (ESC)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        {/if}
+
+        <!-- Video element with AirPlay support -->
+        <div class="flex-1 flex flex-col items-center justify-center relative">
+          <div
+            class="w-full {isFullscreen
+              ? 'h-full max-w-none'
+              : 'aspect-video'} relative group"
+          >
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video
+              bind:this={castVideo}
+              class="w-full h-full {isFullscreen
+                ? 'object-cover'
+                : 'object-contain'}"
+              style="background-color: {backgroundColor};"
+              controls
+              autoplay
+              playsinline
+              muted
+              {...{ "x-webkit-airplay": "allow" }}
+            ></video>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </div>
