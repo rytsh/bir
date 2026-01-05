@@ -336,6 +336,14 @@ const rawCategories: Category[] = [
         path: "/party/name-picker",
         keywords: "name picker, random picker, wheel spinner, raffle, lucky draw, prize wheel, random name, winner picker, spin wheel, lottery",
       },
+      {
+        id: "camera",
+        name: "Camera",
+        description: "Record video and take photos from your camera with audio support",
+        icon: "📹",
+        path: "/party/camera",
+        keywords: "camera, webcam, video recorder, camera recorder, record video, take photo, photo capture, video capture, selfie, webcam video, record webcam",
+      },
     ],
   },
 ];
