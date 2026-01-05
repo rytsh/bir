@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BitwiseTool from "../../components/tools/BitwiseTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/bitwise");
+---
+
+<Layout title="Bitwise Calculator - Binary Operations Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/bitwise">
+  <h1 slot="navbar-title">Bitwise Calculator</h1>
+  <BitwiseTool client:load />
+</Layout>

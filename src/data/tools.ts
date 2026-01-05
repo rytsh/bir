@@ -117,6 +117,14 @@ const rawCategories: Category[] = [
         keywords: "data converter, JSON converter, YAML converter, TOML converter, format conversion, data format, JSON to YAML, YAML to JSON, TOML converter",
       },
       {
+        id: "bitwise-calculator",
+        name: "Bitwise",
+        description: "Perform bitwise operations (AND, OR, XOR, NOT, shifts) with visual bit representation",
+        icon: "🔣",
+        path: "/converter/bitwise",
+        keywords: "bitwise calculator, bitwise operations, AND, OR, XOR, NOT, bit shift, left shift, right shift, binary calculator, bit manipulation, binary operations, bit masking",
+      },
+      {
         id: "cron-parser",
         name: "Cron",
         description: "Parse and explain cron expressions with next and previous run times",
