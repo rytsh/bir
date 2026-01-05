@@ -1,6 +1,6 @@
 <script lang="ts">
   type TabMode = "generate" | "preview";
-  type EscapeFormat = "hex" | "octal" | "caret";
+  type EscapeFormat = "hex" | "octal" | "caret" | "unicode" | "raw";
   
   let activeTab = $state<TabMode>("generate");
 
@@ -9,8 +9,13 @@
   let fgColor = $state(7);
   let bgColor = $state(0);
   let bold = $state(false);
+  let dim = $state(false);
   let italic = $state(false);
   let underline = $state(false);
+  let blink = $state(false);
+  let reverse = $state(false);
+  let hidden = $state(false);
+  let strikethrough = $state(false);
   let copiedAnsi = $state(false);
   let escapeFormat = $state<EscapeFormat>("hex");
 
@@ -24,6 +29,8 @@
     { id: "hex", name: "Hex (\\x1b)", prefix: "\\x1b[", suffix: "m" },
     { id: "octal", name: "Octal (\\033)", prefix: "\\033[", suffix: "m" },
     { id: "caret", name: "Caret (\\e)", prefix: "\\e[", suffix: "m" },
+    { id: "unicode", name: "Unicode (\\u001b)", prefix: "\\u001b[", suffix: "m" },
+    { id: "raw", name: "Raw ($'\\e')", prefix: "$'\\e[", suffix: "m'" },
   ] as const;
 
   const getEscapePrefix = () => {
@@ -81,8 +88,13 @@
   const generateAnsiCode = (): string => {
     const codes: string[] = [];
     if (bold) codes.push("1");
+    if (dim) codes.push("2");
     if (italic) codes.push("3");
     if (underline) codes.push("4");
+    if (blink) codes.push("5");
+    if (reverse) codes.push("7");
+    if (hidden) codes.push("8");
+    if (strikethrough) codes.push("9");
     
     if (fgColor < 8) {
       codes.push((30 + fgColor).toString());
@@ -96,17 +108,57 @@
       codes.push((100 + (bgColor - 8)).toString());
     }
 
-    const prefix = getEscapePrefix();
+    const format = escapeFormats.find((f) => f.id === escapeFormat);
+    const prefix = format?.prefix || "\\x1b[";
+    const suffix = format?.suffix || "m";
+    
+    if (escapeFormat === "raw") {
+      return `${prefix}${codes.join(";")}${suffix}${previewText}$'\\e[0m'`;
+    }
     return `${prefix}${codes.join(";")}m${previewText}${prefix}0m`;
   };
 
   const ansiCode = $derived(generateAnsiCode());
 
+  const getPreviewStyle = (): string => {
+    const styles: string[] = [];
+    
+    if (reverse) {
+      styles.push(`background-color: ${getColorHex(fgColor)};`);
+      styles.push(`color: ${getColorHex(bgColor)};`);
+    } else {
+      styles.push(`background-color: ${getColorHex(bgColor)};`);
+      styles.push(`color: ${getColorHex(fgColor)};`);
+    }
+    
+    if (bold) styles.push("font-weight: bold;");
+    if (dim) styles.push("opacity: 0.5;");
+    if (italic) styles.push("font-style: italic;");
+    if (hidden) styles.push("color: transparent;");
+    if (blink) styles.push("animation: blink 1s step-end infinite;");
+    
+    const decorations: string[] = [];
+    if (underline) decorations.push("underline");
+    if (strikethrough) decorations.push("line-through");
+    if (decorations.length > 0) {
+      styles.push(`text-decoration: ${decorations.join(" ")};`);
+    }
+    
+    return styles.join(" ");
+  };
+
+  const previewStyle = $derived(getPreviewStyle());
+
   const copyAnsiCode = () => {
     const codes: string[] = [];
     if (bold) codes.push("1");
+    if (dim) codes.push("2");
     if (italic) codes.push("3");
     if (underline) codes.push("4");
+    if (blink) codes.push("5");
+    if (reverse) codes.push("7");
+    if (hidden) codes.push("8");
+    if (strikethrough) codes.push("9");
     if (fgColor < 8) {
       codes.push((30 + fgColor).toString());
     } else {
@@ -131,8 +183,13 @@
     fg: string;
     bg: string;
     bold: boolean;
+    dim: boolean;
     italic: boolean;
     underline: boolean;
+    blink: boolean;
+    reverse: boolean;
+    hidden: boolean;
+    strikethrough: boolean;
   }
 
   const parseAnsiText = (input: string): StyledSegment[] => {
@@ -142,6 +199,7 @@
     
     let normalized = input
       .replace(/\\x1b/gi, ESC)
+      .replace(/\\u001b/gi, ESC)
       .replace(/\\033/g, ESC)
       .replace(/\\e/g, ESC);
     
@@ -151,8 +209,13 @@
       fg: "#cccccc",
       bg: "#000000",
       bold: false,
+      dim: false,
       italic: false,
       underline: false,
+      blink: false,
+      reverse: false,
+      hidden: false,
+      strikethrough: false,
     };
     
     let lastIndex = 0;
@@ -177,21 +240,45 @@
             fg: "#cccccc",
             bg: "#000000",
             bold: false,
+            dim: false,
             italic: false,
             underline: false,
+            blink: false,
+            reverse: false,
+            hidden: false,
+            strikethrough: false,
           };
         } else if (code === 1) {
           currentStyle.bold = true;
+        } else if (code === 2) {
+          currentStyle.dim = true;
         } else if (code === 3) {
           currentStyle.italic = true;
         } else if (code === 4) {
           currentStyle.underline = true;
+        } else if (code === 5 || code === 6) {
+          currentStyle.blink = true;
+        } else if (code === 7) {
+          currentStyle.reverse = true;
+        } else if (code === 8) {
+          currentStyle.hidden = true;
+        } else if (code === 9) {
+          currentStyle.strikethrough = true;
         } else if (code === 22) {
           currentStyle.bold = false;
+          currentStyle.dim = false;
         } else if (code === 23) {
           currentStyle.italic = false;
         } else if (code === 24) {
           currentStyle.underline = false;
+        } else if (code === 25) {
+          currentStyle.blink = false;
+        } else if (code === 27) {
+          currentStyle.reverse = false;
+        } else if (code === 28) {
+          currentStyle.hidden = false;
+        } else if (code === 29) {
+          currentStyle.strikethrough = false;
         } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
           currentStyle.fg = getFgColorHex(code);
         } else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
@@ -220,12 +307,46 @@
         fg: "#cccccc",
         bg: "#000000",
         bold: false,
+        dim: false,
         italic: false,
         underline: false,
+        blink: false,
+        reverse: false,
+        hidden: false,
+        strikethrough: false,
       });
     }
     
     return segments;
+  };
+
+  const getSegmentStyle = (segment: StyledSegment): string => {
+    const styles: string[] = [];
+    
+    // Handle reverse (swap fg/bg)
+    if (segment.reverse) {
+      styles.push(`color: ${segment.bg};`);
+      styles.push(`background-color: ${segment.fg};`);
+    } else {
+      styles.push(`color: ${segment.fg};`);
+      styles.push(`background-color: ${segment.bg};`);
+    }
+    
+    if (segment.bold) styles.push("font-weight: bold;");
+    if (segment.dim) styles.push("opacity: 0.5;");
+    if (segment.italic) styles.push("font-style: italic;");
+    if (segment.hidden) styles.push("color: transparent;");
+    if (segment.blink) styles.push("animation: blink 1s step-end infinite;");
+    
+    // Handle text-decoration
+    const decorations: string[] = [];
+    if (segment.underline) decorations.push("underline");
+    if (segment.strikethrough) decorations.push("line-through");
+    if (decorations.length > 0) {
+      styles.push(`text-decoration: ${decorations.join(" ")};`);
+    }
+    
+    return styles.join(" ");
   };
 
   const parsedSegments = $derived(parseAnsiText(ansiInput));
@@ -283,6 +404,8 @@
                 Use in Python, JS, C, etc.
               {:else if escapeFormat === "octal"}
                 Use in shell with <i>echo -e</i>
+              {:else if escapeFormat === "unicode"}
+                Use in Discord code blocks
               {:else}
                 Use in bash: <i>echo -e</i>
               {/if}
@@ -349,12 +472,32 @@
             <span class="font-bold">Bold</span>
           </label>
           <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={dim} class="accent-(--color-accent)" />
+            <span class="opacity-50">Dim</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" bind:checked={italic} class="accent-(--color-accent)" />
             <span class="italic">Italic</span>
           </label>
           <label class="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" bind:checked={underline} class="accent-(--color-accent)" />
             <span class="underline">Underline</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={blink} class="accent-(--color-accent)" />
+            <span>Blink</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={reverse} class="accent-(--color-accent)" />
+            <span>Reverse</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={hidden} class="accent-(--color-accent)" />
+            <span>Hidden</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={strikethrough} class="accent-(--color-accent)" />
+            <span class="line-through">Strikethrough</span>
           </label>
         </div>
       </div>
@@ -366,7 +509,7 @@
         </label>
         <div
           class="p-6 font-mono text-xl border border-(--color-border)"
-          style="background-color: {getColorHex(bgColor)}; color: {getColorHex(fgColor)}; {bold ? 'font-weight: bold;' : ''} {italic ? 'font-style: italic;' : ''} {underline ? 'text-decoration: underline;' : ''}"
+          style={previewStyle}
         >
           {previewText || "Enter text above..."}
         </div>
@@ -457,6 +600,11 @@
                   <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}22m</td>
                 </tr>
                 <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 opacity-50 text-xs">Dim/Faint</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}2m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}22m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
                   <td class="px-2 py-1.5 italic text-xs">Italic</td>
                   <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}3m</td>
                   <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}23m</td>
@@ -465,6 +613,31 @@
                   <td class="px-2 py-1.5 underline text-xs">Underline</td>
                   <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}4m</td>
                   <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}24m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 text-xs">Blink (slow)</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}5m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}25m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 text-xs">Blink (rapid)</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}6m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}25m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 text-xs">Reverse/Inverse</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}7m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}27m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 text-xs">Hidden/Conceal</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}8m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}28m</td>
+                </tr>
+                <tr class="border-b border-(--color-border)">
+                  <td class="px-2 py-1.5 line-through text-xs">Strikethrough</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}9m</td>
+                  <td class="px-2 py-1.5 font-mono text-xs">{getEscapePrefix()}29m</td>
                 </tr>
                 <tr class="border-b border-(--color-border)">
                   <td class="px-2 py-1.5 text-xs">Reset All</td>
@@ -518,6 +691,18 @@
           >
             Log entry
           </button>
+          <button
+            onclick={() => (ansiInput = "Price: \\x1b[9m$99.99\\x1b[0m \\x1b[1;32m$49.99\\x1b[0m \\x1b[33m(50% off!)\\x1b[0m")}
+            class="px-3 py-1.5 text-xs border border-(--color-border) bg-(--color-bg-alt) hover:border-(--color-accent) transition-colors"
+          >
+            Strikethrough
+          </button>
+          <button
+            onclick={() => (ansiInput = "\\x1b[1mBold\\x1b[0m \\x1b[2mDim\\x1b[0m \\x1b[3mItalic\\x1b[0m \\x1b[4mUnderline\\x1b[0m \\x1b[7mReverse\\x1b[0m \\x1b[9mStrike\\x1b[0m")}
+            class="px-3 py-1.5 text-xs border border-(--color-border) bg-(--color-bg-alt) hover:border-(--color-accent) transition-colors"
+          >
+            All styles
+          </button>
         </div>
       </div>
 
@@ -540,7 +725,7 @@
             placeholder="Paste ANSI text here, e.g.: \x1b[31mRed text\x1b[0m"
           ></textarea>
           <p class="text-xs text-(--color-text-muted) mt-1">
-            Supports \x1b[...m, \033[...m, and \e[...m escape formats
+            Supports \x1b[...m, \u001b[...m, \033[...m, and \e[...m escape formats
           </p>
         </div>
 
@@ -572,7 +757,7 @@
           >
             {#each parsedSegments as segment}
               <span
-                style="color: {segment.fg}; background-color: {segment.bg}; {segment.bold ? 'font-weight: bold;' : ''} {segment.italic ? 'font-style: italic;' : ''} {segment.underline ? 'text-decoration: underline;' : ''}"
+                style={getSegmentStyle(segment)}
               >{segment.text}</span>
             {/each}
           </div>
@@ -607,7 +792,7 @@
     <div class="flex-1 p-6 font-mono text-sm overflow-auto {wrapPreview ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}">
       {#each parsedSegments as segment}
         <span
-          style="color: {segment.fg}; background-color: {segment.bg}; {segment.bold ? 'font-weight: bold;' : ''} {segment.italic ? 'font-style: italic;' : ''} {segment.underline ? 'text-decoration: underline;' : ''}"
+          style={getSegmentStyle(segment)}
         >{segment.text}</span>
       {/each}
     </div>
