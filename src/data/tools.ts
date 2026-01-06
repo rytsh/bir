@@ -125,6 +125,14 @@ const rawCategories: Category[] = [
         keywords: "data converter, JSON converter, YAML converter, TOML converter, format conversion, data format, JSON to YAML, YAML to JSON, TOML converter",
       },
       {
+        id: "formatter",
+        name: "Formatter",
+        description: "Format and prettify JSON, YAML, TOML, and Markdown with customizable indentation",
+        icon: "✨",
+        path: "/converter/formatter",
+        keywords: "formatter, prettifier, beautifier, JSON formatter, YAML formatter, TOML formatter, Markdown formatter, code formatter, pretty print, format code, beautify",
+      },
+      {
         id: "bitwise-calculator",
         name: "Bitwise",
         description: "Perform bitwise operations (AND, OR, XOR, NOT, shifts) with visual bit representation",

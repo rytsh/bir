@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import FormatterTool from "../../components/tools/FormatterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/formatter");
+---
+
+<Layout title="Formatter - JSON, YAML, TOML, Markdown" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/formatter">
+  <h1 slot="navbar-title">Formatter</h1>
+  <FormatterTool client:load />
+</Layout>
