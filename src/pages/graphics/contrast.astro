@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ContrastCheckerTool from "../../components/tools/ContrastCheckerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/contrast");
+---
+
+<Layout title="Color Contrast Checker - WCAG Accessibility" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/contrast">
+  <h1 slot="navbar-title">Contrast Checker</h1>
+  <ContrastCheckerTool client:load />
+</Layout>

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PlaceholderImageTool from "../../components/tools/PlaceholderImageTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/placeholder");
+---
+
+<Layout title="Placeholder Image Generator" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/placeholder">
+  <h1 slot="navbar-title">Placeholder Image</h1>
+  <PlaceholderImageTool client:load />
+</Layout>

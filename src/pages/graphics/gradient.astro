@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import GradientGeneratorTool from "../../components/tools/GradientGeneratorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/gradient");
+---
+
+<Layout title="CSS Gradient Generator" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/gradient">
+  <h1 slot="navbar-title">Gradient Generator</h1>
+  <GradientGeneratorTool client:load />
+</Layout>

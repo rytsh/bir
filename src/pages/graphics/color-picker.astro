@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ColorPickerTool from "../../components/tools/ColorPickerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/color-picker");
+---
+
+<Layout title="Color Picker - HEX, RGB, HSL, HSV Converter" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/color-picker">
+  <h1 slot="navbar-title">Color Picker</h1>
+  <ColorPickerTool client:load />
+</Layout>

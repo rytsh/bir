@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ImageResizerTool from "../../components/tools/ImageResizerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/image-resizer");
+---
+
+<Layout title="Image Resizer" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/image-resizer">
+  <h1 slot="navbar-title">Image Resizer</h1>
+  <ImageResizerTool client:load />
+</Layout>

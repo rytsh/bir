@@ -1,0 +1,13 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ImageMetadataTool from "../../components/tools/ImageMetadataTool.svelte";
+---
+
+<Layout
+  title="Image Metadata Viewer"
+  description="View and remove EXIF metadata from images. Inspect camera info, GPS data, dates, and more. Remove metadata for privacy."
+  keywords="exif viewer, image metadata, remove exif, metadata remover, photo metadata, gps data, camera info, privacy, jpeg metadata, png metadata"
+  currentPath="/graphics/image-metadata"
+>
+  <ImageMetadataTool client:load />
+</Layout>

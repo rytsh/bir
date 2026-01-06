@@ -17,7 +17,7 @@
   let hidden = $state(false);
   let strikethrough = $state(false);
   let copiedAnsi = $state(false);
-  let escapeFormat = $state<EscapeFormat>("hex");
+  let escapeFormat = $state<EscapeFormat>("caret");
 
   // Preview state
   let ansiInput = $state("\\x1b[1;31mHello\\x1b[0m \\x1b[32mWorld\\x1b[0m!");

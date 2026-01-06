@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ShadowGeneratorTool from "../../components/tools/ShadowGeneratorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/shadow");
+---
+
+<Layout title="CSS Shadow Generator - Box Shadow & Text Shadow" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/shadow">
+  <h1 slot="navbar-title">Shadow Generator</h1>
+  <ShadowGeneratorTool client:load />
+</Layout>
