@@ -250,49 +250,363 @@
   // Settings loaded flag to prevent saving during initial load
   let settingsLoaded = $state(false);
 
-  // Cast Mode state
-  type ViewMode = "timer" | "cast";
+  // PiP (Picture-in-Picture) Mode state
+  type ViewMode = "timer" | "pip";
   let viewMode = $state<ViewMode>("timer");
-  let castCanvas = $state<HTMLCanvasElement | null>(null);
-  let castVideo = $state<HTMLVideoElement | null>(null);
+  let pipCanvas = $state<HTMLCanvasElement | null>(null);
+  let pipVideo = $state<HTMLVideoElement | null>(null);
   let mediaStream: MediaStream | null = null;
   let canvasAnimationId: number | null = null;
-  let castAudioContext: AudioContext | null = null;
-  let castAudioDestination: MediaStreamAudioDestinationNode | null = null;
-  let castAudioEnabled = $state(false);
+  let pipAudioContext: AudioContext | null = null;
+  let pipAudioDestination: MediaStreamAudioDestinationNode | null = null;
+  let pipAudioEnabled = $state(false);
+  let isPipActive = $state(false);
+
+  // Extracted Window state
+  let extractedWindow: Window | null = null;
+  let isExtracted = $state(false);
+  let broadcastChannel: BroadcastChannel | null = null;
 
   // Audio context for beep sound
   let audioContext: AudioContext | null = null;
 
-  // Enable audio for cast mode (requires user interaction on iOS)
-  const enableCastAudio = async () => {
-    if (castVideo) {
-      castVideo.muted = false;
+  // Enable audio for pip mode (requires user interaction on iOS)
+  const enablePipAudio = async () => {
+    if (pipVideo) {
+      pipVideo.muted = false;
       try {
-        await castVideo.play();
+        await pipVideo.play();
       } catch (e) {
         console.warn("Video play failed:", e);
       }
     }
     // Resume audio contexts if suspended (iOS requirement)
-    if (castAudioContext?.state === "suspended") {
-      await castAudioContext.resume();
+    if (pipAudioContext?.state === "suspended") {
+      await pipAudioContext.resume();
     }
     if (audioContext?.state === "suspended") {
       await audioContext.resume();
     }
-    castAudioEnabled = true;
+    pipAudioEnabled = true;
   };
 
-  // Canvas rendering for Cast Mode
-  const renderCanvasFrame = () => {
-    if (!castCanvas) return;
+  // Toggle Picture-in-Picture mode
+  const togglePictureInPicture = async () => {
+    if (!pipVideo) return;
 
-    const ctx = castCanvas.getContext("2d");
+    try {
+      if (document.pictureInPictureElement === pipVideo) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await pipVideo.requestPictureInPicture();
+      }
+    } catch (e) {
+      console.warn("Picture-in-Picture failed:", e);
+    }
+  };
+
+  // Track PiP state changes
+  $effect(() => {
+    if (!pipVideo) return;
+
+    const video = pipVideo;
+
+    const handlePipEnter = () => {
+      isPipActive = true;
+    };
+
+    const handlePipLeave = () => {
+      isPipActive = false;
+    };
+
+    video.addEventListener("enterpictureinpicture", handlePipEnter);
+    video.addEventListener("leavepictureinpicture", handlePipLeave);
+
+    return () => {
+      video.removeEventListener("enterpictureinpicture", handlePipEnter);
+      video.removeEventListener("leavepictureinpicture", handlePipLeave);
+    };
+  });
+
+  // Broadcast timer state to extracted window
+  const broadcastTimerState = () => {
+    if (!broadcastChannel || !isExtracted) return;
+
+    broadcastChannel.postMessage({
+      type: "state",
+      displayTime,
+      backgroundColor,
+      timerColor,
+      fontFamily: timerFontFamily,
+      fontWeight: timerFontWeight ?? "bold",
+      fontSize,
+      isFlashing,
+      progress,
+      showProgressBar,
+      isRunning,
+      remainingMs,
+    });
+  };
+
+  // Extract timer to new window
+  const extractTimerWindow = () => {
+    // If already extracted, focus the window or close it
+    if (extractedWindow && !extractedWindow.closed) {
+      extractedWindow.focus();
+      return;
+    }
+
+    // Create broadcast channel for communication
+    broadcastChannel = new BroadcastChannel("countdown-timer");
+
+    // Open new window
+    extractedWindow = window.open(
+      "",
+      "countdown-display",
+      "width=800,height=600,menubar=no,toolbar=no,location=no,status=no"
+    );
+
+    if (!extractedWindow) {
+      console.warn("Failed to open window - popup may be blocked");
+      return;
+    }
+
+    isExtracted = true;
+
+    // Get current font URL if any
+    const currentFontPreset = fontPresets.find((p) => p.name === selectedFont);
+    const fontUrl = currentFontPreset?.url || "";
+    const fontImport = fontUrl
+      ? `<link rel="stylesheet" href="${fontUrl}">`
+      : "";
+
+    // Write the HTML content to the new window
+    const progressDisplay = showProgressBar && (isRunning || remainingMs > 0) ? "block" : "none";
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Countdown Timer</title>
+  ${fontImport}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: ${backgroundColor};
+      transition: background-color 0.2s;
+      font-family: system-ui, sans-serif;
+    }
+    #timer {
+      color: ${timerColor};
+      font-family: ${timerFontFamily};
+      font-size: ${fontSize}rem;
+      font-weight: ${timerFontWeight ?? "bold"};
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+    #progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      background-color: ${timerColor};
+      opacity: 0.5;
+      transition: width 0.1s, background-color 0.2s;
+      width: ${progress}%;
+    }
+    #controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    body:hover #controls { opacity: 1; }
+    .btn {
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: rgba(0, 0, 0, 0.7); }
+    #hint {
+      position: absolute;
+      bottom: 16px;
+      color: ${timerColor};
+      opacity: 0.4;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      transition: opacity 0.3s, color 0.2s;
+    }
+    body:hover #hint { opacity: 0; }
+  </style>
+</head>
+<body>
+  <div id="timer">${displayTime}</div>
+  <div id="progress-bar" style="display: ${progressDisplay}"></div>
+  <div id="controls">
+    <button class="btn" id="fullscreen-btn" title="Toggle Fullscreen">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <polyline points="9 21 3 21 3 15"></polyline>
+        <line x1="21" y1="3" x2="14" y2="10"></line>
+        <line x1="3" y1="21" x2="10" y2="14"></line>
+      </svg>
+    </button>
+  </div>
+</body>
+</html>`;
+
+    extractedWindow.document.write(htmlContent);
+    extractedWindow.document.close();
+
+    // Inject script after document is written (avoids script tag parsing issues)
+    const scriptEl = extractedWindow.document.createElement("script");
+    scriptEl.textContent = `
+      const channel = new BroadcastChannel("countdown-timer");
+      const timerEl = document.getElementById("timer");
+      const progressBar = document.getElementById("progress-bar");
+      const hintEl = document.getElementById("hint");
+      const fullscreenBtn = document.getElementById("fullscreen-btn");
+      const controlsEl = document.getElementById("controls");
+      
+      channel.onmessage = (e) => {
+        const data = e.data;
+        if (data.type === "state") {
+          timerEl.textContent = data.displayTime;
+          timerEl.style.color = data.timerColor;
+          timerEl.style.fontFamily = data.fontFamily;
+          timerEl.style.fontSize = data.fontSize + "rem";
+          timerEl.style.fontWeight = data.fontWeight;
+          const bgColor = data.isFlashing
+            ? (data.backgroundColor === "#ffffff" ? "#ff0000" : "#ffffff")
+            : data.backgroundColor;
+          document.body.style.backgroundColor = bgColor;
+          progressBar.style.width = data.progress + "%";
+          progressBar.style.backgroundColor = data.timerColor;
+          progressBar.style.display = data.showProgressBar && (data.isRunning || data.remainingMs > 0) ? "block" : "none";
+          hintEl.style.color = data.timerColor;
+        } else if (data.type === "close") {
+          window.close();
+        }
+      };
+      
+      fullscreenBtn.addEventListener("click", async () => {
+        try {
+          if (document.fullscreenElement) {
+            await document.exitFullscreen();
+          } else {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch (e) {
+          console.warn("Fullscreen failed:", e);
+        }
+      });
+      
+      // Hide controls and hint when in fullscreen
+      document.addEventListener("fullscreenchange", () => {
+        const isFs = !!document.fullscreenElement;
+        controlsEl.style.display = isFs ? "none" : "flex";
+        hintEl.style.display = isFs ? "none" : "block";
+      });
+      
+      window.addEventListener("beforeunload", () => {
+        channel.postMessage({ type: "closed" });
+      });
+    `;
+    extractedWindow.document.body.appendChild(scriptEl);
+
+    // Listen for close notification from extracted window
+    broadcastChannel.onmessage = (e) => {
+      if (e.data.type === "closed") {
+        isExtracted = false;
+        extractedWindow = null;
+      }
+    };
+
+    // Also check if window was closed via polling (backup)
+    const checkWindowClosed = setInterval(() => {
+      if (extractedWindow?.closed) {
+        isExtracted = false;
+        extractedWindow = null;
+        clearInterval(checkWindowClosed);
+      }
+    }, 1000);
+
+    // Send initial state
+    setTimeout(() => broadcastTimerState(), 100);
+  };
+
+  // Close extracted window
+  const closeExtractedWindow = () => {
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: "close" });
+    }
+    if (extractedWindow && !extractedWindow.closed) {
+      extractedWindow.close();
+    }
+    extractedWindow = null;
+    isExtracted = false;
+    if (broadcastChannel) {
+      broadcastChannel.close();
+      broadcastChannel = null;
+    }
+  };
+
+  // Broadcast state changes to extracted window
+  $effect(() => {
+    // Track all relevant state for broadcasting
+    displayTime;
+    backgroundColor;
+    timerColor;
+    timerFontFamily;
+    timerFontWeight;
+    fontSize;
+    isFlashing;
+    progress;
+    showProgressBar;
+    isRunning;
+    remainingMs;
+
+    broadcastTimerState();
+  });
+
+  // Cleanup on unmount - close extracted window
+  $effect(() => {
+    return () => {
+      if (extractedWindow && !extractedWindow.closed) {
+        extractedWindow.close();
+      }
+      if (broadcastChannel) {
+        broadcastChannel.close();
+      }
+    };
+  });
+
+  // Canvas rendering for PiP Mode
+  const renderCanvasFrame = () => {
+    if (!pipCanvas) return;
+
+    const ctx = pipCanvas.getContext("2d");
     if (!ctx) return;
 
-    const width = castCanvas.width;
-    const height = castCanvas.height;
+    const width = pipCanvas.width;
+    const height = pipCanvas.height;
 
     // Get current background color (handle flashing)
     const currentBg = isFlashing
@@ -328,7 +642,7 @@
     }
   };
 
-  // Start canvas animation loop for Cast Mode
+  // Start canvas animation loop for PiP Mode
   const startCanvasLoop = () => {
     const animate = () => {
       renderCanvasFrame();
@@ -345,45 +659,45 @@
     }
   };
 
-  // Initialize Cast Mode stream
-  const initCastMode = () => {
-    if (!castCanvas || !castVideo) return;
+  // Initialize PiP Mode stream
+  const initPipMode = () => {
+    if (!pipCanvas || !pipVideo) return;
 
     // Set canvas size for good video quality
-    castCanvas.width = 1920;
-    castCanvas.height = 1080;
+    pipCanvas.width = 1920;
+    pipCanvas.height = 1080;
 
     // Render initial frame
     renderCanvasFrame();
 
     // Create media stream from canvas
     try {
-      mediaStream = castCanvas.captureStream(30); // 30 FPS
+      mediaStream = pipCanvas.captureStream(30); // 30 FPS
 
-      // Create audio context and destination for cast audio
-      castAudioContext = new AudioContext();
-      castAudioDestination = castAudioContext.createMediaStreamDestination();
+      // Create audio context and destination for pip audio
+      pipAudioContext = new AudioContext();
+      pipAudioDestination = pipAudioContext.createMediaStreamDestination();
 
       // Add audio track to the media stream
-      const audioTrack = castAudioDestination.stream.getAudioTracks()[0];
+      const audioTrack = pipAudioDestination.stream.getAudioTracks()[0];
       if (audioTrack) {
         mediaStream.addTrack(audioTrack);
       }
 
-      castVideo.srcObject = mediaStream;
-      castVideo
+      pipVideo.srcObject = mediaStream;
+      pipVideo
         .play()
         .catch((e: Error) => console.warn("Video play failed:", e));
 
       // Start render loop
       startCanvasLoop();
     } catch (e) {
-      console.error("Failed to initialize cast mode:", e);
+      console.error("Failed to initialize pip mode:", e);
     }
   };
 
-  // Cleanup Cast Mode
-  const cleanupCastMode = () => {
+  // Cleanup PiP Mode
+  const cleanupPipMode = () => {
     stopCanvasLoop();
 
     if (mediaStream) {
@@ -393,42 +707,42 @@
       mediaStream = null;
     }
 
-    if (castVideo) {
-      castVideo.srcObject = null;
+    if (pipVideo) {
+      pipVideo.srcObject = null;
     }
 
-    if (castAudioContext) {
-      castAudioContext.close();
-      castAudioContext = null;
-      castAudioDestination = null;
+    if (pipAudioContext) {
+      pipAudioContext.close();
+      pipAudioContext = null;
+      pipAudioDestination = null;
     }
-    castAudioEnabled = false;
+    pipAudioEnabled = false;
   };
 
-  // Effect to handle Cast Mode initialization/cleanup
+  // Effect to handle PiP Mode initialization/cleanup
   $effect(() => {
-    if (viewMode === "cast" && castCanvas && castVideo) {
+    if (viewMode === "pip" && pipCanvas && pipVideo) {
       // Small delay to ensure DOM is ready
       const timeoutId = setTimeout(() => {
-        initCastMode();
+        initPipMode();
       }, 100);
 
       return () => {
         clearTimeout(timeoutId);
-        cleanupCastMode();
+        cleanupPipMode();
       };
     }
   });
 
   // Toggle native video fullscreen (best for AirPlay/Cast)
   // const toggleVideoFullscreen = async () => {
-  //   if (!castVideo) return;
+  //   if (!pipVideo) return;
 
   //   try {
   //     // Check if video is currently in fullscreen
   //     if (
-  //       document.fullscreenElement === castVideo ||
-  //       (document as any).webkitFullscreenElement === castVideo
+  //       document.fullscreenElement === pipVideo ||
+  //       (document as any).webkitFullscreenElement === pipVideo
   //     ) {
   //       // Exit fullscreen
   //       if (document.exitFullscreen) {
@@ -438,13 +752,13 @@
   //       }
   //     } else {
   //       // Enter fullscreen on the video element
-  //       if (castVideo.requestFullscreen) {
-  //         await castVideo.requestFullscreen();
-  //       } else if ((castVideo as any).webkitRequestFullscreen) {
-  //         await (castVideo as any).webkitRequestFullscreen();
-  //       } else if ((castVideo as any).webkitEnterFullscreen) {
+  //       if (pipVideo.requestFullscreen) {
+  //         await pipVideo.requestFullscreen();
+  //       } else if ((pipVideo as any).webkitRequestFullscreen) {
+  //         await (pipVideo as any).webkitRequestFullscreen();
+  //       } else if ((pipVideo as any).webkitEnterFullscreen) {
   //         // iOS Safari specific
-  //         await (castVideo as any).webkitEnterFullscreen();
+  //         await (pipVideo as any).webkitEnterFullscreen();
   //       }
   //     }
   //   } catch (e) {
@@ -610,11 +924,11 @@
       playBeepOn(audioContext, audioContext.destination, 600, 800, 0.5);
       playBeepOn(audioContext, audioContext.destination, 1200, 1000, 0.8);
 
-      // Also play on cast audio context if in cast mode (for AirPlay audio)
-      if (viewMode === "cast" && castAudioContext && castAudioDestination) {
-        playBeepOn(castAudioContext, castAudioDestination, 0, 800, 0.5);
-        playBeepOn(castAudioContext, castAudioDestination, 600, 800, 0.5);
-        playBeepOn(castAudioContext, castAudioDestination, 1200, 1000, 0.8);
+      // Also play on pip audio context if in pip mode (for AirPlay audio)
+      if (viewMode === "pip" && pipAudioContext && pipAudioDestination) {
+        playBeepOn(pipAudioContext, pipAudioDestination, 0, 800, 0.5);
+        playBeepOn(pipAudioContext, pipAudioDestination, 600, 800, 0.5);
+        playBeepOn(pipAudioContext, pipAudioDestination, 1200, 1000, 0.8);
       }
     } catch (e) {
       console.warn("Audio playback failed:", e);
@@ -793,13 +1107,13 @@
 
   // Fullscreen
   let timerContainer: HTMLDivElement | null = $state(null);
-  let castContainer: HTMLDivElement | null = $state(null);
+  let pipContainer: HTMLDivElement | null = $state(null);
   let isFullscreen = $state(false);
   let isOverlayFullscreen = $state(false); // Track if using CSS overlay fallback
 
   // Get the active container based on view mode
   const getActiveContainer = (): HTMLDivElement | null => {
-    return viewMode === "cast" ? castContainer : timerContainer;
+    return viewMode === "pip" ? pipContainer : timerContainer;
   };
 
   const progress = $derived(
@@ -838,7 +1152,7 @@
   // Disable CSS overlay fullscreen
   const disableOverlayFullscreen = () => {
     // Reset both containers to be safe
-    [timerContainer, castContainer].forEach((container) => {
+    [timerContainer, pipContainer].forEach((container) => {
       if (container) {
         container.style.position = "";
         container.style.top = "";
@@ -987,8 +1301,8 @@
         passive: false,
       });
     }
-    if (castContainer) {
-      castContainer.addEventListener("touchstart", handleTouchStart, {
+    if (pipContainer) {
+      pipContainer.addEventListener("touchstart", handleTouchStart, {
         passive: false,
       });
     }
@@ -1012,8 +1326,8 @@
       if (timerContainer) {
         timerContainer.removeEventListener("touchstart", handleTouchStart);
       }
-      if (castContainer) {
-        castContainer.removeEventListener("touchstart", handleTouchStart);
+      if (pipContainer) {
+        pipContainer.removeEventListener("touchstart", handleTouchStart);
       }
 
       // Clean up overlay state if component unmounts
@@ -1445,6 +1759,49 @@
               >
             {/if}
           </button>
+
+          <button
+            onclick={() => isExtracted ? closeExtractedWindow() : extractTimerWindow()}
+            class="p-3 border border-(--color-border) text-(--color-text) transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-[var(--color-bg)] {isExtracted ? 'bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover)' : ''}"
+            style="touch-action: manipulation;"
+            title={isExtracted ? "Close External Window" : "Extract to New Window"}
+          >
+            {#if isExtracted}
+              <!-- Close/X icon when extracted -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="9" y1="8" x2="15" y2="14"></line>
+                <line x1="15" y1="8" x2="9" y2="14"></line>
+              </svg>
+            {:else}
+              <!-- External window icon -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            {/if}
+          </button>
         </div>
       </div>
     </div>
@@ -1464,13 +1821,13 @@
         Timer
       </button>
       <button
-        onclick={() => (viewMode = "cast")}
+        onclick={() => (viewMode = "pip")}
         class="px-4 py-2 text-sm font-medium transition-colors {viewMode ===
-        'cast'
+        'pip'
           ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
           : 'text-(--color-text-muted) hover:text-(--color-text)'}"
       >
-        Cast / AirPlay
+        PiP Video
       </button>
     </div>
 
@@ -1564,20 +1921,20 @@
         </div>
       </div>
     {:else}
-      <!-- Cast Mode View -->
+      <!-- PiP (Picture-in-Picture) Mode View -->
       <div
-        bind:this={castContainer}
+        bind:this={pipContainer}
         class="flex-1 flex flex-col border border-t-0 border-(--color-border) {isFullscreen
           ? 'min-h-screen w-full !border-0'
           : ''}"
         style="background-color: {backgroundColor};"
       >
         <!-- Hidden canvas for rendering -->
-        <canvas bind:this={castCanvas} class="hidden" width="1920" height="1080"
+        <canvas bind:this={pipCanvas} class="hidden" width="1920" height="1080"
         ></canvas>
 
-        <!-- Close button for overlay fullscreen mode in cast view -->
-        {#if isOverlayFullscreen && viewMode === "cast"}
+        <!-- Close button for overlay fullscreen mode in pip view -->
+        {#if isOverlayFullscreen && viewMode === "pip"}
           <button
             onclick={disableOverlayFullscreen}
             class="absolute top-4 right-4 p-2 rounded-full transition-opacity duration-200 hover:opacity-100 z-10"
@@ -1601,7 +1958,7 @@
           </button>
         {/if}
 
-        <!-- Video element with AirPlay support -->
+        <!-- Video element for Picture-in-Picture -->
         <div class="flex-1 flex flex-col items-center justify-center relative">
           <div
             class="w-full {isFullscreen
@@ -1610,17 +1967,57 @@
           >
             <!-- svelte-ignore a11y_media_has_caption -->
             <video
-              bind:this={castVideo}
+              bind:this={pipVideo}
               class="w-full h-full {isFullscreen
                 ? 'object-cover'
                 : 'object-contain'}"
               style="background-color: {backgroundColor};"
-              controls
               autoplay
               playsinline
               muted
               {...{ "x-webkit-airplay": "allow" }}
             ></video>
+
+            <!-- PiP Button Overlay -->
+            <button
+              onclick={togglePictureInPicture}
+              class="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded transition-all duration-200 opacity-0 group-hover:opacity-100 {isPipActive ? 'opacity-100 bg-green-600/70 hover:bg-green-600/90' : ''}"
+              title={isPipActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture"}
+            >
+              {#if isPipActive}
+                <!-- Exit PiP icon -->
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <polyline points="8 21 12 17 16 21"></polyline>
+                </svg>
+              {:else}
+                <!-- Enter PiP icon -->
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <rect x="12" y="8" width="8" height="7" rx="1" ry="1"></rect>
+                </svg>
+              {/if}
+            </button>
           </div>
         </div>
       </div>
