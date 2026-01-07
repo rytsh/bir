@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ScreenResolutionTool from "../../components/tools/ScreenResolutionTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/screen");
+---
+
+<Layout title="Screen Resolution" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/screen">
+  <h1 slot="navbar-title">Screen Resolution</h1>
+  <ScreenResolutionTool client:load />
+</Layout>

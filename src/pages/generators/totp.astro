@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TotpTool from "../../components/tools/TotpTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/generators/totp");
+---
+
+<Layout title="TOTP Generator - Two-Factor Authentication Codes" description={tool?.description} keywords={tool?.keywords} currentPath="/generators/totp">
+  <h1 slot="navbar-title">TOTP Generator</h1>
+  <TotpTool client:load />
+</Layout>

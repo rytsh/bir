@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import WorldClockTool from "../../components/tools/WorldClockTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/timers/world-clock");
+---
+
+<Layout title="World Clock" description={tool?.description} keywords={tool?.keywords} currentPath="/timers/world-clock">
+  <h1 slot="navbar-title">World Clock</h1>
+  <WorldClockTool client:load />
+</Layout>

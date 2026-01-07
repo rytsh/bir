@@ -14,6 +14,8 @@
   } from "uuid";
   import { ulid } from "ulid";
   import { nanoid } from "nanoid";
+  import { createId as cuid2 } from "@paralleldrive/cuid2";
+  import KSUID from "ksuid-edge";
 
   type IdType =
     | "uuid-v1"
@@ -25,7 +27,9 @@
     | "uuid-v1-to-v6"
     | "uuid-v6-to-v1"
     | "ulid"
-    | "nanoid";
+    | "nanoid"
+    | "cuid2"
+    | "ksuid";
 
   let selectedType = $state<IdType>("ulid");
   let count = $state(1);
@@ -99,6 +103,16 @@
       label: "Nano ID",
       description: "Small, secure, URL-friendly unique string ID",
     },
+    {
+      value: "cuid2",
+      label: "CUID2",
+      description: "Collision-resistant unique identifier, secure and URL-friendly",
+    },
+    {
+      value: "ksuid",
+      label: "KSUID",
+      description: "K-Sortable Unique Identifier with embedded timestamp",
+    },
   ];
 
   // CodeMirror extensions based on dark mode
@@ -140,6 +154,10 @@
         return ulid();
       case "nanoid":
         return nanoid();
+      case "cuid2":
+        return cuid2();
+      case "ksuid":
+        return KSUID.randomSync().string;
     }
   };
 
@@ -215,7 +233,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate UUIDs (v1, v3, v4, v5, v6, v7), convert between formats, create ULIDs, and Nano IDs.
+      Generate UUIDs (v1, v3, v4, v5, v6, v7), convert between formats, create ULIDs, Nano IDs, CUID2s, and KSUIDs.
     </p>
   </header>
 

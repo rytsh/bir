@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BrowserInfoTool from "../../components/tools/BrowserInfoTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/browser");
+---
+
+<Layout title="Browser Info" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/browser">
+  <h1 slot="navbar-title">Browser Info</h1>
+  <BrowserInfoTool client:load />
+</Layout>

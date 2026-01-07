@@ -2,13 +2,16 @@
   import bcrypt from "bcryptjs";
 
   type Tab = "generate" | "validate";
+  type OutputFormat = "hash" | "htpasswd";
 
   let activeTab = $state<Tab>("generate");
 
   // Generate tab state
   let plainText = $state("");
+  let username = $state("");
   let saltRounds = $state(10);
   let generatedHash = $state("");
+  let outputFormat = $state<OutputFormat>("hash");
   let generating = $state(false);
   let generateError = $state("");
   let copiedHash = $state(false);
@@ -20,9 +23,22 @@
   let validateError = $state("");
   let validateResult = $state<boolean | null>(null);
 
+  // Derived output based on format
+  const formattedOutput = $derived(
+    generatedHash
+      ? outputFormat === "htpasswd" && username
+        ? `${username}:${generatedHash}`
+        : generatedHash
+      : ""
+  );
+
   const generateHash = async () => {
     if (!plainText) {
       generateError = "Please enter text to hash";
+      return;
+    }
+    if (outputFormat === "htpasswd" && !username) {
+      generateError = "Please enter a username for htpasswd format";
       return;
     }
 
@@ -31,7 +47,8 @@
     generatedHash = "";
 
     try {
-      const salt = await bcrypt.genSalt(saltRounds);
+      const rounds = Number(saltRounds) || 10;
+      const salt = await bcrypt.genSalt(rounds);
       generatedHash = await bcrypt.hash(plainText, salt);
     } catch (e) {
       generateError = e instanceof Error ? e.message : "Failed to generate hash";
@@ -64,8 +81,8 @@
   };
 
   const handleCopyHash = () => {
-    if (generatedHash) {
-      navigator.clipboard.writeText(generatedHash);
+    if (formattedOutput) {
+      navigator.clipboard.writeText(formattedOutput);
       copiedHash = true;
       setTimeout(() => {
         copiedHash = false;
@@ -87,6 +104,7 @@
 
   const handleClearGenerate = () => {
     plainText = "";
+    username = "";
     generatedHash = "";
     generateError = "";
   };
@@ -129,6 +147,51 @@
   <!-- Generate Tab -->
   {#if activeTab === "generate"}
     <div class="flex-1 flex flex-col">
+      <!-- Output Format -->
+      <div class="mb-4">
+        <label class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
+          Output Format
+        </label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="outputFormat"
+              value="hash"
+              bind:group={outputFormat}
+              class="accent-(--color-accent)"
+            />
+            Hash only
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="outputFormat"
+              value="htpasswd"
+              bind:group={outputFormat}
+              class="accent-(--color-accent)"
+            />
+            htpasswd (username:hash)
+          </label>
+        </div>
+      </div>
+
+      <!-- Username (for htpasswd) -->
+      {#if outputFormat === "htpasswd"}
+        <div class="mb-4">
+          <label for="username" class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
+            Username
+          </label>
+          <input
+            id="username"
+            type="text"
+            bind:value={username}
+            placeholder="Enter username..."
+            class="w-full max-w-xs px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) font-mono text-sm focus:outline-none focus:border-(--color-accent)"
+          />
+        </div>
+      {/if}
+
       <!-- Salt Rounds -->
       <div class="mb-4">
         <label for="salt-rounds" class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
@@ -152,7 +215,7 @@
       <!-- Input -->
       <div class="mb-4">
         <div class="flex justify-between items-center mb-2">
-          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Plain Text</span>
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Password</span>
           <div class="flex gap-3">
             <button
               onclick={handlePasteGenerate}
@@ -171,15 +234,15 @@
         <input
           type="text"
           bind:value={plainText}
-          placeholder="Enter text to hash..."
+          placeholder="Enter password to hash..."
           class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) font-mono text-sm focus:outline-none focus:border-(--color-accent)"
         />
       </div>
 
       <!-- Generate Button -->
       <button
-        onclick={generateHash}
-        disabled={generating || !plainText}
+        onclick={() => generateHash()}
+        disabled={generating || !plainText || (outputFormat === "htpasswd" && !username)}
         class="mb-4 px-6 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed self-start"
       >
         {generating ? "Generating..." : "Generate Hash"}
@@ -195,10 +258,12 @@
       <!-- Output -->
       <div class="flex-1">
         <div class="flex justify-between items-center mb-2">
-          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Generated Hash</span>
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+            {outputFormat === "htpasswd" ? "htpasswd Entry" : "Generated Hash"}
+          </span>
           <button
             onclick={handleCopyHash}
-            disabled={!generatedHash}
+            disabled={!formattedOutput}
             class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50"
           >
             {copiedHash ? "Copied!" : "Copy"}
@@ -207,10 +272,12 @@
         <div
           class="p-3 border border-(--color-border) bg-(--color-bg) text-(--color-text) font-mono text-sm break-all"
         >
-          {#if generatedHash}
-            {generatedHash}
+          {#if formattedOutput}
+            {formattedOutput}
           {:else}
-            <span class="text-(--color-text-muted)">Hash will appear here...</span>
+            <span class="text-(--color-text-muted)">
+              {outputFormat === "htpasswd" ? "htpasswd entry" : "Hash"} will appear here...
+            </span>
           {/if}
         </div>
       </div>
@@ -261,7 +328,7 @@
       <!-- Validate Button -->
       <div class="flex gap-3 mb-4">
         <button
-          onclick={validateHash}
+          onclick={() => validateHash()}
           disabled={validating || !validateText || !hashToValidate}
           class="px-6 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -300,19 +367,23 @@
 
   <!-- Info Section -->
   <div class="mt-6 border-t border-(--color-border) pt-4">
-    <h2 class="text-sm font-medium text-(--color-text) mb-3">About Bcrypt</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+    <h2 class="text-sm font-medium text-(--color-text) mb-3">About Bcrypt & htpasswd</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
-        <div class="text-(--color-text-light) mb-1">Format</div>
-        <div class="font-mono text-(--color-text)">$2a$10$N9qo8uLOickgx2ZMRZoMy...</div>
+        <div class="text-(--color-text-light) mb-1">Bcrypt Format</div>
+        <div class="font-mono text-(--color-text)">$2a$10$N9qo8uLO...</div>
+      </div>
+      <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
+        <div class="text-(--color-text-light) mb-1">htpasswd Format</div>
+        <div class="font-mono text-(--color-text)">user:$2y$10$...</div>
       </div>
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
         <div class="text-(--color-text-light) mb-1">Cost Factor</div>
-        <div class="text-(--color-text)">2^rounds iterations (10 = 1024 iterations)</div>
+        <div class="text-(--color-text)">2^rounds iterations (10 = 1024)</div>
       </div>
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
-        <div class="text-(--color-text-light) mb-1">Security</div>
-        <div class="text-(--color-text)">Includes salt, resistant to rainbow tables</div>
+        <div class="text-(--color-text-light) mb-1">Usage</div>
+        <div class="text-(--color-text)">Apache/Nginx auth, password storage</div>
       </div>
     </div>
   </div>

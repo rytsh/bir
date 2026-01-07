@@ -710,17 +710,15 @@
         {/if}
       </div>
     </div>
-    <div class="relative flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a]">
-      <div class="absolute inset-0 overflow-auto">
-        {#if error}
-          <div class="p-4 text-sm text-red-500">{error}</div>
-        {:else}
-          <pre
-            class="text-white m-0 p-3 whitespace-pre w-fit"
-            style="font-family: 'Courier New', Courier, monospace; font-size: {fontSize}px; line-height: 1;"
-          >{output || "ASCII art will appear here..."}</pre>
-        {/if}
-      </div>
+    <div class="relative flex-1 min-h-48 border border-(--color-border) bg-[#1a1a1a] overflow-auto">
+      {#if error}
+        <div class="p-4 text-sm text-red-500">{error}</div>
+      {:else}
+        <pre
+          class="text-white m-0 p-3 whitespace-pre w-fit"
+          style="font-family: 'Courier New', Courier, monospace; font-size: {fontSize}px; line-height: 1;"
+        >{output || "ASCII art will appear here..."}</pre>
+      {/if}
     </div>
   </div>
   {:else}
