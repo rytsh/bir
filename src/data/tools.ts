@@ -439,9 +439,24 @@ const rawCategories: Category[] = [
         path: "/graphics/image-metadata",
         keywords: "exif viewer, image metadata, remove exif, metadata remover, photo metadata, gps data, camera info, privacy, jpeg metadata, png metadata, exif remover, strip metadata",
       },
-    ],
-  },
-];
+     ],
+   },
+   {
+     id: "tester",
+     name: "Tester",
+     icon: "🧪",
+     tools: [
+       {
+         id: "dead-pixel-tester",
+         name: "Dead Pixel",
+         description: "Test your screen for dead pixels by displaying solid colors and patterns",
+         icon: "🖥️",
+         path: "/tester/dead-pixel",
+         keywords: "dead pixel, pixel test, screen test, dead pixels, stuck pixels, monitor test, display test, pixel tester",
+       },
+     ],
+   },
+ ];
 
 // Sort categories by name and sort tools within each category by name
 export const categories: Category[] = rawCategories

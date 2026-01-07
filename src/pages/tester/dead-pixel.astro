@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DeadPixelTesterTool from "../../components/tools/DeadPixelTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/dead-pixel");
+---
+
+<Layout title="Dead Pixel Tester - Screen Test" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/dead-pixel">
+  <h1 slot="navbar-title">Dead Pixel Tester</h1>
+  <DeadPixelTesterTool client:load />
+</Layout>
