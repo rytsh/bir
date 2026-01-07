@@ -331,6 +331,14 @@ const rawCategories: Category[] = [
     icon: "⏱️",
     tools: [
       {
+        id: "chronometer",
+        name: "Chronometer",
+        description: "Precision stopwatch with lap timing, split times, and statistics",
+        icon: "⏱️",
+        path: "/timers/chronometer",
+        keywords: "chronometer, stopwatch, timer, lap timer, split time, race timer, sports timer, precision timer, time tracker, lap times, interval timer",
+      },
+      {
         id: "countdown-timer",
         name: "Countdown",
         description: "Customizable countdown timer with color themes, presets, and end-of-time alerts",
