@@ -2,7 +2,8 @@
   import * as YAML from "yaml";
   import * as TOML from "smol-toml";
   import CodeMirror from "svelte-codemirror-editor";
-  import { EditorView } from "@codemirror/view";
+  import { EditorView, keymap } from "@codemirror/view";
+  import { redo } from "@codemirror/commands";
   import { json } from "@codemirror/lang-json";
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
   import {
@@ -336,6 +337,34 @@
     return output;
   };
 
+  let editorView = $state<EditorView | undefined>(undefined);
+  let needsUpdate = $state(false);
+  let pendingValue = $state("");
+
+  // Extension to capture the EditorView instance
+  const viewCapture = EditorView.updateListener.of((update) => {
+    if (!editorView) {
+      editorView = update.view;
+    }
+
+    // Apply pending formatted value if needed
+    if (needsUpdate && pendingValue !== undefined) {
+      const currentValue = update.view.state.doc.toString();
+      if (currentValue !== pendingValue) {
+        const transaction = update.view.state.update({
+          changes: {
+            from: 0,
+            to: update.view.state.doc.length,
+            insert: pendingValue,
+          },
+        });
+        update.view.dispatch(transaction);
+      }
+      needsUpdate = false;
+      pendingValue = "";
+    }
+  });
+
   const handleFormat = () => {
     error = "";
 
@@ -344,19 +373,38 @@
     }
 
     try {
+      let formatted: string;
       switch (format) {
         case "json":
-          value = formatJSON(value);
+          formatted = formatJSON(value);
           break;
         case "yaml":
-          value = formatYAML(value);
+          formatted = formatYAML(value);
           break;
         case "toml":
-          value = formatTOML(value);
+          formatted = formatTOML(value);
           break;
         case "markdown":
-          value = formatMarkdown(value);
+          formatted = formatMarkdown(value);
           break;
+        default:
+          return;
+      }
+
+      // Update via CodeMirror transaction to preserve undo history
+      if (editorView) {
+        const transaction = editorView.state.update({
+          changes: {
+            from: 0,
+            to: editorView.state.doc.length,
+            insert: formatted,
+          },
+        });
+        editorView.dispatch(transaction);
+      } else {
+        // Queue update if editor not ready
+        pendingValue = formatted;
+        needsUpdate = true;
       }
     } catch (e) {
       error = e instanceof Error ? e.message : `Invalid ${formatLabels[format]} input`;
@@ -375,12 +423,22 @@
     }
   };
 
+  // Custom keymap to add Ctrl+Shift+Z for redo (in addition to default Ctrl+Y)
+  const customKeymap = keymap.of([
+    {
+      key: "Mod-Shift-z",
+      run: redo,
+    },
+  ]);
+
   // Extensions for editor
   let extensions = $derived([
     ...createTheme(isDark),
     editorHeightExtension,
     EditorView.lineWrapping,
     getLanguageExtension(format),
+    viewCapture,
+    customKeymap,
   ]);
 
   $effect(() => {
@@ -408,12 +466,6 @@
         copied = false;
       }, 2000);
     }
-  };
-
-  const handlePaste = () => {
-    navigator.clipboard.readText().then((text) => {
-      value = text;
-    });
   };
 
   const handleClear = () => {
@@ -520,12 +572,6 @@
         {formatLabels[format]}
       </span>
       <div class="flex gap-3">
-        <button
-          onclick={handlePaste}
-          class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-        >
-          Paste
-        </button>
         <button
           onclick={handleCopy}
           class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"

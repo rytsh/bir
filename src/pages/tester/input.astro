@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import InputTesterTool from "../../components/tools/input-tester/InputTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/input");
+---
+
+<Layout title="Input Tester - Keyboard and Gamepad Testing Tool" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/input">
+  <h1 slot="navbar-title">Input Tester</h1>
+  <InputTesterTool client:load />
+</Layout>

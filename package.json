@@ -12,6 +12,7 @@
     "@astrojs/sitemap": "^3.6.0",
     "@astrojs/svelte": "^7.2.4",
     "@bwip-js/browser": "^4.8.0",
+    "@codemirror/commands": "^6.10.1",
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-yaml": "^6.1.2",

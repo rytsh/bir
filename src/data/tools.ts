@@ -439,24 +439,32 @@ const rawCategories: Category[] = [
         path: "/graphics/image-metadata",
         keywords: "exif viewer, image metadata, remove exif, metadata remover, photo metadata, gps data, camera info, privacy, jpeg metadata, png metadata, exif remover, strip metadata",
       },
-     ],
-   },
-   {
-     id: "tester",
-     name: "Tester",
-     icon: "🧪",
-     tools: [
-       {
-         id: "dead-pixel-tester",
-         name: "Dead Pixel",
-         description: "Test your screen for dead pixels by displaying solid colors and patterns",
-         icon: "🖥️",
-         path: "/tester/dead-pixel",
-         keywords: "dead pixel, pixel test, screen test, dead pixels, stuck pixels, monitor test, display test, pixel tester",
-       },
-     ],
-   },
- ];
+    ],
+  },
+  {
+    id: "tester",
+    name: "Tester",
+    icon: "🧪",
+    tools: [
+      {
+        id: "dead-pixel-tester",
+        name: "Dead Pixel",
+        description: "Test your screen for dead pixels by displaying solid colors and patterns",
+        icon: "🖥️",
+        path: "/tester/dead-pixel",
+        keywords: "dead pixel, pixel test, screen test, dead pixels, stuck pixels, monitor test, display test, pixel tester",
+      },
+      {
+        id: "input-tester",
+        name: "Input Tester",
+        description: "Test keyboard and gamepad inputs with real-time event display",
+        icon: "🎮",
+        path: "/tester/input",
+        keywords: "key code, keycode, keyboard event, keydown, keyup, keypress, javascript keyboard, event.key, event.code, event.keyCode, keyboard listener, hotkey, shortcut, gamepad, controller, joystick, gamepad api, controller test, button test, analog stick",
+      },
+    ],
+  },
+];
 
 // Sort categories by name and sort tools within each category by name
 export const categories: Category[] = rawCategories
