@@ -427,7 +427,7 @@ const rawCategories: Category[] = [
         id: "shadow-generator",
         name: "Shadow Generator",
         description: "Generate CSS box-shadow and text-shadow with visual preview",
-        icon: "🌑",
+        icon: "🌒",
         path: "/graphics/shadow",
         keywords: "shadow generator, box shadow, text shadow, css shadow, drop shadow, shadow effect, shadow maker",
       },
