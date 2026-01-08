@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MultiTouchTesterTool from "../../components/tools/MultiTouchTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/multi-touch");
+---
+
+<Layout title="Multi-Touch Tester - Test Touch Screen Support" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/multi-touch">
+  <h1 slot="navbar-title">Multi-Touch Tester</h1>
+  <MultiTouchTesterTool client:load />
+</Layout>

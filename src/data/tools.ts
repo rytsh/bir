@@ -511,6 +511,14 @@ const rawCategories: Category[] = [
         keywords: "key code, keycode, keyboard event, keydown, keyup, keypress, javascript keyboard, event.key, event.code, event.keyCode, keyboard listener, hotkey, shortcut, gamepad, controller, joystick, gamepad api, controller test, button test, analog stick",
       },
       {
+        id: "multi-touch-tester",
+        name: "Multi-Touch",
+        description: "Test multi-touch support on your device with visual feedback and touch point details",
+        icon: "👆",
+        path: "/tester/multi-touch",
+        keywords: "multi-touch, touch screen, touch test, multitouch, touch points, touch support, touchscreen tester, finger tracking, touch events, gesture test",
+      },
+      {
         id: "screen-resolution",
         name: "Screen Resolution",
         description: "View screen resolution, window size, pixel density, and display information",
