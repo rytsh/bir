@@ -362,6 +362,14 @@ const rawCategories: Category[] = [
     icon: "🌐",
     tools: [
       {
+        id: "cors-checker",
+        name: "CORS Checker",
+        description: "Check if a URL has CORS enabled and view its CORS headers",
+        icon: "🔓",
+        path: "/network/cors",
+        keywords: "cors checker, cors test, cross-origin, access-control-allow-origin, cors headers, cors validation, api cors, cors enabled, cors policy",
+      },
+      {
         id: "subnet-calculator",
         name: "IP Subnet",
         description: "Calculate subnet details from IP address and CIDR notation",

@@ -565,7 +565,7 @@
             {#if qrError}
               <div class="text-red-500 text-sm">{qrError}</div>
             {:else if qrCodeSvg}
-              <div class="max-w-full">
+              <div class="max-w-full bg-white">
                 {@html qrCodeSvg}
               </div>
             {:else}

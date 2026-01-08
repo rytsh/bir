@@ -8,6 +8,7 @@
   let fontFamily = $state("sans-serif");
   let outputFormat = $state<"png" | "jpeg" | "svg">("png");
   let generatedImage = $state("");
+  let svgCode = $state("");
   let copied = $state<string | null>(null);
 
   const presetSizes = [
@@ -63,6 +64,7 @@
   <rect fill="${backgroundColor}" width="${width}" height="${height}"/>
   <text fill="${textColor}" font-family="${fontFamily}" font-size="${autoFontSize}" x="50%" y="50%" dominant-baseline="middle" text-anchor="middle">${displayText}</text>
 </svg>`;
+    svgCode = svg;
     generatedImage = `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
@@ -88,6 +90,13 @@
     const tag = `<img src="${generatedImage}" width="${width}" height="${height}" alt="Placeholder ${width}x${height}" />`;
     navigator.clipboard.writeText(tag);
     copied = "img";
+    setTimeout(() => { copied = null; }, 2000);
+  }
+
+  function copySvgCode() {
+    if (!svgCode) return;
+    navigator.clipboard.writeText(svgCode);
+    copied = "svg";
     setTimeout(() => { copied = null; }, 2000);
   }
 
@@ -286,12 +295,12 @@
     <!-- Preview and Output -->
     <div class="flex-1 flex flex-col gap-4">
       <!-- Preview -->
-      <div class="flex-1 min-h-[200px]">
+      <div>
         <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-2 block">
           Preview
         </span>
         <div
-          class="w-full h-full min-h-[200px] border border-(--color-border) flex items-center justify-center p-4 overflow-auto"
+          class="w-full min-h-[200px] border border-(--color-border) flex items-center justify-center p-4 overflow-auto"
           style="background: repeating-conic-gradient(#80808020 0% 25%, transparent 0% 50%) 50% / 20px 20px"
         >
           {#if generatedImage}
@@ -303,6 +312,24 @@
           {/if}
         </div>
       </div>
+
+      <!-- SVG Code (only shown when SVG format is selected) -->
+      {#if outputFormat === "svg" && svgCode}
+        <div>
+          <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-2 block">
+            SVG Code
+          </span>
+          <div class="relative">
+            <pre class="p-4 border border-(--color-border) bg-(--color-bg-alt) text-xs font-mono text-(--color-text) overflow-auto max-h-[200px]"><code>{svgCode}</code></pre>
+            <button
+              onclick={copySvgCode}
+              class="absolute top-2 right-2 px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors"
+            >
+              {copied === "svg" ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      {/if}
 
       <!-- Actions -->
       <div class="flex flex-wrap gap-2">
