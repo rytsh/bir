@@ -13,6 +13,8 @@ export default defineConfig({
     svelte(),
     sitemap(),
     AstroPWA({
+      registerType: "autoUpdate",
+      includeAssets: ["favicon.ico", "apple-touch-icon.png", "pwa-*.png", "maskable-*.png"],
       manifest: {
         name: "1 Tools - Utility Tools",
         short_name: "1 Tools",
@@ -20,18 +22,40 @@ export default defineConfig({
         theme_color: "#1a1a1a",
         background_color: "#1a1a1a",
         display: "standalone",
+        start_url: "/",
+        scope: "/",
         icons: [
           {
-            src: "/apple-touch-icon.png",
-            sizes: "180x180",
+            src: "/pwa-64x64.png",
+            sizes: "64x64",
             type: "image/png",
           },
           {
-            src: "/favicon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
+            src: "/pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+          },
+          {
+            src: "/pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/maskable-icon-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
           },
         ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,wasm}"],
+        navigateFallback: null,
+      },
+      devOptions: {
+        enabled: true,
+        type: "module",
       },
     }),
   ],

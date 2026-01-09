@@ -46,6 +46,7 @@
     "@types/crypto-js": "^4.2.2",
     "@types/figlet": "^1.7.0",
     "@types/sortablejs": "^1.15.9",
+    "@vite-pwa/assets-generator": "^1.0.2",
     "oxlint": "^1.36.0",
     "vite-plugin-static-copy": "^3.1.4"
   }
