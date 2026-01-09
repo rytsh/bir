@@ -23,6 +23,7 @@
     "@paralleldrive/cuid2": "^3.0.6",
     "@tailwindcss/vite": "^4.1.18",
     "@toon-format/toon": "^2.1.0",
+    "@vite-pwa/astro": "^1.2.0",
     "astro": "^5.16.6",
     "bcryptjs": "^3.0.3",
     "codemirror": "^6.0.2",
