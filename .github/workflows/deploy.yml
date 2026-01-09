@@ -41,6 +41,9 @@ jobs:
           PUBLIC_VERSION: ${{ github.ref_name }}
           PUBLIC_GA_ID: G-LBX88FMC3F
 
+      - name: Add IndexNow verification
+        run: echo "3184213cc7474de194cdb36d7cca5576" > ./dist/3184213cc7474de194cdb36d7cca5576.txt
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
