@@ -14,7 +14,8 @@ export default defineConfig({
     sitemap(),
     AstroPWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png", "pwa-*.png", "maskable-*.png"],
+      injectRegister: "inline",
+      includeAssets: ["favicon.ico", "apple-touch-icon.png", "apple-touch-icon-precomposed.png", "pwa-*.png", "maskable-*.png"],
       manifest: {
         name: "1 Tools - Utility Tools",
         short_name: "1 Tools",
@@ -50,8 +51,41 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,wasm}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,wasm,jpg}"],
         navigateFallback: null,
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-cache",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "gstatic-fonts-cache",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
       },
       devOptions: {
         enabled: true,

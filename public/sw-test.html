@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Worker Test - 1.tools</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    .success { background: #2d5016; }
+    .error { background: #721c24; }
+    .warning { background: #856404; }
+    button {
+      background: #4a9eff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #3a8eef;
+    }
+    .info {
+      background: #2c3e50;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 30px; }
+    code {
+      background: #000;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔧 Service Worker Status</h1>
+  
+  <div id="status"></div>
+  
+  <h2>Actions</h2>
+  <button onclick="checkStatus()">🔄 Refresh Status</button>
+  <button onclick="unregisterSW()">🗑️ Unregister SW</button>
+  <button onclick="window.location.href='/'">🏠 Go Home</button>
+  
+  <h2>Instructions</h2>
+  <div class="info">
+    <p><strong>To test offline mode:</strong></p>
+    <ol>
+      <li>Wait until SW shows "activated"</li>
+      <li>Enable Airplane Mode</li>
+      <li>Try navigating to different tools</li>
+      <li>All pages should load from cache</li>
+    </ol>
+  </div>
+
+  <script>
+    async function checkStatus() {
+      const statusDiv = document.getElementById('status');
+      statusDiv.innerHTML = '';
+
+      // Check if Service Worker is supported
+      if (!('serviceWorker' in navigator)) {
+        statusDiv.innerHTML = '<div class="status error">❌ Service Worker NOT supported in this browser</div>';
+        return;
+      }
+
+      statusDiv.innerHTML += '<div class="status success">✅ Service Worker API is supported</div>';
+
+      // Check registration
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        
+        if (!registration) {
+          statusDiv.innerHTML += '<div class="status error">❌ No Service Worker registered</div>';
+          statusDiv.innerHTML += '<div class="info">Refresh the page to register the SW</div>';
+          return;
+        }
+
+        statusDiv.innerHTML += '<div class="status success">✅ Service Worker is registered</div>';
+        statusDiv.innerHTML += `<div class="info">Scope: <code>${registration.scope}</code></div>`;
+
+        // Check state
+        if (registration.installing) {
+          statusDiv.innerHTML += '<div class="status warning">⏳ Service Worker is INSTALLING...</div>';
+        }
+        if (registration.waiting) {
+          statusDiv.innerHTML += '<div class="status warning">⏸️ Service Worker is WAITING (ready to activate)</div>';
+        }
+        if (registration.active) {
+          const state = registration.active.state;
+          statusDiv.innerHTML += `<div class="status success">✅ Service Worker is ACTIVE (${state})</div>`;
+        }
+
+        // Check controller
+        if (navigator.serviceWorker.controller) {
+          statusDiv.innerHTML += '<div class="status success">✅ This page is controlled by SW</div>';
+          statusDiv.innerHTML += `<div class="info">SW URL: <code>${navigator.serviceWorker.controller.scriptURL}</code></div>`;
+        } else {
+          statusDiv.innerHTML += '<div class="status warning">⚠️ Page not yet controlled by SW (refresh page)</div>';
+        }
+
+        // Check cache
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          statusDiv.innerHTML += `<div class="status success">✅ Found ${cacheNames.length} cache(s)</div>`;
+          for (const name of cacheNames) {
+            const cache = await caches.open(name);
+            const keys = await cache.keys();
+            statusDiv.innerHTML += `<div class="info"><strong>${name}</strong>: ${keys.length} items cached</div>`;
+          }
+        }
+
+        // Check online status
+        statusDiv.innerHTML += `<div class="status ${navigator.onLine ? 'success' : 'error'}">${navigator.onLine ? '🌐 ONLINE' : '✈️ OFFLINE'}</div>`;
+
+      } catch (error) {
+        statusDiv.innerHTML += `<div class="status error">❌ Error: ${error.message}</div>`;
+      }
+    }
+
+    async function unregisterSW() {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          await registration.unregister();
+          // Clear all caches
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+          alert('Service Worker unregistered and caches cleared! Refresh the page.');
+        } else {
+          alert('No Service Worker to unregister');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Auto-check on load
+    checkStatus();
+
+    // Listen for SW updates
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      console.log('Controller changed!');
+      checkStatus();
+    });
+
+    // Update online/offline status
+    window.addEventListener('online', checkStatus);
+    window.addEventListener('offline', checkStatus);
+  </script>
+</body>
+</html>

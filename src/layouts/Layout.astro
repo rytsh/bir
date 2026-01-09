@@ -3,6 +3,7 @@ import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import Sidebar from "../components/Sidebar.astro";
 import ThemeToggle from "../components/ThemeToggle.svelte";
+import InstallButton from "../components/InstallButton.svelte";
 
 interface Props {
   title: string;
@@ -25,6 +26,7 @@ const pageTitle = `${title ? title : siteName}`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL("/og.jpg", Astro.site);
 const twitterImage = new URL("/og.jpg", Astro.site);
+const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
 ---
 
 <!doctype html>
@@ -116,6 +118,14 @@ const twitterImage = new URL("/og.jpg", Astro.site);
     </script>
     <!-- Client-side navigation -->
     <ClientRouter transition:animate="none" />
+    <!-- Service Worker Registration for PWA -->
+    <script is:inline>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        });
+      }
+    </script>
     <!-- Apply theme before page swap during client-side navigation -->
     <script is:inline>
       document.addEventListener("astro:before-swap", (event) => {
@@ -217,6 +227,7 @@ const twitterImage = new URL("/og.jpg", Astro.site);
             <slot name="navbar-title">Collection of Tools</slot>
           </span>
           <div class="flex items-center gap-1">
+            {isMainPage && <InstallButton client:load />}
             <ThemeToggle client:load />
           </div>
         </header>
