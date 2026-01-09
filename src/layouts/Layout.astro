@@ -14,15 +14,15 @@ interface Props {
 const { title, description, keywords, currentPath } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
-const siteName = "Tools";
+const siteName = "1.tools - Collection of Useful Tools";
 const defaultDescription =
   "A collection of open-source tools for everyday tasks - encoders, decoders, generators, converters, and more.";
 const defaultKeywords =
   "tools, developer tools, web tools, encoder, decoder, generator, converter, base64, url encoding, hash, jwt, barcode, password generator, text tools, hex viewer, data converter, julian date, luhn algorithm";
 const metaDescription = description || defaultDescription;
 const metaKeywords = keywords || defaultKeywords;
-const pageTitle = `${title ? `${title} | ` : ""}${siteName}`;
-const canonicalURL = new URL(currentPath || "/", Astro.site);
+const pageTitle = `${title ? title : siteName}`;
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL("/og.jpg", Astro.site);
 const twitterImage = new URL("/og.jpg", Astro.site);
 ---

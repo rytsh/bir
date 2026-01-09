@@ -24,7 +24,7 @@ const rawCategories: Category[] = [
       {
         id: "ascii-table",
         name: "ASCII Table",
-        description: "ASCII character reference table with decimal, hex, octal, and binary codes",
+        description: "Complete ASCII character reference table showing decimal, hexadecimal, octal, and binary codes for all 128 standard characters including control characters with escape sequences",
         icon: "📋",
         path: "/text/ascii",
         keywords: "ascii table, ascii chart, character codes, ascii reference, hex codes, binary, octal, control characters, character map",
@@ -32,7 +32,7 @@ const rawCategories: Category[] = [
       {
         id: "ansi-colors",
         name: "ANSI Colors",
-        description: "Generate ANSI escape codes for colored terminal text with live preview",
+        description: "Generate ANSI escape codes for colored terminal output with live preview, supporting 16 colors, 256 colors, and true color RGB modes for bash, zsh, and other shells",
         icon: "🎨",
         path: "/text/ansi",
         keywords: "ansi colors, terminal colors, escape codes, ansi escape, color codes, terminal styling, console colors, shell colors",
@@ -40,7 +40,7 @@ const rawCategories: Category[] = [
       {
         id: "text-diff",
         name: "Diff",
-        description: "Compare two texts and highlight differences",
+        description: "Compare two texts side-by-side and highlight differences line-by-line using LCS algorithm with inline and split view modes, color-coded additions and deletions",
         icon: "🔍",
         path: "/text/diff",
         keywords: "text diff, text comparison, diff tool, compare text, text difference, file diff, text comparison tool",
@@ -48,7 +48,7 @@ const rawCategories: Category[] = [
       {
         id: "emoji-picker",
         name: "Emoji",
-        description: "Browse and copy emojis organized by category",
+        description: "Browse, search, and copy emojis organized by category with one-click copying to clipboard, featuring thousands of Unicode emojis with skin tone variants",
         icon: "🥳",
         path: "/text/emoji",
         keywords: "emoji picker, emoji list, copy emoji, emoji search, emoticons, smileys, unicode emoji, emoji keyboard",
@@ -56,7 +56,7 @@ const rawCategories: Category[] = [
       {
         id: "text-escape",
         name: "Escape",
-        description: "Escape or unescape text for JSON, HTML, URL, Regex, Shell, SQL, CSV",
+        description: "Escape or unescape special characters for JSON, HTML, URL, Regex, Shell, SQL, and CSV formats with bidirectional conversion and instant results",
         icon: "🔡",
         path: "/text/escape",
         keywords: "text escape, unescape text, escape characters, JSON escape, HTML escape, URL escape, regex escape, shell escape, SQL escape, CSV escape",
@@ -64,7 +64,7 @@ const rawCategories: Category[] = [
       {
         id: "font-glyphs",
         name: "Font Glyphs",
-        description: "View and copy glyphs from font files",
+        description: "Upload and inspect font files (TTF, OTF, WOFF) to view all available glyphs with Unicode codepoints, copy individual characters, and explore font character sets",
         icon: "🔤",
         path: "/text/glyphs",
         keywords: "font glyphs, font viewer, glyph viewer, font characters, unicode glyphs, font inspection, character map",
@@ -72,7 +72,7 @@ const rawCategories: Category[] = [
       {
         id: "lorem-ipsum",
         name: "Lorem Ipsum",
-        description: "Generate lorem ipsum placeholder text with customizable length and format",
+        description: "Generate lorem ipsum placeholder text with customizable word, sentence, or paragraph counts for mockups, wireframes, and design prototypes",
         icon: "📜",
         path: "/text/random",
         keywords: "lorem ipsum, placeholder text, dummy text, random text, filler text, lipsum, text generator, sample text",
@@ -80,7 +80,7 @@ const rawCategories: Category[] = [
       {
         id: "text-transform",
         name: "Transform",
-        description: "Transform text with sorting, case conversion, and line operations",
+        description: "Transform text with powerful operations including sort lines, remove duplicates, reverse, case conversion (uppercase, lowercase, title, camel, snake, kebab, pascal case), and line manipulation",
         icon: "🔄",
         path: "/text/transform",
         keywords: "text transform, text manipulation, sort lines, alphabetize, reverse text, randomize lines, uppercase, lowercase, snake case, title case, camel case, kebab case, pascal case, text formatting",
@@ -88,7 +88,7 @@ const rawCategories: Category[] = [
       {
         id: "nato-alphabet",
         name: "NATO Alphabet",
-        description: "Convert text to NATO phonetic alphabet",
+        description: "Convert text to NATO phonetic alphabet (Alpha, Bravo, Charlie) for clear verbal communication, useful for spelling over radio, phone, or in noisy environments",
         icon: "🔊",
         path: "/text/nato",
         keywords: "nato alphabet, phonetic alphabet, spelling alphabet, nato converter, alfa bravo charlie, military alphabet, aviation alphabet, radio alphabet",
@@ -96,7 +96,7 @@ const rawCategories: Category[] = [
       {
         id: "text-obfuscator",
         name: "Obfuscator",
-        description: "Obfuscate text with various methods like asterisks, ROT13, leetspeak, and more",
+        description: "Obfuscate and mask sensitive text using multiple methods including asterisks, ROT13, leetspeak (1337), Unicode lookalikes, and character scrambling for privacy",
         icon: "🙈",
         path: "/text/obfuscator",
         keywords: "text obfuscator, mask text, hide text, asterisk, rot13, leetspeak, 1337, scramble text, censor text, redact text, privacy, obfuscation",
@@ -112,7 +112,7 @@ const rawCategories: Category[] = [
       {
         id: "ascii-art",
         name: "ASCII Art",
-        description: "Generate ASCII art text using various stylized fonts like Banner, Doom, and Graffiti",
+        description: "Generate ASCII art text banners using FIGlet fonts including Banner, Doom, Graffiti, Standard, and many more stylized text effects for terminals and comments",
         icon: "🪧",
         path: "/text/ascii-art",
         keywords: "ascii art, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text",
