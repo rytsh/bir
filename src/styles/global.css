@@ -82,6 +82,7 @@
 :root {
   --color-bg: #f8f8f8;
   --color-bg-alt: #ffffff;
+  --color-bg-secondary: #8d99ae;
   --color-sidebar: #1a1a1a;
   --color-sidebar-hover: #2a2a2a;
   --color-text: #1a1a1a;

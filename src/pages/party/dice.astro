@@ -1,0 +1,9 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DiceTool from "../../components/tools/DiceTool.svelte";
+---
+
+<Layout title="Dice Roller" currentPath="/party/dice">
+  <span slot="navbar-title">Dice Roller</span>
+  <DiceTool client:load />
+</Layout>
