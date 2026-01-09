@@ -3,7 +3,6 @@ import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import Sidebar from "../components/Sidebar.astro";
 import ThemeToggle from "../components/ThemeToggle.svelte";
-import InstallButton from "../components/InstallButton.svelte";
 
 interface Props {
   title: string;
@@ -227,7 +226,6 @@ const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
             <slot name="navbar-title">Collection of Tools</slot>
           </span>
           <div class="flex items-center gap-1">
-            {isMainPage && <InstallButton client:load />}
             <ThemeToggle client:load />
           </div>
         </header>
