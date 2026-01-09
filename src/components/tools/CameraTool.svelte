@@ -23,6 +23,7 @@
   let videoDevices = $state<MediaDeviceInfo[]>([]);
   let audioDevices = $state<MediaDeviceInfo[]>([]);
   let mirror = $state(true);
+  let facingMode = $state<"user" | "environment">("user"); // For mobile camera switching
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -67,13 +68,25 @@
     }
     
     try {
+      // Build video constraints
+      // On mobile, prefer facingMode; on desktop, use deviceId if available
+      let videoConstraints: MediaTrackConstraints | boolean;
+      
+      if (selectedVideoDevice) {
+        // User selected a specific device
+        videoConstraints = { deviceId: { ideal: selectedVideoDevice } };
+      } else {
+        // Use facingMode (works better on mobile)
+        videoConstraints = { facingMode: { ideal: facingMode } };
+      }
+      
+      const audioConstraints: MediaTrackConstraints | boolean = includeAudio 
+        ? (selectedAudioDevice ? { deviceId: { ideal: selectedAudioDevice } } : true)
+        : false;
+
       const constraints: MediaStreamConstraints = {
-        video: selectedVideoDevice 
-          ? { deviceId: { exact: selectedVideoDevice } }
-          : true,
-        audio: includeAudio 
-          ? (selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true)
-          : false,
+        video: videoConstraints,
+        audio: audioConstraints,
       };
 
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -89,6 +102,7 @@
       }
       
       recState = "previewing";
+      // Re-enumerate devices after permission granted (needed for mobile to get actual device info)
       await getDevices();
     } catch (e) {
       if (e instanceof Error) {
@@ -96,6 +110,10 @@
           error = "Camera access denied. Please allow camera access in your browser settings.";
         } else if (e.name === "NotFoundError") {
           error = "No camera found. Please connect a camera and try again.";
+        } else if (e.name === "NotReadableError") {
+          error = "Camera is already in use by another application.";
+        } else if (e.name === "OverconstrainedError") {
+          error = "Could not satisfy camera constraints. Try selecting a different camera.";
         } else {
           error = `Failed to access camera: ${e.message}`;
         }
@@ -240,6 +258,13 @@
     recordedChunks = [];
     duration = 0;
     recState = "previewing";
+  };
+
+  const flipCamera = async () => {
+    facingMode = facingMode === "user" ? "environment" : "user";
+    selectedVideoDevice = ""; // Clear device selection to use facingMode
+    mirror = facingMode === "user"; // Auto-mirror for front camera
+    await startPreview();
   };
 
   const restartAll = () => {
@@ -422,6 +447,19 @@
             class="w-full px-4 py-2 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
           >
             Take Photo
+          </button>
+          <button
+            onclick={flipCamera}
+            class="w-full px-4 py-2 text-sm font-medium border border-(--color-border) text-(--color-text) hover:border-(--color-accent) transition-colors flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>
+              <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/>
+              <circle cx="12" cy="12" r="3"/>
+              <path d="m18 22-3-3 3-3"/>
+              <path d="m6 2 3 3-3 3"/>
+            </svg>
+            Flip Camera
           </button>
           <button
             onclick={restartAll}

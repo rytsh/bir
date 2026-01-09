@@ -102,6 +102,14 @@ const rawCategories: Category[] = [
         keywords: "text obfuscator, mask text, hide text, asterisk, rot13, leetspeak, 1337, scramble text, censor text, redact text, privacy, obfuscation",
       },
       {
+        id: "regex-tester",
+        name: "Regex Tester",
+        description: "Test regular expressions with real-time matching, groups, and flags",
+        icon: "🥨",
+        path: "/text/regex",
+        keywords: "regex tester, regular expression, regex matcher, regex validator, pattern matching, regex groups, regex flags, regex101, regexr, preg, pcre, javascript regex",
+      },
+      {
         id: "ascii-art",
         name: "ASCII Art",
         description: "Generate ASCII art text using various stylized fonts like Banner, Doom, and Graffiti",
