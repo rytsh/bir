@@ -15,6 +15,18 @@
   let flagDotAll = $state(false);
   let flagUnicode = $state(false);
   let showCheatsheet = $state(false);
+  
+  // Element refs for scroll sync
+  let textareaEl = $state<HTMLTextAreaElement | null>(null);
+  let backdropEl = $state<HTMLDivElement | null>(null);
+
+  // Sync scroll from textarea to backdrop
+  const handleScroll = () => {
+    if (textareaEl && backdropEl) {
+      backdropEl.scrollTop = textareaEl.scrollTop;
+      backdropEl.scrollLeft = textareaEl.scrollLeft;
+    }
+  };
 
   // Common regex patterns for quick reference
   const commonPatterns = [
@@ -86,8 +98,12 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;")
-      .replace(/\n/g, "<br>");
+      .replace(/'/g, "&#039;");
+  };
+
+  // Helper to escape HTML and preserve newlines for display
+  const escapeHtmlWithBreaks = (text: string): string => {
+    return escapeHtml(text).replace(/\n/g, "<br>");
   };
 
   // Derived: build flags string
@@ -157,13 +173,14 @@
     return foundMatches;
   });
 
-  // Derived: highlighted text with matches
+  // Derived: highlighted text with matches (for overlay)
   let highlightedHtml = $derived.by(() => {
     if (!regexResult.regex || !testString || matches.length === 0) {
-      return escapeHtml(testString);
+      // Return text with a trailing space/newline to match textarea behavior
+      return escapeHtml(testString) + "\n";
     }
 
-    // Sort matches by index (should already be sorted, but just in case)
+    // Sort matches by index
     const sortedMatches = [...matches].sort((a, b) => a.index - b.index);
     
     let result = "";
@@ -173,12 +190,12 @@
       // Add text before this match
       result += escapeHtml(testString.slice(lastIndex, match.index));
       // Add the highlighted match
-      result += `<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white px-0.5 rounded">${escapeHtml(match.text)}</mark>`;
+      result += `<mark class="highlight-match">${escapeHtml(match.text)}</mark>`;
       lastIndex = match.index + match.text.length;
     }
     
-    // Add remaining text after last match
-    result += escapeHtml(testString.slice(lastIndex));
+    // Add remaining text after last match, plus trailing newline for textarea sync
+    result += escapeHtml(testString.slice(lastIndex)) + "\n";
     
     return result;
   });
@@ -279,29 +296,33 @@
         </div>
       </div>
 
-      <!-- Test String -->
-      <div class="flex-1 flex flex-col min-h-0">
-        <label class="text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
-          Test String
-        </label>
-        <textarea
-          bind:value={testString}
-          placeholder="Enter text to test against..."
-          class="flex-1 min-h-[150px] p-3 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) font-mono text-sm resize-none focus:outline-none focus:border-(--color-accent)"
-        ></textarea>
-      </div>
-
-      <!-- Highlighted Result -->
+      <!-- Test String with Highlighting Overlay -->
       <div class="flex-1 flex flex-col min-h-0">
         <div class="flex items-center justify-between mb-2">
           <label class="text-xs tracking-wider text-(--color-text-light) font-medium">
-            Result ({matches.length} match{matches.length !== 1 ? "es" : ""})
+            Test String
           </label>
+          <span class="text-xs text-(--color-text-muted)">
+            {matches.length} match{matches.length !== 1 ? "es" : ""}
+          </span>
         </div>
-        <div
-          class="flex-1 min-h-[150px] p-3 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) font-mono text-sm overflow-auto whitespace-pre-wrap"
-        >
-          {@html highlightedHtml}
+        <div class="flex-1 min-h-[200px] relative border border-(--color-border) bg-(--color-bg-alt) overflow-hidden">
+          <!-- Highlight backdrop -->
+          <div
+            bind:this={backdropEl}
+            class="highlight-backdrop absolute inset-0 p-3 font-mono text-sm whitespace-pre-wrap break-words overflow-auto pointer-events-none"
+            aria-hidden="true"
+          >{@html highlightedHtml}</div>
+          <!-- Actual textarea -->
+          <textarea
+            bind:this={textareaEl}
+            bind:value={testString}
+            oninput={handleScroll}
+            onscroll={handleScroll}
+            placeholder="Enter text to test against..."
+            class="absolute inset-0 w-full h-full p-3 bg-transparent text-transparent caret-(--color-text) font-mono text-sm resize-none focus:outline-none selection:bg-blue-500/30"
+            spellcheck="false"
+          ></textarea>
         </div>
       </div>
     </div>
@@ -427,3 +448,32 @@
     </div>
   </div>
 </div>
+
+<style>
+  .highlight-backdrop {
+    color: var(--color-text);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .highlight-backdrop :global(.highlight-match) {
+    background-color: #fde047;
+    color: #000;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  :global(.dark) .highlight-backdrop :global(.highlight-match) {
+    background-color: #ca8a04;
+    color: #fff;
+  }
+
+  /* Sync scrolling between textarea and backdrop */
+  .highlight-backdrop {
+    line-height: 1.5;
+  }
+
+  textarea {
+    line-height: 1.5;
+  }
+</style>

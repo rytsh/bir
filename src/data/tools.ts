@@ -103,7 +103,7 @@ const rawCategories: Category[] = [
       },
       {
         id: "regex-tester",
-        name: "Regex Tester",
+        name: "Regex",
         description: "Test regular expressions with real-time matching, groups, and flags",
         icon: "🥨",
         path: "/text/regex",
@@ -407,6 +407,14 @@ const rawCategories: Category[] = [
         icon: "📹",
         path: "/party/camera",
         keywords: "camera, webcam, video recorder, camera recorder, record video, take photo, photo capture, video capture, selfie, webcam video, record webcam",
+      },
+      {
+        id: "coin-flipper",
+        name: "Coin Flipper",
+        description: "Flip a virtual coin to make decisions with customizable appearance and statistics",
+        icon: "🪙",
+        path: "/party/coin-flipper",
+        keywords: "coin flip, coin toss, heads tails, flip coin, random decision, yes no, coin flipper, virtual coin, decision maker, 50 50",
       },
       {
         id: "dice-roller",
