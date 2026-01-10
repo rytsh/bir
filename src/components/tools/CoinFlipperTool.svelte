@@ -147,7 +147,7 @@
       <div class="relative mb-8" style="perspective: 1000px;">
         <div
           class="coin-container"
-          style="transform: rotateY({coinRotation}deg);"
+          style="transform: rotateX({coinRotation}deg);"
         >
           <!-- Heads Side - Star -->
           <div class="coin coin-heads">
@@ -323,7 +323,7 @@
         <div class="mb-8" style="perspective: 1000px;">
           <div
             class="coin-container-large"
-            style="transform: rotateY({coinRotation}deg);"
+            style="transform: rotateX({coinRotation}deg);"
           >
             <!-- Heads Side - Star -->
             <div class="coin-large coin-heads-large">
@@ -422,11 +422,11 @@
   }
 
   .coin-heads {
-    transform: rotateY(0deg);
+    transform: rotateX(0deg);
   }
 
   .coin-tails {
-    transform: rotateY(180deg);
+    transform: rotateX(180deg);
   }
 
   .coin-inner {
@@ -522,11 +522,11 @@
   }
 
   .coin-heads-large {
-    transform: rotateY(0deg);
+    transform: rotateX(0deg);
   }
 
   .coin-tails-large {
-    transform: rotateY(180deg);
+    transform: rotateX(180deg);
   }
 
   .coin-inner-large {
