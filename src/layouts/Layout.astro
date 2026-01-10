@@ -117,14 +117,6 @@ const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
     </script>
     <!-- Client-side navigation -->
     <ClientRouter transition:animate="none" />
-    <!-- Service Worker Registration for PWA -->
-    <script is:inline>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        });
-      }
-    </script>
     <!-- Apply theme before page swap during client-side navigation -->
     <script is:inline>
       document.addEventListener("astro:before-swap", (event) => {
