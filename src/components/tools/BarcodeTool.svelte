@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import bwipjs from "@bwip-js/browser";
+  import jsQR from "jsqr";
 
-  type TabType = "barcode" | "wifi";
+  type TabType = "barcode" | "wifi" | "reader";
   type OutputFormat = "png" | "svg" | "ascii";
   type FrameStyle = "none" | "simple" | "rounded" | "bold" | "double";
   type WifiEncryption = "WPA" | "WEP" | "nopass";
+  type ReaderMode = "file" | "camera";
 
   interface BarcodeType {
     id: string;
@@ -57,6 +59,18 @@
   let wifiPassword = $state("");
   let wifiEncryption = $state<WifiEncryption>("WPA");
   let wifiHidden = $state(false);
+
+  // QR Reader states
+  let readerMode = $state<ReaderMode>("file");
+  let readerResult = $state("");
+  let readerError = $state("");
+  let readerImagePreview = $state<string | null>(null);
+  let readerSupported = $state(true);
+  let readerCopied = $state(false);
+  let cameraStream: MediaStream | null = null;
+  let cameraVideoElement = $state<HTMLVideoElement | null>(null);
+  let cameraActive = $state(false);
+  let scanInterval: number | null = null;
 
   // Output states
   let outputCanvas: HTMLCanvasElement;
@@ -428,9 +442,218 @@
     }
   };
 
+  // QR Reader functions
+  const checkBarcodeDetectorSupport = (): boolean => {
+    return "BarcodeDetector" in window;
+  };
+
+  // Convert image source to ImageData for jsQR
+  const getImageData = (source: HTMLImageElement | HTMLVideoElement): ImageData | null => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    if (source instanceof HTMLVideoElement) {
+      canvas.width = source.videoWidth;
+      canvas.height = source.videoHeight;
+    } else {
+      canvas.width = source.naturalWidth || source.width;
+      canvas.height = source.naturalHeight || source.height;
+    }
+
+    if (canvas.width === 0 || canvas.height === 0) return null;
+
+    ctx.drawImage(source, 0, 0);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  };
+
+  // Fallback QR detection using jsQR library
+  const detectWithJsQR = (source: HTMLImageElement | HTMLVideoElement): string | null => {
+    const imageData = getImageData(source);
+    if (!imageData) return null;
+
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    return code?.data || null;
+  };
+
+  const detectBarcode = async (imageSource: HTMLImageElement | HTMLVideoElement): Promise<string | null> => {
+    // Try native BarcodeDetector first (faster and supports more formats)
+    if (checkBarcodeDetectorSupport()) {
+      try {
+        // @ts-expect-error BarcodeDetector is not in TypeScript's lib yet
+        const barcodeDetector = new BarcodeDetector({
+          formats: ["qr_code", "ean_13", "ean_8", "code_128", "code_39", "code_93", "codabar", "data_matrix", "itf", "pdf417", "aztec", "upc_a", "upc_e"],
+        });
+        const barcodes = await barcodeDetector.detect(imageSource);
+        
+        if (barcodes.length > 0) {
+          return barcodes[0].rawValue;
+        }
+      } catch {
+        // Fall through to jsQR
+      }
+    }
+
+    // Fallback to jsQR for QR codes (works on all browsers including iOS)
+    try {
+      const result = detectWithJsQR(imageSource);
+      if (result) {
+        return result;
+      }
+    } catch {
+      // Ignore jsQR errors
+    }
+
+    return null;
+  };
+
+  const handleFileUpload = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    readerError = "";
+    readerResult = "";
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      readerImagePreview = e.target?.result as string;
+      
+      // Create image for detection
+      const img = new Image();
+      img.onload = async () => {
+        const result = await detectBarcode(img);
+        if (result) {
+          readerResult = result;
+        } else if (!readerError) {
+          readerError = "No barcode or QR code found in the image.";
+        }
+      };
+      img.onerror = () => {
+        readerError = "Failed to load image.";
+      };
+      img.src = readerImagePreview;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const startCamera = async () => {
+    readerError = "";
+    readerResult = "";
+
+    // Check for secure context
+    if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      readerError = "Camera access requires HTTPS.";
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      readerError = "Camera API is not available in your browser.";
+      return;
+    }
+
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      cameraActive = true;
+
+      // Wait for video element to be available
+      await new Promise<void>((resolve) => {
+        const checkVideo = () => {
+          if (cameraVideoElement) {
+            resolve();
+          } else {
+            requestAnimationFrame(checkVideo);
+          }
+        };
+        checkVideo();
+      });
+
+      if (cameraVideoElement && cameraStream) {
+        cameraVideoElement.srcObject = cameraStream;
+        await cameraVideoElement.play();
+        startScanning();
+      }
+    } catch (e) {
+      cameraActive = false;
+      if (e instanceof Error) {
+        if (e.name === "NotAllowedError") {
+          readerError = "Camera access denied. Please allow camera access.";
+        } else if (e.name === "NotFoundError") {
+          readerError = "No camera found.";
+        } else {
+          readerError = `Camera error: ${e.message}`;
+        }
+      } else {
+        readerError = "Failed to access camera.";
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (scanInterval) {
+      clearInterval(scanInterval);
+      scanInterval = null;
+    }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => { track.stop(); });
+      cameraStream = null;
+    }
+    if (cameraVideoElement) {
+      cameraVideoElement.srcObject = null;
+    }
+    cameraActive = false;
+  };
+
+  const startScanning = () => {
+    if (scanInterval) {
+      clearInterval(scanInterval);
+    }
+
+    scanInterval = window.setInterval(async () => {
+      if (!cameraVideoElement || !cameraActive) return;
+
+      try {
+        const result = await detectBarcode(cameraVideoElement);
+        if (result) {
+          readerResult = result;
+          // Don't stop camera, just show result - user can continue scanning
+        }
+      } catch {
+        // Ignore scan errors during continuous scanning
+      }
+    }, 500); // Scan every 500ms
+  };
+
+  const copyReaderResult = async () => {
+    if (!readerResult) return;
+    try {
+      await navigator.clipboard.writeText(readerResult);
+      readerCopied = true;
+      setTimeout(() => { readerCopied = false; }, 2000);
+    } catch {
+      readerError = "Failed to copy to clipboard.";
+    }
+  };
+
+  const clearReader = () => {
+    readerResult = "";
+    readerError = "";
+    readerImagePreview = null;
+    stopCamera();
+  };
+
   // Auto-generate on mount and when relevant inputs change
   onMount(() => {
     generateBarcode();
+    // jsQR works everywhere, so reader is always supported
+    readerSupported = true;
+    
+    return () => {
+      stopCamera();
+    };
   });
 
   // Reactive generation
@@ -474,7 +697,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate barcodes and QR codes in various formats with customization options.
+      Generate and scan barcodes and QR codes in various formats.
     </p>
   </header>
 
@@ -498,6 +721,17 @@
         : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       WiFi QR
+    </button>
+    <button
+      onclick={() => {
+        activeTab = "reader";
+        clearReader();
+      }}
+      class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'reader'
+        ? 'text-(--color-text) border-b-2 border-(--color-accent)'
+        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      QR Reader
     </button>
   </div>
 
@@ -542,7 +776,7 @@
             class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) font-mono resize-y"
           ></textarea>
         </div>
-      {:else}
+      {:else if activeTab === "wifi"}
         <!-- WiFi QR Generator -->
         <div class="flex flex-col gap-4 p-4 border border-(--color-border) bg-(--color-bg-alt)">
           <div class="text-xs tracking-wider text-(--color-text-light) font-medium">WiFi Network Details</div>
@@ -589,7 +823,107 @@
             <span class="text-sm text-(--color-text)">Hidden Network</span>
           </label>
         </div>
+      {:else if activeTab === "reader"}
+        <!-- QR Reader -->
+        <div class="flex flex-col gap-4">
+          <!-- Reader Mode Selection -->
+          <div class="flex flex-col gap-2">
+            <label class="text-xs tracking-wider text-(--color-text-light) font-medium">Scan Method</label>
+            <div class="flex gap-2">
+              <button
+                onclick={() => { readerMode = "file"; stopCamera(); }}
+                class="flex-1 px-4 py-2 text-sm border transition-colors {readerMode === 'file'
+                  ? 'border-(--color-accent) bg-(--color-accent) text-(--color-btn-text)'
+                  : 'border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:border-(--color-accent)'}"
+              >
+                Upload File
+              </button>
+              <button
+                onclick={() => { readerMode = "camera"; readerImagePreview = null; }}
+                class="flex-1 px-4 py-2 text-sm border transition-colors {readerMode === 'camera'
+                  ? 'border-(--color-accent) bg-(--color-accent) text-(--color-btn-text)'
+                  : 'border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:border-(--color-accent)'}"
+              >
+                Use Camera
+              </button>
+            </div>
+          </div>
+
+          {#if readerMode === "file"}
+            <!-- File Upload -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs tracking-wider text-(--color-text-light) font-medium">Upload Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                onchange={handleFileUpload}
+                class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) file:mr-4 file:py-1 file:px-3 file:border-0 file:text-sm file:bg-(--color-accent) file:text-(--color-btn-text) file:cursor-pointer"
+              />
+              <p class="text-xs text-(--color-text-muted)">Select an image containing a QR code</p>
+            </div>
+          {:else}
+            <!-- Camera Controls -->
+            <div class="flex flex-col gap-2">
+              {#if !cameraActive}
+                <button
+                  onclick={startCamera}
+                  class="w-full px-4 py-2 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
+                >
+                  Start Camera
+                </button>
+                <p class="text-xs text-(--color-text-muted)">Point your camera at a QR code</p>
+              {:else}
+                <button
+                  onclick={stopCamera}
+                  class="w-full px-4 py-2 text-sm font-medium border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors"
+                >
+                  Stop Camera
+                </button>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Reader Result -->
+          {#if readerResult}
+            <div class="flex flex-col gap-2">
+              <div class="flex justify-between items-center">
+                <label class="text-xs tracking-wider text-(--color-text-light) font-medium">Result</label>
+                <button
+                  onclick={copyReaderResult}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                >
+                  {readerCopied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <div class="p-3 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm font-mono break-all">
+                {readerResult}
+              </div>
+              {#if readerResult.startsWith("http://") || readerResult.startsWith("https://")}
+                <a
+                  href={readerResult}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-sm text-(--color-accent) hover:underline"
+                >
+                  Open Link
+                </a>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Clear Button -->
+          {#if readerResult || readerImagePreview || cameraActive}
+            <button
+              onclick={clearReader}
+              class="w-full px-4 py-2 text-sm border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              Clear
+            </button>
+          {/if}
+        </div>
       {/if}
+
+      {#if activeTab !== "reader"}
 
       <!-- Output Format -->
       <div class="flex flex-col gap-2">
@@ -725,63 +1059,108 @@
           </select>
         </div>
       {/if}
+      {/if}
     </div>
 
     <!-- Right Panel: Output -->
     <div class="lg:w-1/2 flex flex-col min-h-[300px]">
-      <div class="flex justify-between items-center mb-2">
-        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
-          Output
-        </span>
-        <div class="flex gap-3">
-          <button
-            onclick={handleCopy}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
-          <button
-            onclick={handleDownload}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-          >
-            {downloaded ? "Downloaded!" : "Download"}
-          </button>
-          <button
-            onclick={handleClear}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-          >
-            Clear
-          </button>
+      {#if activeTab === "reader"}
+        <!-- Reader Preview -->
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+            Preview
+          </span>
         </div>
-      </div>
 
-      <!-- Error Message -->
-      {#if error}
-        <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm">
-          {error}
+        <!-- Reader Error -->
+        {#if readerError}
+          <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm">
+            {readerError}
+          </div>
+        {/if}
+
+        <!-- Reader Preview Display -->
+        <div class="flex-1 border border-(--color-border) bg-black overflow-hidden flex items-center justify-center">
+          {#if readerMode === "camera" && cameraActive}
+            <video
+              bind:this={cameraVideoElement}
+              autoplay
+              playsinline
+              muted
+              class="w-full h-full object-contain"
+            ></video>
+          {:else if readerImagePreview}
+            <img
+              src={readerImagePreview}
+              alt="Uploaded image"
+              class="max-w-full max-h-full object-contain"
+            />
+          {:else}
+            <div class="text-(--color-text-muted) text-sm text-center p-4">
+              {#if readerMode === "file"}
+                Upload an image to scan
+              {:else}
+                Start camera to scan
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <!-- Generator Output -->
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+            Output
+          </span>
+          <div class="flex gap-3">
+            <button
+              onclick={handleCopy}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              onclick={handleDownload}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              {downloaded ? "Downloaded!" : "Download"}
+            </button>
+            <button
+              onclick={handleClear}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        {#if error}
+          <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm">
+            {error}
+          </div>
+        {/if}
+
+        <!-- Output Display -->
+        <div class="flex-1 border border-(--color-border) bg-(--color-bg) overflow-auto flex items-center justify-center p-4">
+          {#if outputFormat === "png"}
+            <canvas bind:this={outputCanvas} class="max-w-full max-h-full"></canvas>
+          {:else if outputFormat === "svg"}
+            {#if outputSvg}
+              <div class="max-w-full max-h-full">
+                {@html outputSvg}
+              </div>
+            {:else}
+              <div class="text-(--color-text-muted) text-sm">Enter content to generate barcode...</div>
+            {/if}
+          {:else if outputFormat === "ascii"}
+            {#if outputAscii}
+              <pre class="text-xs font-mono leading-none whitespace-pre max-w-full max-h-full text-(--color-text)">{outputAscii}</pre>
+            {:else}
+              <div class="text-(--color-text-muted) text-sm">Enter content to generate barcode...</div>
+            {/if}
+          {/if}
         </div>
       {/if}
-
-      <!-- Output Display -->
-      <div class="flex-1 border border-(--color-border) bg-(--color-bg) overflow-auto flex items-center justify-center p-4">
-        {#if outputFormat === "png"}
-          <canvas bind:this={outputCanvas} class="max-w-full max-h-full"></canvas>
-        {:else if outputFormat === "svg"}
-          {#if outputSvg}
-            <div class="max-w-full max-h-full">
-              {@html outputSvg}
-            </div>
-          {:else}
-            <div class="text-(--color-text-muted) text-sm">Enter content to generate barcode...</div>
-          {/if}
-        {:else if outputFormat === "ascii"}
-          {#if outputAscii}
-            <pre class="text-xs font-mono leading-none whitespace-pre max-w-full max-h-full text-(--color-text)">{outputAscii}</pre>
-          {:else}
-            <div class="text-(--color-text-muted) text-sm">Enter content to generate barcode...</div>
-          {/if}
-        {/if}
-      </div>
     </div>
   </div>
 </div>

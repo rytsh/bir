@@ -6,7 +6,7 @@
   let text = $state("");
   let fontSize = $state(0);
   let fontFamily = $state("sans-serif");
-  let outputFormat = $state<"png" | "jpeg" | "svg">("png");
+  let outputFormat = $state<"png" | "jpeg" | "webp" | "svg">("png");
   let generatedImage = $state("");
   let svgCode = $state("");
   let copied = $state<string | null>(null);
@@ -55,8 +55,12 @@
     ctx.textBaseline = "middle";
     ctx.fillText(displayText, width / 2, height / 2);
 
-    const mimeType = outputFormat === "jpeg" ? "image/jpeg" : "image/png";
-    generatedImage = canvas.toDataURL(mimeType, 0.92);
+    const mimeTypes: Record<string, string> = {
+      png: "image/png",
+      jpeg: "image/jpeg",
+      webp: "image/webp",
+    };
+    generatedImage = canvas.toDataURL(mimeTypes[outputFormat], 0.92);
   }
 
   function generateSvg() {
@@ -280,9 +284,9 @@
           Format
         </span>
         <div class="flex gap-2">
-          {#each ["png", "jpeg", "svg"] as format}
+          {#each ["png", "jpeg", "webp", "svg"] as format}
             <button
-              onclick={() => outputFormat = format as "png" | "jpeg" | "svg"}
+              onclick={() => outputFormat = format as "png" | "jpeg" | "webp" | "svg"}
               class="flex-1 px-3 py-2 text-sm font-medium transition-colors {outputFormat === format ? 'bg-(--color-accent) text-(--color-btn-text)' : 'border border-(--color-border) text-(--color-text) hover:bg-(--color-bg)'}"
             >
               {format.toUpperCase()}

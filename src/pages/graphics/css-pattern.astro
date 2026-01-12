@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CssPatternGeneratorTool from "../../components/tools/CssPatternGeneratorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/css-pattern");
+---
+
+<Layout title="CSS Pattern Generator" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/css-pattern">
+  <h1 slot="navbar-title">CSS Pattern Generator</h1>
+  <CssPatternGeneratorTool client:load />
+</Layout>

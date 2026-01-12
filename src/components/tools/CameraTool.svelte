@@ -15,6 +15,9 @@
   let error = $state("");
   let duration = $state(0);
   let durationInterval: number | null = null;
+  let mounted = $state(false);
+  let isSupported = $state(true);
+  let requiresHttps = $state(false);
 
   // Settings
   let selectedVideoDevice = $state("");
@@ -24,6 +27,7 @@
   let audioDevices = $state<MediaDeviceInfo[]>([]);
   let mirror = $state(true);
   let facingMode = $state<"user" | "environment">("user"); // For mobile camera switching
+  let permissionStatus = $state<"unknown" | "granted" | "denied" | "prompt">("unknown");
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -31,7 +35,29 @@
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const checkMediaDevicesSupport = () => {
+    // Check if we're in a secure context (HTTPS or localhost)
+    const isSecureContext = window.isSecureContext;
+    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    
+    if (!isSecureContext && !isLocalhost) {
+      requiresHttps = true;
+      isSupported = false;
+      return false;
+    }
+    
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      isSupported = false;
+      return false;
+    }
+    
+    return true;
+  };
+
   const getDevices = async () => {
+    if (!checkMediaDevicesSupport()) return;
+    
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       videoDevices = devices.filter(d => d.kind === "videoinput");
@@ -43,8 +69,69 @@
       if (audioDevices.length > 0 && !selectedAudioDevice) {
         selectedAudioDevice = audioDevices[0].deviceId;
       }
+    } catch {
+      // Silently fail - devices will be enumerated after permission is granted
+    }
+  };
+
+  const checkPermissions = async () => {
+    if (!checkMediaDevicesSupport()) return;
+    
+    try {
+      // Check camera permission status if the Permissions API is available
+      if (navigator.permissions && navigator.permissions.query) {
+        const cameraPermission = await navigator.permissions.query({ name: "camera" as PermissionName });
+        permissionStatus = cameraPermission.state as "granted" | "denied" | "prompt";
+      }
+    } catch {
+      // Permissions API not fully supported, will request on use
+      permissionStatus = "unknown";
+    }
+  };
+
+  const requestPermission = async () => {
+    error = "";
+    
+    if (!checkMediaDevicesSupport()) {
+      if (requiresHttps) {
+        error = "Camera access requires HTTPS. Please access this site using https://";
+      } else {
+        error = "Your browser does not support camera access.";
+      }
+      return;
+    }
+    
+    try {
+      // Request camera and microphone access
+      const tempStream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
+      
+      // Permission granted, stop the temporary stream
+      tempStream.getTracks().forEach(track => { track.stop(); });
+      
+      permissionStatus = "granted";
+      
+      // Now we can get proper device labels
+      await getDevices();
     } catch (e) {
-      error = "Failed to enumerate devices";
+      if (e instanceof Error) {
+        if (e.name === "NotAllowedError") {
+          permissionStatus = "denied";
+          error = "Camera access was denied. Please allow camera access in your browser settings and reload the page.";
+        } else if (e.name === "NotFoundError") {
+          error = "No camera found. Please connect a camera and try again.";
+        } else if (e.name === "TypeError") {
+          error = "Camera access requires HTTPS. Please access this site using a secure connection.";
+          requiresHttps = true;
+          isSupported = false;
+        } else {
+          error = `Failed to access camera: ${e.message}`;
+        }
+      } else {
+        error = "Failed to request camera permission. Make sure you're using HTTPS.";
+      }
     }
   };
 
@@ -60,6 +147,15 @@
 
   const startPreview = async () => {
     error = "";
+    
+    if (!checkMediaDevicesSupport()) {
+      if (requiresHttps) {
+        error = "Camera access requires HTTPS. Please access this site using https://";
+      } else {
+        error = "Your browser does not support camera access.";
+      }
+      return;
+    }
     
     // Stop existing stream first
     if (stream) {
@@ -91,6 +187,9 @@
 
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       
+      // Permission was granted
+      permissionStatus = "granted";
+      
       if (videoElement) {
         // Video element exists, attach directly
         videoElement.srcObject = newStream;
@@ -107,6 +206,7 @@
     } catch (e) {
       if (e instanceof Error) {
         if (e.name === "NotAllowedError") {
+          permissionStatus = "denied";
           error = "Camera access denied. Please allow camera access in your browser settings.";
         } else if (e.name === "NotFoundError") {
           error = "No camera found. Please connect a camera and try again.";
@@ -114,11 +214,15 @@
           error = "Camera is already in use by another application.";
         } else if (e.name === "OverconstrainedError") {
           error = "Could not satisfy camera constraints. Try selecting a different camera.";
+        } else if (e.name === "TypeError") {
+          error = "Camera access requires HTTPS. Please access this site using a secure connection.";
+          requiresHttps = true;
+          isSupported = false;
         } else {
           error = `Failed to access camera: ${e.message}`;
         }
       } else {
-        error = "Failed to access camera";
+        error = "Failed to access camera. Make sure you're using HTTPS.";
       }
     }
   };
@@ -279,9 +383,12 @@
   };
 
   onMount(() => {
+    mounted = true;
+    checkPermissions();
     getDevices();
     
     return () => {
+      mounted = false;
       stopPreview();
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl);
@@ -314,9 +421,25 @@
       <div class="relative bg-black flex-1 min-h-[300px] overflow-hidden">
         <!-- Idle: Placeholder -->
         {#if recState === "idle"}
-          <div class="absolute inset-0 flex flex-col items-center justify-center text-(--color-text-muted)">
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-(--color-text-muted) p-4">
             <div class="text-6xl mb-4 opacity-50">📹</div>
-            <p class="text-sm">Camera preview will appear here</p>
+            {#if !isSupported}
+              {#if requiresHttps}
+                <p class="text-sm text-center text-(--color-error-text)">HTTPS Required</p>
+                <p class="text-xs mt-2 text-center">Camera access only works over secure connections (HTTPS)</p>
+              {:else}
+                <p class="text-sm text-center text-(--color-error-text)">Not Supported</p>
+                <p class="text-xs mt-2 text-center">Your browser does not support camera access</p>
+              {/if}
+            {:else if permissionStatus === "denied"}
+              <p class="text-sm text-center">Camera access is blocked</p>
+              <p class="text-xs mt-2 text-center">Check your browser settings to enable camera access</p>
+            {:else if permissionStatus !== "granted"}
+              <p class="text-sm text-center">Camera permission required</p>
+              <p class="text-xs mt-2 text-center">Tap "Allow Camera Access" to get started</p>
+            {:else}
+              <p class="text-sm">Camera preview will appear here</p>
+            {/if}
           </div>
         {/if}
 
@@ -363,9 +486,33 @@
       <!-- Idle State: Start Camera Button + Settings -->
       {#if recState === "idle"}
         <div class="flex flex-col gap-3 mb-6">
+          {#if !isSupported}
+            <div class="p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-xs mb-2">
+              {#if requiresHttps}
+                Camera access requires HTTPS. Please access this site using a secure connection (https://).
+              {:else}
+                Your browser does not support camera access. Please try a different browser.
+              {/if}
+            </div>
+          {:else if permissionStatus === "denied"}
+            <div class="p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-xs mb-2">
+              Camera access is blocked. Please enable it in your browser settings and reload the page.
+            </div>
+          {:else if permissionStatus !== "granted"}
+            <button
+              onclick={requestPermission}
+              class="w-full px-4 py-2 text-sm font-medium border-2 border-dashed border-(--color-accent) text-(--color-accent) hover:bg-(--color-accent) hover:text-(--color-btn-text) transition-colors"
+            >
+              Allow Camera Access
+            </button>
+            <p class="text-xs text-(--color-text-muted) text-center">
+              Tap to grant camera and microphone permission
+            </p>
+          {/if}
           <button
             onclick={startPreview}
-            class="w-full px-4 py-2 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
+            disabled={!isSupported || permissionStatus === "denied"}
+            class="w-full px-4 py-2 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Start Camera
           </button>

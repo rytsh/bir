@@ -503,6 +503,14 @@ const rawCategories: Category[] = [
         path: "/graphics/image-metadata",
         keywords: "exif viewer, image metadata, remove exif, metadata remover, photo metadata, gps data, camera info, privacy, jpeg metadata, png metadata, exif remover, strip metadata",
       },
+      {
+        id: "css-pattern-generator",
+        name: "CSS Pattern",
+        description: "Create repeating CSS background patterns with visual editor, animations, layering support, and custom SVG shapes",
+        icon: "🎨",
+        path: "/graphics/css-pattern",
+        keywords: "css pattern, background pattern, stripes, checkerboard, dots, grid, repeating pattern, css texture, animated background, polka dots, houndstooth, tartan, herringbone, carbon fiber, honeycomb, waves, gradient pattern, svg pattern",
+      },
     ],
   },
   {
