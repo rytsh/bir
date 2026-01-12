@@ -1,8 +1,15 @@
-<script lang="ts">
-  import * as YAML from "yaml";
-  import * as TOML from "smol-toml";
-  import * as TOON from "@toon-format/toon";
-  import CodeMirror from "svelte-codemirror-editor";
+ <script lang="ts">
+   import * as YAML from "yaml";
+   import * as TOML from "smol-toml";
+   import * as TOON from "@toon-format/toon";
+   import { XMLParser, XMLBuilder } from "fast-xml-parser";
+   // @ts-ignore
+   import { parse as parseIni, stringify as stringifyIni } from "ini";
+   // @ts-ignore
+   import Papa from "papaparse";
+   // @ts-ignore
+   import propertiesParser from "properties-parser";
+   import CodeMirror from "svelte-codemirror-editor";
   import { EditorView } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
   import { yaml as yamlLang } from "@codemirror/lang-yaml";
@@ -13,7 +20,7 @@
     editorHeightExtension,
   } from "../../lib/codemirror.js";
 
-  type Format = "json" | "yaml" | "toml" | "toon";
+   type Format = "json" | "yaml" | "toml" | "toon" | "xml" | "ini" | "csv" | "properties";
   type IndentType = "2" | "4" | "tab";
 
   let sourceFormat = $state<Format>("json");
@@ -34,12 +41,16 @@
 
   let convertTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  const formatLabels: Record<Format, string> = {
-    json: "JSON",
-    yaml: "YAML",
-    toml: "TOML",
-    toon: "TOON",
-  };
+   const formatLabels: Record<Format, string> = {
+     json: "JSON",
+     yaml: "YAML",
+     toml: "TOML",
+     toon: "TOON",
+     xml: "XML",
+     ini: "INI",
+     csv: "CSV",
+     properties: "Properties",
+   };
 
   // Simple token estimation based on GPT tokenization patterns
   // This approximates cl100k_base tokenizer behavior without the heavy library
@@ -97,64 +108,112 @@
     return sorted;
   };
 
-  const parse = (text: string, format: Format): unknown => {
-    switch (format) {
-      case "json":
-        return JSON.parse(text);
-      case "yaml":
-        return YAML.parse(text);
-      case "toml":
-        return TOML.parse(text);
-      case "toon":
-        return TOON.decode(text);
-    }
-  };
+   const parse = (text: string, format: Format): unknown => {
+     switch (format) {
+       case "json":
+         return JSON.parse(text);
+       case "yaml":
+         return YAML.parse(text);
+       case "toml":
+         return TOML.parse(text);
+       case "toon":
+         return TOON.decode(text);
+       case "xml": {
+         const parser = new XMLParser();
+         return parser.parse(text);
+       }
+       case "ini":
+         return parseIni(text);
+       case "csv": {
+         const csvResult = Papa.parse(text, { header: true, dynamicTyping: true });
+         return csvResult.data;
+       }
+       case "properties":
+         return propertiesParser.parse(text);
+     }
+   };
 
-  const stringify = (data: unknown, format: Format): string => {
-    const indent = getIndent();
-    const processedData = sortKeys ? sortObjectKeys(data) : data;
+   const stringify = (data: unknown, format: Format): string => {
+     const indent = getIndent();
+     const processedData = sortKeys ? sortObjectKeys(data) : data;
 
-    switch (format) {
-      case "json":
-        return JSON.stringify(processedData, null, indent);
-      case "yaml":
-        return YAML.stringify(processedData, {
-          indent: typeof indent === "string" ? 2 : indent,
-        });
-      case "toml":
-        // TOML requires a root object, not arrays or primitives
-        if (processedData === null) {
+     switch (format) {
+       case "json":
+         return JSON.stringify(processedData, null, indent);
+       case "yaml":
+         return YAML.stringify(processedData, {
+           indent: typeof indent === "string" ? 2 : indent,
+         });
+       case "toml":
+         // TOML requires a root object, not arrays or primitives
+         if (processedData === null) {
+           throw new Error(
+             "Cannot convert null to TOML. TOML requires an object at the root level.",
+           );
+         }
+         if (typeof processedData !== "object") {
+           throw new Error(
+             `Cannot convert ${typeof processedData} to TOML. TOML requires an object at the root level (e.g., {"key": "value"}).`,
+           );
+         }
+         if (Array.isArray(processedData)) {
+           throw new Error(
+             "Cannot convert array to TOML. TOML requires an object at the root level, not an array.",
+           );
+         }
+         return TOML.stringify(processedData as Record<string, unknown>);
+       case "toon":
+         return TOON.encode(processedData);
+       case "xml": {
+         const builder = new XMLBuilder();
+         return builder.build(processedData);
+       }
+       case "ini":
+         return stringifyIni(processedData as Record<string, unknown>);
+      case "csv": {
+        // CSV requires an array of objects (tabular data)
+        // If it's a single object, wrap it in an array
+        let csvData = processedData;
+        if (processedData !== null && typeof processedData === "object" && !Array.isArray(processedData)) {
+          csvData = [processedData];
+        }
+        if (!Array.isArray(csvData)) {
           throw new Error(
-            "Cannot convert null to TOML. TOML requires an object at the root level.",
+            `Cannot convert ${typeof processedData} to CSV. CSV requires an array of objects or a single object.`,
           );
         }
-        if (typeof processedData !== "object") {
-          throw new Error(
-            `Cannot convert ${typeof processedData} to TOML. TOML requires an object at the root level (e.g., {"key": "value"}).`,
-          );
-        }
-        if (Array.isArray(processedData)) {
-          throw new Error(
-            "Cannot convert array to TOML. TOML requires an object at the root level, not an array.",
-          );
-        }
-        return TOML.stringify(processedData as Record<string, unknown>);
-      case "toon":
-        return TOON.encode(processedData);
-    }
-  };
+        return Papa.unparse(csvData as Record<string, unknown>[]);
+      }
+      case "properties": {
+        // properties-parser doesn't have stringify, so we implement it manually
+        const obj = processedData as Record<string, unknown>;
+        return Object.entries(obj)
+          .map(([key, value]) => {
+            // Escape special characters in key and value
+            const escapedKey = String(key).replace(/([=:#!\\])/g, "\\$1");
+            const escapedValue = String(value ?? "").replace(/\n/g, "\\n");
+            return `${escapedKey}=${escapedValue}`;
+          })
+          .join("\n");
+      }
+     }
+   };
 
-  const getLanguageExtension = (format: Format) => {
-    switch (format) {
-      case "json":
-        return json();
-      case "yaml":
-      case "toml":
-      case "toon":
-        // TOON is YAML-like, so use YAML highlighting
-        return yamlLang();
-    }
-  };
+   const getLanguageExtension = (format: Format) => {
+     switch (format) {
+       case "json":
+         return json();
+       case "yaml":
+       case "toml":
+       case "toon":
+       case "xml":
+       case "ini":
+       case "csv":
+       case "properties":
+         // TOON, XML, INI, CSV, Properties are YAML-like, so use YAML highlighting
+         return yamlLang();
+     }
+   };
 
   const convert = () => {
     error = "";
@@ -268,8 +327,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Convert between JSON, YAML, TOML, and TOON data formats with customizable
-      options.
+      Convert between JSON, YAML, TOML, TOON, XML, INI, CSV, and Properties formats with customizable indentation and key sorting.
     </p>
   </header>
 
@@ -286,16 +344,20 @@
         >
           Source
         </label>
-        <select
-          id="source-format"
-          bind:value={sourceFormat}
-          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
-        >
-          <option value="json">JSON</option>
-          <option value="yaml">YAML</option>
-          <option value="toml">TOML</option>
-          <option value="toon">TOON</option>
-        </select>
+         <select
+           id="source-format"
+           bind:value={sourceFormat}
+           class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+         >
+           <option value="json">JSON</option>
+           <option value="yaml">YAML</option>
+           <option value="toml">TOML</option>
+           <option value="toon">TOON</option>
+           <option value="xml">XML</option>
+           <option value="ini">INI</option>
+           <option value="csv">CSV</option>
+           <option value="properties">Properties</option>
+         </select>
       </div>
 
       <span class="text-(--color-text-light)">→</span>
@@ -308,16 +370,20 @@
         >
           Output
         </label>
-        <select
-          id="output-format"
-          bind:value={outputFormat}
-          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
-        >
-          <option value="json">JSON</option>
-          <option value="yaml">YAML</option>
-          <option value="toml">TOML</option>
-          <option value="toon">TOON</option>
-        </select>
+         <select
+           id="output-format"
+           bind:value={outputFormat}
+           class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+         >
+           <option value="json">JSON</option>
+           <option value="yaml">YAML</option>
+           <option value="toml">TOML</option>
+           <option value="toon">TOON</option>
+           <option value="xml">XML</option>
+           <option value="ini">INI</option>
+           <option value="csv">CSV</option>
+           <option value="properties">Properties</option>
+         </select>
       </div>
 
       <div class="hidden sm:block w-px h-6 bg-(--color-border)"></div>

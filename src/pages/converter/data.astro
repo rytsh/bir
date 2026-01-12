@@ -6,7 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/converter/data");
 ---
 
-<Layout title="Data Format Converter - JSON, YAML, TOML, TOON" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/data">
+<Layout title="Data Format Converter - JSON, YAML, TOML, XML, CSV, INI, Properties" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/data">
   <h1 slot="navbar-title">Data Format Converter</h1>
   <DataConverterTool client:load />
 </Layout>

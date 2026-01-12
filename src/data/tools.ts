@@ -127,10 +127,10 @@ const rawCategories: Category[] = [
       {
         id: "data-converter",
         name: "Data Converter",
-        description: "Convert between JSON, YAML, TOML, and TOON formats",
+        description: "Convert between JSON, YAML, TOML, TOON, XML, INI, CSV, and Properties formats with customizable indentation and key sorting",
         icon: "📄",
         path: "/converter/data",
-        keywords: "data converter, JSON converter, YAML converter, TOML converter, format conversion, data format, JSON to YAML, YAML to JSON, TOML converter",
+        keywords: "data converter, JSON converter, YAML converter, TOML converter, XML converter, INI converter, CSV converter, Properties converter, format conversion, data format, JSON to YAML, YAML to JSON, JSON to CSV, CSV to JSON, XML to JSON, config file converter",
       },
       {
         id: "formatter",
