@@ -511,6 +511,15 @@ const rawCategories: Category[] = [
         path: "/graphics/css-pattern",
         keywords: "css pattern, background pattern, stripes, checkerboard, dots, grid, repeating pattern, css texture, animated background, polka dots, houndstooth, tartan, herringbone, carbon fiber, honeycomb, waves, gradient pattern, svg pattern",
       },
+      {
+        id: "background-remover",
+        name: "Background Remover",
+        description: "Remove image backgrounds directly in your browser using AI (RMBG-1.4, MODNet model) for fast and private processing",
+        icon: "🪄",
+        path: "/graphics/background-remover",
+        keywords: "background remover, remove background, bg remove, ai background removal, transparent background, image processing, rmbg, transformers.js",
+        wasm: true,
+      },
     ],
   },
   {
