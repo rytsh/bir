@@ -409,11 +409,18 @@
       <div
         class="px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-500 text-xs leading-relaxed"
       >
-        <p>
+        <p class="mb-2">
           <strong>Note:</strong> The first time you use a model, it will download
           (~30-50MB). WebGPU offers significantly faster performance on supported
           devices.
         </p>
+
+        {#if selectedModel === "briaai/RMBG-1.4"}
+          <p>
+            <strong>License:</strong> Developed by BRIA AI, RMBG v1.4 is available
+            as a source-available model for non-commercial use.
+          </p>
+        {/if}
       </div>
 
       <!-- About Models -->
