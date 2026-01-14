@@ -336,9 +336,9 @@
             );
 
             const result = await model(inputText, {
-                src_lang: sourceLang,
                 tgt_lang: targetLang,
-            });
+                src_lang: sourceLang,
+            } as any);
 
             if (Array.isArray(result) && result.length > 0) {
                 outputText = (result[0] as any).translation_text || "";
