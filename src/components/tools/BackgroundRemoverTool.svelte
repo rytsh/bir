@@ -19,8 +19,7 @@
 
   // Available models
   const MODELS = [
-    { value: "briaai/RMBG-1.4", label: "RMBG-1.4 (General Purpose)" },
-    { value: "Xenova/modnet", label: "MODNet (Portrait/Matting)" },
+    { value: "Xenova/modnet", label: "MODNet (Portrait/General)" },
   ];
 
   let imageFile = $state<File | null>(null);
@@ -43,7 +42,7 @@
 
   // Settings
   let selectedDevice = $state("auto");
-  let selectedModel = $state("briaai/RMBG-1.4");
+  let selectedModel = $state("Xenova/modnet");
 
   let segmenter = $state<ImageSegmentationPipeline | null>(null);
   let currentModelId = $state("");
@@ -409,18 +408,11 @@
       <div
         class="px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-500 text-xs leading-relaxed"
       >
-        <p class="mb-2">
+        <p>
           <strong>Note:</strong> The first time you use a model, it will download
           (~30-50MB). WebGPU offers significantly faster performance on supported
           devices.
         </p>
-
-        {#if selectedModel === "briaai/RMBG-1.4"}
-          <p>
-            <strong>License:</strong> Developed by BRIA AI, RMBG v1.4 is available
-            as a source-available model for non-commercial use.
-          </p>
-        {/if}
       </div>
 
       <!-- About Models -->
@@ -434,21 +426,14 @@
             About Models
           </summary>
           <div class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
-            <a
-              href="https://huggingface.co/briaai/RMBG-1.4"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="hover:text-(--color-accent) transition-colors flex items-center gap-1"
-            >
-              RMBG-1.4 (Bria AI) ↗
-            </a>
+            <p class="mb-1">MODNet is optimized for portrait and human subjects. Best results with photos containing people.</p>
             <a
               href="https://huggingface.co/Xenova/modnet"
               target="_blank"
               rel="noopener noreferrer"
               class="hover:text-(--color-accent) transition-colors flex items-center gap-1"
             >
-              MODNet (Xenova) ↗
+              MODNet (Apache-2.0) ↗
             </a>
             <a
               href="https://huggingface.co/docs/transformers.js"
