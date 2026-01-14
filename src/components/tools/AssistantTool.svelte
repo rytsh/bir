@@ -14,19 +14,17 @@
         {
             value: "HuggingFaceTB/SmolLM2-135M-Instruct",
             label: "SmolLM2-135M (Instruct, Fast, ~140MB)",
+            supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
         },
         {
             value: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
             label: "SmolLM2-1.7B (Instruct, High Quality, ~1.7GB)",
+            supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
         },
         {
             value: "Xenova/Phi-3-mini-4k-instruct",
             label: "Phi-3 Mini 4k (Instruct, Smart, ~2.5GB)",
-        },
-        { value: "Xenova/phi-1_5", label: "Phi-1.5 (Base Model, ~1.3GB)" },
-        {
-            value: "Xenova/flan-t5-small",
-            label: "Flan-T5 Small (Seq2Seq, Fast, ~300MB)",
+            supportedDtypes: ["q4"],
         },
     ];
 
@@ -68,6 +66,12 @@
             params: { max_new_tokens: 1024, temperature: 0.2 },
         },
         {
+            id: "dude",
+            name: "Dude",
+            prompt: "You are my dude and best bro. Talk like a chill and casual person would, using slang and informal language. Keep it light and fun. Just continue the conservation as my dude.",
+            params: { max_new_tokens: 40, temperature: 0.7, top_p: 0.7 },
+        },
+        {
             id: "custom",
             name: "Custom...",
             prompt: "",
@@ -80,21 +84,64 @@
         timestamp: number;
     };
 
+    // Storage key
+    const STORAGE_KEY = "assistant-tool-settings";
+
+    // Load saved settings from localStorage
+    function loadSettings() {
+        if (typeof window === "undefined") return null;
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            return saved ? JSON.parse(saved) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // Save settings to localStorage
+    function saveSettings() {
+        if (typeof window === "undefined") return;
+        try {
+            const settings = {
+                activeTab,
+                selectedPresetId,
+                selectedDevice,
+                selectedModel,
+                selectedDtype,
+                genMaxTokens,
+                genTemperature,
+                genTopP,
+                genRepetitionPenalty,
+                customSystemPrompt,
+                convertPrefix,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        } catch {
+            // Ignore storage errors
+        }
+    }
+
+    const savedSettings = loadSettings();
+
     // State
-    let activeTab = $state<"chat" | "convert">("convert");
+    let activeTab = $state<"chat" | "convert">(
+        savedSettings?.activeTab ?? "convert",
+    );
     let messages = $state<Message[]>([]);
     let userInput = $state("");
 
     // Convert Tab State
     let convertInput = $state("");
-    let convertPrefix = $state("");
+    let convertPrefix = $state(savedSettings?.convertPrefix ?? "");
     let convertOutput = $state("");
 
     // Generation Settings
-    let genMaxTokens = $state(512);
-    let genTemperature = $state(0.7);
-    let genTopP = $state(0.9);
-    let genRepetitionPenalty = $state(1.1);
+    let genMaxTokens = $state(savedSettings?.genMaxTokens ?? 512);
+    let genTemperature = $state(savedSettings?.genTemperature ?? 0.7);
+    let genTopP = $state(savedSettings?.genTopP ?? 0.9);
+    let genRepetitionPenalty = $state(
+        savedSettings?.genRepetitionPenalty ?? 1.1,
+    );
 
     // Diagnostics
     let activeDevice = $state<string>("checking...");
@@ -107,21 +154,48 @@
     let errorMessage = $state("");
     let shouldStop = $state(false);
 
-    let selectedPresetId = $state("rewriter");
-    let selectedDevice = $state("webgpu");
-    let selectedModel = $state("HuggingFaceTB/SmolLM2-135M-Instruct");
-    let selectedDtype = $state("q4f16");
+    let selectedPresetId = $state(
+        savedSettings?.selectedPresetId ?? "rewriter",
+    );
+    let selectedDevice = $state(savedSettings?.selectedDevice ?? "webgpu");
+    let selectedModel = $state(
+        savedSettings?.selectedModel ?? "HuggingFaceTB/SmolLM2-135M-Instruct",
+    );
+    let selectedDtype = $state(savedSettings?.selectedDtype ?? "q4f16");
     let generator = $state<TextGenerationPipeline | null>(null);
     let currentModelId = $state("");
 
     // State
     let systemPrompt = $state("");
-    let customSystemPrompt = $state("");
+    let customSystemPrompt = $state(savedSettings?.customSystemPrompt ?? "");
 
     // Derived
     let activePreset = $derived(
         SYSTEM_PRESETS.find((p) => p.id === selectedPresetId),
     );
+
+    let activeModel = $derived(MODELS.find((m) => m.value === selectedModel));
+
+    let availableDtypes = $derived(
+        DTYPES.filter((d) => activeModel?.supportedDtypes.includes(d.value)),
+    );
+
+    // Auto-select compatible dtype when model changes
+    $effect(() => {
+        if (
+            activeModel &&
+            !activeModel.supportedDtypes.includes(selectedDtype)
+        ) {
+            // Pick the best available dtype for this model
+            const preferred = ["q4f16", "q4", "q8", "fp16", "fp32"];
+            const compatible = preferred.find((d) =>
+                activeModel.supportedDtypes.includes(d),
+            );
+            if (compatible) {
+                selectedDtype = compatible;
+            }
+        }
+    });
 
     // Watch for preset changes to update systemPrompt, convertPrefix and params
     $effect(() => {
@@ -153,6 +227,24 @@
         if (selectedPresetId === "custom") {
             customSystemPrompt = systemPrompt;
         }
+    });
+
+    // Save settings to localStorage when they change
+    $effect(() => {
+        // Access all the values we want to track
+        activeTab;
+        selectedPresetId;
+        selectedDevice;
+        selectedModel;
+        selectedDtype;
+        genMaxTokens;
+        genTemperature;
+        genTopP;
+        genRepetitionPenalty;
+        customSystemPrompt;
+        convertPrefix;
+        // Save them
+        saveSettings();
     });
 
     let chatContainer = $state<HTMLDivElement>();
@@ -199,18 +291,27 @@
                 `[Assistant] Using device: ${selectedDevice}, dtype: ${dtype}`,
             );
 
+            // Track progress across multiple files
+            const fileProgress: Record<string, number> = {};
+
             const instance = await pipeline(task, selectedModel, {
                 device: selectedDevice as any,
                 dtype: dtype as any,
                 progress_callback: (p: any) => {
-                    if (p.status === "progress") {
-                        loadProgress = p.progress;
-                        statusMessage = `Downloading model: ${Math.round(p.progress)}%`;
+                    if (p.status === "progress" && p.file) {
+                        fileProgress[p.file] = p.progress;
+                        // Calculate average progress across all files
+                        const files = Object.values(fileProgress);
+                        const avgProgress =
+                            files.reduce((a, b) => a + b, 0) / files.length;
+                        loadProgress = avgProgress;
+                        statusMessage = `Downloading: ${p.file.split("/").pop()} (${Math.round(p.progress)}%)`;
                     } else if (p.status === "ready") {
                         loadProgress = 100;
                         statusMessage = "Model loaded!";
-                    } else if (p.status === "initiate") {
-                        statusMessage = `Initiating download: ${p.file}`;
+                    } else if (p.status === "initiate" && p.file) {
+                        fileProgress[p.file] = 0;
+                        statusMessage = `Initiating: ${p.file.split("/").pop()}`;
                     }
                 },
             });
@@ -231,11 +332,27 @@
             return generator;
         } catch (err: any) {
             isModelLoading = false;
-            let detail = err.message || "Unknown error";
-            if (detail.includes("Aborted")) {
+            let detail = err.message || String(err) || "Unknown error";
+
+            // Handle common error cases
+            if (detail.includes("Aborted") || detail.includes("memory")) {
                 detail =
-                    "Memory limit exceeded (Aborted). Try a smaller model or ensure WebGPU is working.";
+                    "Memory limit exceeded. Try a smaller model or different quantization (q4/q8).";
+            } else if (
+                detail.includes("await") ||
+                /^\d+$/.test(detail.trim())
+            ) {
+                // WebAssembly/memory errors often show as numbers or "await" errors
+                detail =
+                    "Model loading failed (likely out of memory). Try a smaller model, different quantization, or switch to WASM device.";
+            } else if (
+                detail.includes("WebGPU") ||
+                detail.includes("adapter")
+            ) {
+                detail =
+                    "WebGPU not available or failed. Try switching to WASM device.";
             }
+
             errorMessage = `Failed to load model: ${detail}`;
             console.error("[Assistant] Init Error:", err);
             throw err;
@@ -490,7 +607,7 @@
         <!-- Sidebar / Settings -->
         <div class="lg:w-72 flex flex-col gap-2">
             <div
-                class="px-4 py-2 border border-(--color-border) bg-(--color-bg-alt) flex flex-col gap-4"
+                class="px-4 py-2 border border-(--color-border) bg-(--color-bg-alt) flex flex-col gap-2"
             >
                 <div>
                     <h3
@@ -541,7 +658,7 @@
                         disabled={messages.length > 0 || isModelLoading}
                         class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
                     >
-                        {#each DTYPES as d}
+                        {#each availableDtypes as d}
                             <option value={d.value}>{d.label}</option>
                         {/each}
                     </select>
@@ -703,7 +820,7 @@
             <div class="flex border-b border-(--color-border)">
                 <button
                     onclick={() => (activeTab = "convert")}
-                    class="px-6 py-3 text-sm font-medium transition-colors border-b-2 {activeTab ===
+                    class="px-4 py-2 text-sm font-medium transition-colors border-b-2 {activeTab ===
                     'convert'
                         ? 'border-(--color-accent) text-(--color-text)'
                         : 'border-transparent text-(--color-text-muted) hover:text-(--color-text)'}"
@@ -712,7 +829,7 @@
                 </button>
                 <button
                     onclick={() => (activeTab = "chat")}
-                    class="px-6 py-3 text-sm font-medium transition-colors border-b-2 {activeTab ===
+                    class="px-4 py-2 text-sm font-medium transition-colors border-b-2 {activeTab ===
                     'chat'
                         ? 'border-(--color-accent) text-(--color-text)'
                         : 'border-transparent text-(--color-text-muted) hover:text-(--color-text)'}"
@@ -735,69 +852,71 @@
 
             {#if activeTab === "chat"}
                 <!-- Messages -->
-                <div
-                    class="flex-1 overflow-y-auto p-4 flex flex-col gap-4"
-                    bind:this={chatContainer}
-                >
-                    {#if messages.length === 0}
-                        <div
-                            class="flex-1 flex flex-col items-center justify-center opacity-30 text-center p-8"
-                        >
-                            <p class="text-lg font-medium">Ready to chat</p>
-                            <p class="text-sm">
-                                Select a system preset and say hello!
-                            </p>
-                        </div>
-                    {/if}
-
-                    {#each messages as msg}
-                        <div
-                            class="flex flex-col gap-1 max-w-[85%] {msg.role ===
-                            'user'
-                                ? 'self-end items-end'
-                                : 'self-start items-start'}"
-                        >
+                <div class="flex-1 min-h-0 relative">
+                    <div
+                        class="absolute inset-0 overflow-y-auto p-4 flex flex-col gap-4"
+                        bind:this={chatContainer}
+                    >
+                        {#if messages.length === 0}
                             <div
-                                class="px-4 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
-                            {msg.role === 'user'
-                                    ? 'bg-(--color-accent) text-(--color-btn-text) rounded-tr-sm'
-                                    : 'bg-(--color-bg) border border-(--color-border) text-(--color-text) rounded-tl-sm shadow-sm'}"
+                                class="flex-1 flex flex-col items-center justify-center opacity-30 text-center p-8"
                             >
-                                {msg.content}
+                                <p class="text-lg font-medium">Ready to chat</p>
+                                <p class="text-sm">
+                                    Select a system preset and say hello!
+                                </p>
                             </div>
-                            <span
-                                class="text-[10px] text-(--color-text-muted) px-1"
-                            >
-                                {formatTime(msg.timestamp)}
-                            </span>
-                        </div>
-                    {/each}
+                        {/if}
 
-                    {#if isGenerating || isModelLoading}
-                        <div
-                            class="self-start flex items-center gap-2 p-2 text-xs text-(--color-text-muted)"
-                        >
-                            {#if isModelLoading}
+                        {#each messages as msg}
+                            <div
+                                class="flex flex-col gap-1 max-w-[85%] {msg.role ===
+                                'user'
+                                    ? 'self-end items-end'
+                                    : 'self-start items-start'}"
+                            >
                                 <div
-                                    class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"
-                                ></div>
-                                <span>{statusMessage}</span>
-                            {:else}
-                                <div class="flex gap-1">
-                                    <div
-                                        class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-0"
-                                    ></div>
-                                    <div
-                                        class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-150"
-                                    ></div>
-                                    <div
-                                        class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-300"
-                                    ></div>
+                                    class="px-4 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
+                            {msg.role === 'user'
+                                        ? 'bg-(--color-accent) text-(--color-btn-text) rounded-tr-sm'
+                                        : 'bg-(--color-bg) border border-(--color-border) text-(--color-text) rounded-tl-sm shadow-sm'}"
+                                >
+                                    {msg.content}
                                 </div>
-                                <span>Assistant is thinking...</span>
-                            {/if}
-                        </div>
-                    {/if}
+                                <span
+                                    class="text-[10px] text-(--color-text-muted) px-1"
+                                >
+                                    {formatTime(msg.timestamp)}
+                                </span>
+                            </div>
+                        {/each}
+
+                        {#if isGenerating || isModelLoading}
+                            <div
+                                class="self-start flex items-center gap-2 p-2 text-xs text-(--color-text-muted)"
+                            >
+                                {#if isModelLoading}
+                                    <div
+                                        class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"
+                                    ></div>
+                                    <span>{statusMessage}</span>
+                                {:else}
+                                    <div class="flex gap-1">
+                                        <div
+                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-0"
+                                        ></div>
+                                        <div
+                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-150"
+                                        ></div>
+                                        <div
+                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-300"
+                                        ></div>
+                                    </div>
+                                    <span>Assistant is thinking...</span>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
                 </div>
 
                 <!-- Progress Bar for specific states -->
