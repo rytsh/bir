@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AssistantTool from "../../components/tools/AssistantTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/ai/assistant");
+---
+
+<Layout title={tool?.name || "Assistant"} description={tool?.description || ""}>
+    <h1 slot="navbar-title">Assistant</h1>
+    <AssistantTool client:only="svelte" />
+</Layout>
