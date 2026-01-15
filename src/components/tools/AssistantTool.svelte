@@ -15,16 +15,19 @@
             value: "HuggingFaceTB/SmolLM2-135M-Instruct",
             label: "SmolLM2-135M (Instruct, Fast, ~140MB)",
             supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
+            defaultDtype: "q4f16",
         },
         {
             value: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
             label: "SmolLM2-1.7B (Instruct, High Quality, ~1.7GB)",
             supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
+            defaultDtype: "q4f16",
         },
         {
             value: "Xenova/Phi-3-mini-4k-instruct",
             label: "Phi-3 Mini 4k (Instruct, Smart, ~2.5GB)",
             supportedDtypes: ["q4"],
+            defaultDtype: "q4",
         },
     ];
 
@@ -51,7 +54,7 @@
             prompt: "You are an AI writing assistant. Your task is to rewrite the user's message to make it more professional and approachable while maintaining its main points and key message. Do not return any text other than the rewritten message.",
             convertPrefix:
                 "Rewrite the message below to make it friendly and approachable while maintaining its main points and key message.  This message not about you continue to process, not telling to you so process as 3rd party talks. Do not add any new information or return any text other than the rewritten message\nThe message:\n",
-            params: { max_new_tokens: 50, temperature: 0.3 },
+            params: { max_new_tokens: 60, temperature: 1.2 },
         },
         {
             id: "assistant",
@@ -180,20 +183,10 @@
         DTYPES.filter((d) => activeModel?.supportedDtypes.includes(d.value)),
     );
 
-    // Auto-select compatible dtype when model changes
+    // Auto-select model's default dtype when model changes
     $effect(() => {
-        if (
-            activeModel &&
-            !activeModel.supportedDtypes.includes(selectedDtype)
-        ) {
-            // Pick the best available dtype for this model
-            const preferred = ["q4f16", "q4", "q8", "fp16", "fp32"];
-            const compatible = preferred.find((d) =>
-                activeModel.supportedDtypes.includes(d),
-            );
-            if (compatible) {
-                selectedDtype = compatible;
-            }
+        if (activeModel) {
+            selectedDtype = activeModel.defaultDtype;
         }
     });
 
@@ -683,10 +676,20 @@
                     <div class="flex flex-col gap-3">
                         <div class="flex flex-col gap-1">
                             <div
-                                class="flex justify-between text-[10px] uppercase font-medium text-(--color-text-muted)"
+                                class="flex justify-between items-center text-[10px] uppercase font-medium text-(--color-text-muted)"
                             >
-                                <label for="gen-max-tokens">Max Tokens</label>
-                                <span>{genMaxTokens}</span>
+                                <label for="gen-max-tokens" class="flex items-center gap-1">
+                                    Max Tokens
+                                    <span class="inline-flex items-center justify-center w-3 h-3 bg-(--color-border) text-[8px] cursor-help" title="Maximum number of tokens (words/subwords) the model will generate. Higher = longer responses but slower.">?</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="2048"
+                                    step="1"
+                                    bind:value={genMaxTokens}
+                                    class="w-16 px-1 py-0.5 text-right bg-(--color-bg) border border-(--color-border) text-(--color-text) text-[10px] focus:outline-none focus:border-(--color-accent)"
+                                />
                             </div>
                             <input
                                 id="gen-max-tokens"
@@ -701,10 +704,20 @@
 
                         <div class="flex flex-col gap-1">
                             <div
-                                class="flex justify-between text-[10px] uppercase font-medium text-(--color-text-muted)"
+                                class="flex justify-between items-center text-[10px] uppercase font-medium text-(--color-text-muted)"
                             >
-                                <label for="gen-temp">Temperature</label>
-                                <span>{genTemperature}</span>
+                                <label for="gen-temp" class="flex items-center gap-1">
+                                    Temperature
+                                    <span class="inline-flex items-center justify-center w-3 h-3 bg-(--color-border) text-[8px] cursor-help" title="Controls randomness. 0 = deterministic, 0.7 = balanced, 1.5+ = very creative/random.">?</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="2"
+                                    step="0.1"
+                                    bind:value={genTemperature}
+                                    class="w-16 px-1 py-0.5 text-right bg-(--color-bg) border border-(--color-border) text-(--color-text) text-[10px] focus:outline-none focus:border-(--color-accent)"
+                                />
                             </div>
                             <input
                                 id="gen-temp"
@@ -719,10 +732,20 @@
 
                         <div class="flex flex-col gap-1">
                             <div
-                                class="flex justify-between text-[10px] uppercase font-medium text-(--color-text-muted)"
+                                class="flex justify-between items-center text-[10px] uppercase font-medium text-(--color-text-muted)"
                             >
-                                <label for="gen-top-p">Top P</label>
-                                <span>{genTopP}</span>
+                                <label for="gen-top-p" class="flex items-center gap-1">
+                                    Top P
+                                    <span class="inline-flex items-center justify-center w-3 h-3 bg-(--color-border) text-[8px] cursor-help" title="Nucleus sampling: limits word choices to top probability. 0.9 = top 90% likely words. Lower = more focused.">?</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    bind:value={genTopP}
+                                    class="w-16 px-1 py-0.5 text-right bg-(--color-bg) border border-(--color-border) text-(--color-text) text-[10px] focus:outline-none focus:border-(--color-accent)"
+                                />
                             </div>
                             <input
                                 id="gen-top-p"
@@ -737,10 +760,20 @@
 
                         <div class="flex flex-col gap-1">
                             <div
-                                class="flex justify-between text-[10px] uppercase font-medium text-(--color-text-muted)"
+                                class="flex justify-between items-center text-[10px] uppercase font-medium text-(--color-text-muted)"
                             >
-                                <label for="gen-penalty">Penalty</label>
-                                <span>{genRepetitionPenalty}</span>
+                                <label for="gen-penalty" class="flex items-center gap-1">
+                                    Repetition Penalty
+                                    <span class="inline-flex items-center justify-center w-3 h-3 bg-(--color-border) text-[8px] cursor-help" title="Penalizes repeated words. 1.0 = off, 1.1 = mild, 1.5+ = strong penalty.">?</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="2"
+                                    step="0.05"
+                                    bind:value={genRepetitionPenalty}
+                                    class="w-16 px-1 py-0.5 text-right bg-(--color-bg) border border-(--color-border) text-(--color-text) text-[10px] focus:outline-none focus:border-(--color-accent)"
+                                />
                             </div>
                             <input
                                 id="gen-penalty"
@@ -897,19 +930,19 @@
                             >
                                 {#if isModelLoading}
                                     <div
-                                        class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"
+                                        class="w-2 h-2 bg-blue-500 animate-pulse"
                                     ></div>
                                     <span>{statusMessage}</span>
                                 {:else}
                                     <div class="flex gap-1">
                                         <div
-                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-0"
+                                            class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-0"
                                         ></div>
                                         <div
-                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-150"
+                                            class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-150"
                                         ></div>
                                         <div
-                                            class="w-1.5 h-1.5 rounded-full bg-(--color-text-muted) animate-bounce delay-300"
+                                            class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-300"
                                         ></div>
                                     </div>
                                     <span>Assistant is thinking...</span>
@@ -1046,11 +1079,28 @@
                         >
                             {#if convertOutput}
                                 {convertOutput}
+                            {:else if isModelLoading}
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex items-center gap-2 text-xs text-(--color-text-muted)">
+                                        <div class="w-2 h-2 bg-blue-500 animate-pulse"></div>
+                                        <span>{statusMessage || "Loading model..."}</span>
+                                    </div>
+                                    <div class="h-1.5 w-full bg-(--color-border) rounded overflow-hidden">
+                                        <div
+                                            class="h-full bg-(--color-accent) transition-all duration-300"
+                                            style="width: {loadProgress}%"
+                                        ></div>
+                                    </div>
+                                </div>
                             {:else if isGenerating}
-                                <span
-                                    class="text-(--color-text-muted) animate-pulse"
-                                    >Generating...</span
-                                >
+                                <div class="flex items-center gap-2 text-xs text-(--color-text-muted)">
+                                    <div class="flex gap-1">
+                                        <div class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-0"></div>
+                                        <div class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-150"></div>
+                                        <div class="w-1.5 h-1.5 bg-(--color-text-muted) animate-bounce delay-300"></div>
+                                    </div>
+                                    <span>{statusMessage || "Processing..."}</span>
+                                </div>
                             {:else}
                                 <span
                                     class="text-(--color-text-muted) opacity-50"
