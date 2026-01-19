@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/rakunlabs/ada"
 	"github.com/rakunlabs/chu"
@@ -12,10 +11,12 @@ import (
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 
-	"github.com/go-chi/httprate"
 	mcors "github.com/rakunlabs/ada/middleware/cors"
 
+	"github.com/rytsh/bir/api/tools/dns"
 	"github.com/rytsh/bir/api/tools/ip"
+	"github.com/rytsh/bir/api/tools/ssl"
+	"github.com/rytsh/bir/api/tools/whois"
 )
 
 var (
@@ -36,21 +37,14 @@ type config struct {
 }
 
 type Middleware struct {
-	Cors      mcors.Cors                `cfg:"cors"`
-	RateLimit MiddlewareRateLimitConfig `cfg:"rate_limit"`
-}
-
-type MiddlewareRateLimitConfig struct {
-	Enabled  bool          `cfg:"enabled" default:"false"`
-	Requests int           `cfg:"requests" default:"100"`
-	Duration time.Duration `cfg:"duration" default:"1m"`
+	Cors mcors.Cors `cfg:"cors"`
 }
 
 func run(ctx context.Context) error {
 	cfg := config{
 		Middleware: Middleware{
 			Cors: mcors.Cors{
-				AllowOrigins:     []string{"https://1.tools", "https://*.1.tools", "http://localhost:4321"},
+				AllowOrigins:     []string{"*"},
 				AllowMethods:     []string{"GET", "POST"},
 				AllowHeaders:     []string{"Content-Type", "Authorization"},
 				AllowCredentials: true,
@@ -82,19 +76,11 @@ func run(ctx context.Context) error {
 		"max_age", cfg.Middleware.Cors.MaxAge,
 	)
 
-	if cfg.Middleware.RateLimit.Enabled {
-		server.Use(
-			httprate.LimitByIP(cfg.Middleware.RateLimit.Requests, cfg.Middleware.RateLimit.Duration),
-		)
-
-		slog.Info("Middleware IP rate limiting enabled",
-			"requests", cfg.Middleware.RateLimit.Requests,
-			"duration", cfg.Middleware.RateLimit.Duration.String(),
-		)
-	}
-
 	// tools endpoints
 	server.GET("/ip", ip.IP)
+	server.GET("/dns", dns.DNS)
+	server.GET("/ssl", ssl.SSL)
+	server.GET("/whois", whois.Whois)
 
 	return server.StartWithContext(ctx, cfg.Address)
 }

@@ -3,7 +3,7 @@ module github.com/rytsh/bir/api
 go 1.25
 
 require (
-	github.com/go-chi/httprate v0.15.0
+	github.com/likexian/whois v1.15.7
 	github.com/rakunlabs/ada v0.2.7
 	github.com/rakunlabs/ada/middleware/cors v0.1.3
 	github.com/rakunlabs/chu v0.3.0
@@ -17,7 +17,6 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-envparse v0.1.0 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -28,8 +27,7 @@ require (
 	github.com/worldline-go/logz v0.5.1 // indirect
 	github.com/worldline-go/struct2 v1.4.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
-	github.com/zeebo/xxh3 v1.0.2 // indirect
-	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 )

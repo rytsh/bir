@@ -1,0 +1,8 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import WhoisTool from "../../components/tools/WhoisTool.svelte";
+---
+
+<Layout title="WHOIS Lookup" currentPath="/network/whois">
+  <WhoisTool client:load />
+</Layout>

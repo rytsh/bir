@@ -6,6 +6,7 @@ export interface Tool {
   path: string;
   keywords: string;
   wasm?: boolean;
+  api?: boolean;
 }
 
 export interface Category {
@@ -370,12 +371,22 @@ const rawCategories: Category[] = [
       keywords: "cors checker, cors test, cross-origin, access-control-allow-origin, cors headers, cors validation, api cors, cors enabled, cors policy",
     },
     {
+      id: "dns-lookup",
+      name: "DNS Lookup",
+      description: "Look up DNS records (A, AAAA, MX, TXT, CNAME, NS) for any domain and perform reverse DNS lookups for IP addresses",
+      icon: "🔎",
+      path: "/network/dns",
+      keywords: "dns lookup, dns records, a record, aaaa record, mx record, txt record, cname, ns record, reverse dns, ptr record, nslookup, dig, domain lookup",
+      api: true,
+    },
+    {
       id: "my-ip",
       name: "My IP",
       description: "Display your public IP address as seen by external servers",
       icon: "📍",
       path: "/network/my-ip",
       keywords: "my ip, public ip, ip address, what is my ip, external ip, wan ip, internet ip, ip lookup, ip checker",
+      api: true,
     },
       {
         id: "subnet-calculator",
@@ -392,6 +403,24 @@ const rawCategories: Category[] = [
         icon: "🚪",
         path: "/network/ports",
         keywords: "port reference, network ports, tcp ports, udp ports, well-known ports, service ports, port numbers, port list, firewall ports, common ports, http port, ssh port, ftp port",
+      },
+      {
+        id: "ssl-checker",
+        name: "SSL/TLS Checker",
+        description: "Check SSL/TLS certificates for any domain, view certificate details, expiry dates, certificate chain, and cipher suites",
+        icon: "🔒",
+        path: "/network/ssl",
+        keywords: "ssl checker, tls checker, certificate checker, ssl certificate, https checker, ssl expiry, certificate chain, ssl test, https test, ssl validation",
+        api: true,
+      },
+      {
+        id: "whois-lookup",
+        name: "WHOIS Lookup",
+        description: "Look up domain registration information including registrar, creation date, expiry date, nameservers, and domain status",
+        icon: "📋",
+        path: "/network/whois",
+        keywords: "whois lookup, domain lookup, domain info, registrar, domain registration, domain expiry, nameservers, domain owner, domain age",
+        api: true,
       },
     ],
   },
