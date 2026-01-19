@@ -15,4 +15,6 @@ FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /bir_api /bir_api
 COPY --from=external /turna /turna
 
-ENTRYPOINT ["/bir_api"]
+COPY turna.yaml /etc/turna.yaml
+
+ENTRYPOINT ["/turna"]

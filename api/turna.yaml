@@ -1,0 +1,46 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      rate_limit:
+        rate_limit:
+          limit_type: realIP
+          request: 200
+          duration: 1m
+      cors:
+        cors:
+          allow_origins:
+            - "https://1.tools"
+            - "https://*.1.tools"
+            - "http://localhost:4321"
+          allow_methods:
+            - GET
+            - POST
+          allow_credentials: true
+          allow_headers:
+            - "Authorization"
+            - "Content-Type"
+          max_age: 3600
+      service:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://127.0.0.1:9090"
+    routers:
+      api:
+        path: /*
+        middlewares:
+          - cors
+          - service
+
+services:
+  # service name just for information purpose
+  - name: bir_api
+    path: "."
+    command: /bir_api
+    env:
+      BIR_API_MIDDLEWARE_ENABLED: "false"
+      BIR_API_ADDRESS: "127.0.0.1:9090"
+    inherit_env: true
