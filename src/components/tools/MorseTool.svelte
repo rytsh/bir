@@ -12,6 +12,36 @@
   let currentPlaybackIndex = $state(-1);
   let currentLetterIndex = $state(-1);
 
+  // Listening mode state
+  let isListening = $state(false);
+  let signalDetected = $state(false);
+  let currentAmplitude = $state(0);
+  let sensitivity = $state(15); // Threshold percentage (0-100)
+  let detectedMorse = $state(""); // Current accumulated morse symbols
+  let detectedText = $state(""); // Decoded text so far
+  let listeningError = $state<string | null>(null);
+
+  // Adjustable timing thresholds (in ms)
+  let listenDotMax = $state(250); // Max duration to be considered a dot
+  let listenLetterGap = $state(250); // Silence duration to trigger letter decode
+  let listenWordGap = $state(600); // Silence duration to trigger word gap
+
+  // Manual keyboard input mode
+  let inputMode = $state<"mic" | "keyboard">("mic");
+  let isKeyboardActive = $state(false);
+  let keyboardSignalActive = $state(false);
+
+  // Listening mode audio resources
+  let mediaStream: MediaStream | null = null;
+  let analyserNode: AnalyserNode | null = null;
+  let listeningAnimationId: number | null = null;
+
+  // Timing tracking for listening/keyboard input
+  let signalStartTime: number | null = null;
+  let silenceStartTime: number | null = null;
+  let currentMorseChar = $state(""); // Morse for current character being detected
+  let keyboardCheckInterval: number | null = null;
+
   // Web Audio API context
   let audioContext: AudioContext | null = null;
   let oscillator: OscillatorNode | null = null;
@@ -350,6 +380,382 @@
     }
   };
 
+  // ============================================
+  // LISTENING MODE - Microphone input detection
+  // ============================================
+
+  // Note: Timing thresholds are now adjustable via listenDotMax, listenLetterGap, listenWordGap state variables
+  // Default values based on playback: dot=100ms, dash=300ms, symbol_gap=100ms, letter_gap=300ms, word_gap=700ms
+
+  const startListening = async () => {
+    if (isListening) {
+      stopListening();
+      return;
+    }
+
+    listeningError = null;
+
+    try {
+      // Request microphone access
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Initialize audio context
+      const ctx = initAudio();
+      if (ctx.state === "suspended") {
+        await ctx.resume();
+      }
+
+      // Create analyser node
+      analyserNode = ctx.createAnalyser();
+      analyserNode.fftSize = 512; // Smaller for faster response
+      analyserNode.smoothingTimeConstant = 0.1; // Less smoothing for sharper transitions
+
+      // Connect microphone to analyser
+      const source = ctx.createMediaStreamSource(mediaStream);
+      source.connect(analyserNode);
+
+      // Reset state
+      detectedMorse = "";
+      detectedText = "";
+      currentMorseChar = "";
+      signalStartTime = null;
+      silenceStartTime = null;
+      signalDetected = false;
+
+      isListening = true;
+
+      // Start analysis loop
+      analyzeAudio();
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.name === "NotAllowedError") {
+          listeningError = "Microphone access denied. Please allow microphone access to use this feature.";
+        } else if (err.name === "NotFoundError") {
+          listeningError = "No microphone found. Please connect a microphone.";
+        } else {
+          listeningError = `Error: ${err.message}`;
+        }
+      }
+      stopListening();
+    }
+  };
+
+  const stopListening = () => {
+    isListening = false;
+    signalDetected = false;
+    currentAmplitude = 0;
+
+    // Finalize any pending morse character
+    if (currentMorseChar) {
+      const char = morseToChar[currentMorseChar];
+      if (char) {
+        detectedText += char;
+      }
+      currentMorseChar = "";
+    }
+
+    // Cancel animation frame
+    if (listeningAnimationId !== null) {
+      cancelAnimationFrame(listeningAnimationId);
+      listeningAnimationId = null;
+    }
+
+    // Stop media stream
+    if (mediaStream) {
+      for (const track of mediaStream.getTracks()) {
+        track.stop();
+      }
+      mediaStream = null;
+    }
+
+    // Disconnect analyser
+    if (analyserNode) {
+      analyserNode.disconnect();
+      analyserNode = null;
+    }
+
+    signalStartTime = null;
+    silenceStartTime = null;
+  };
+
+  const analyzeAudio = () => {
+    if (!isListening || !analyserNode) return;
+
+    const dataArray = new Uint8Array(analyserNode.fftSize);
+    analyserNode.getByteTimeDomainData(dataArray);
+
+    // Calculate RMS (root mean square) amplitude
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      const normalized = (dataArray[i] - 128) / 128;
+      sum += normalized * normalized;
+    }
+    const rms = Math.sqrt(sum / dataArray.length);
+
+    // Convert to percentage (0-100)
+    currentAmplitude = Math.min(100, rms * 300);
+
+    // Check if signal is above threshold with hysteresis
+    // Use different thresholds for on/off to avoid jitter
+    const baseThreshold = (sensitivity / 100) * 0.33;
+    const onThreshold = baseThreshold;
+    const offThreshold = baseThreshold * 0.6; // Lower threshold to turn off
+
+    const wasSignalDetected = signalDetected;
+    if (wasSignalDetected) {
+      // Currently on - use lower threshold to turn off
+      signalDetected = rms > offThreshold;
+    } else {
+      // Currently off - use higher threshold to turn on
+      signalDetected = rms > onThreshold;
+    }
+
+    const now = performance.now();
+
+    // Signal state changed
+    if (signalDetected !== wasSignalDetected) {
+      if (signalDetected) {
+        // Signal started
+        signalStartTime = now;
+
+        // Check if we had a significant silence gap
+        if (silenceStartTime !== null) {
+          const silenceDuration = now - silenceStartTime;
+
+          if (silenceDuration >= listenWordGap && currentMorseChar) {
+            // Word gap - decode current char and add space
+            const char = morseToChar[currentMorseChar];
+            if (char) {
+              detectedText += char + " ";
+            }
+            currentMorseChar = "";
+          } else if (silenceDuration >= listenLetterGap && currentMorseChar) {
+            // Letter gap - decode current char
+            const char = morseToChar[currentMorseChar];
+            if (char) {
+              detectedText += char;
+            }
+            currentMorseChar = "";
+          }
+        }
+        silenceStartTime = null;
+      } else {
+        // Signal ended
+        silenceStartTime = now;
+
+        if (signalStartTime !== null) {
+          const signalDuration = now - signalStartTime;
+
+          // Classify as dot or dash
+          if (signalDuration > 20) {
+            // Ignore very short signals (noise) - 20ms minimum
+            if (signalDuration <= listenDotMax) {
+              currentMorseChar += ".";
+            } else {
+              currentMorseChar += "-";
+            }
+          }
+        }
+        signalStartTime = null;
+      }
+    }
+
+    // Check for letter/word gap while in silence
+    if (!signalDetected && silenceStartTime !== null) {
+      const silenceDuration = now - silenceStartTime;
+
+      if (silenceDuration >= listenWordGap && currentMorseChar) {
+        const char = morseToChar[currentMorseChar];
+        if (char) {
+          detectedText += char + " ";
+        }
+        currentMorseChar = "";
+        silenceStartTime = now; // Reset to prevent multiple spaces
+      } else if (silenceDuration >= listenLetterGap && currentMorseChar) {
+        const char = morseToChar[currentMorseChar];
+        if (char) {
+          detectedText += char;
+        }
+        currentMorseChar = "";
+        silenceStartTime = now; // Reset to prevent retriggering
+      }
+    }
+
+    // Continue loop
+    listeningAnimationId = requestAnimationFrame(analyzeAudio);
+  };
+
+  const clearListeningOutput = () => {
+    detectedMorse = "";
+    detectedText = "";
+    currentMorseChar = "";
+  };
+
+  const copyListeningOutput = () => {
+    if (detectedText) {
+      navigator.clipboard.writeText(detectedText.trim());
+    }
+  };
+
+  const useListeningOutput = () => {
+    if (detectedText) {
+      // Switch to encode mode with the detected text
+      input = detectedText.trim();
+      mode = "encode";
+      // Clear listening output
+      clearListeningOutput();
+    }
+  };
+
+  // ============================================
+  // KEYBOARD INPUT MODE - Spacebar tap morse
+  // ============================================
+
+  const startKeyboardInput = () => {
+    if (isKeyboardActive) {
+      stopKeyboardInput();
+      return;
+    }
+
+    // Stop mic listening if active
+    if (isListening) {
+      stopListening();
+    }
+
+    // Reset state
+    detectedMorse = "";
+    detectedText = "";
+    currentMorseChar = "";
+    signalStartTime = null;
+    silenceStartTime = null;
+    keyboardSignalActive = false;
+
+    isKeyboardActive = true;
+
+    // Start interval to check for gaps
+    keyboardCheckInterval = window.setInterval(checkKeyboardGaps, 50);
+  };
+
+  const stopKeyboardInput = () => {
+    isKeyboardActive = false;
+    keyboardSignalActive = false;
+
+    // Finalize any pending morse character
+    if (currentMorseChar) {
+      const char = morseToChar[currentMorseChar];
+      if (char) {
+        detectedText += char;
+      }
+      currentMorseChar = "";
+    }
+
+    // Clear interval
+    if (keyboardCheckInterval !== null) {
+      clearInterval(keyboardCheckInterval);
+      keyboardCheckInterval = null;
+    }
+
+    signalStartTime = null;
+    silenceStartTime = null;
+  };
+
+  const handleKeyboardDown = (e: KeyboardEvent) => {
+    if (!isKeyboardActive) return;
+    if (e.code !== "Space") return;
+
+    e.preventDefault();
+
+    if (keyboardSignalActive) return; // Already pressed
+
+    keyboardSignalActive = true;
+    const now = performance.now();
+
+    // Signal started - check for gaps first
+    if (silenceStartTime !== null) {
+      const silenceDuration = now - silenceStartTime;
+
+      if (silenceDuration >= listenWordGap && currentMorseChar) {
+        const char = morseToChar[currentMorseChar];
+        if (char) {
+          detectedText += char + " ";
+        }
+        currentMorseChar = "";
+      } else if (silenceDuration >= listenLetterGap && currentMorseChar) {
+        const char = morseToChar[currentMorseChar];
+        if (char) {
+          detectedText += char;
+        }
+        currentMorseChar = "";
+      }
+    }
+
+    signalStartTime = now;
+    silenceStartTime = null;
+  };
+
+  const handleKeyboardUp = (e: KeyboardEvent) => {
+    if (!isKeyboardActive) return;
+    if (e.code !== "Space") return;
+
+    e.preventDefault();
+
+    if (!keyboardSignalActive) return; // Not pressed
+
+    keyboardSignalActive = false;
+    const now = performance.now();
+
+    // Signal ended - classify as dot or dash
+    if (signalStartTime !== null) {
+      const signalDuration = now - signalStartTime;
+
+      if (signalDuration > 20) {
+        if (signalDuration <= listenDotMax) {
+          currentMorseChar += ".";
+        } else {
+          currentMorseChar += "-";
+        }
+      }
+    }
+
+    signalStartTime = null;
+    silenceStartTime = now;
+  };
+
+  const checkKeyboardGaps = () => {
+    if (!isKeyboardActive || keyboardSignalActive || silenceStartTime === null) return;
+
+    const now = performance.now();
+    const silenceDuration = now - silenceStartTime;
+
+    if (silenceDuration >= listenWordGap && currentMorseChar) {
+      const char = morseToChar[currentMorseChar];
+      if (char) {
+        detectedText += char + " ";
+      }
+      currentMorseChar = "";
+      silenceStartTime = now;
+    } else if (silenceDuration >= listenLetterGap && currentMorseChar) {
+      const char = morseToChar[currentMorseChar];
+      if (char) {
+        detectedText += char;
+      }
+      currentMorseChar = "";
+      silenceStartTime = now;
+    }
+  };
+
+  // Cleanup on component destroy
+  $effect(() => {
+    return () => {
+      if (isListening) {
+        stopListening();
+      }
+      if (isKeyboardActive) {
+        stopKeyboardInput();
+      }
+    };
+  });
+
   // Reference data
   const letters = Object.entries(charToMorse).filter(([key]) =>
     /[A-Z]/.test(key)
@@ -401,6 +807,7 @@
     <p class="text-sm text-(--color-text-muted)">
       Convert text to Morse code or decode Morse code to text. Use the play
       button to hear the Morse code as audio tones or visualize it with screen flashes.
+      Use the listen feature to detect morse signals from your microphone.
     </p>
   </header>
 
@@ -602,6 +1009,282 @@
         <span class="text-xs text-(--color-text) w-12">{toneFrequency} Hz</span>
       </div>
     </div>
+  </div>
+
+  <!-- Listening Section -->
+  <div class="mb-6 border border-(--color-border) p-4 bg-(--color-bg-alt)">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="text-sm font-medium text-(--color-text)">Listen to Morse Code</h3>
+      <span class="text-xs text-(--color-text-muted)">Detect morse signals via microphone or keyboard</span>
+    </div>
+
+    <!-- Input Mode Toggle -->
+    <div class="flex flex-wrap items-center gap-4 mb-4">
+      <div class="p-1 bg-(--color-border) inline-flex gap-1">
+        <button
+          class="px-3 py-1 text-xs font-medium transition-colors {inputMode === 'mic'
+            ? 'bg-(--color-text) text-(--color-btn-text)'
+            : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+          onclick={() => { inputMode = "mic"; if (isKeyboardActive) stopKeyboardInput(); }}
+        >
+          Microphone
+        </button>
+        <button
+          class="px-3 py-1 text-xs font-medium transition-colors {inputMode === 'keyboard'
+            ? 'bg-(--color-text) text-(--color-btn-text)'
+            : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+          onclick={() => { inputMode = "keyboard"; if (isListening) stopListening(); }}
+        >
+          Keyboard
+        </button>
+      </div>
+    </div>
+
+    <!-- Microphone Mode Controls -->
+    {#if inputMode === "mic"}
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <button
+          onclick={startListening}
+          disabled={isPlaying}
+          class="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 {isListening
+            ? 'bg-red-600 text-white hover:bg-red-700'
+            : 'bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover)'}"
+        >
+          {#if isListening}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <rect x="6" y="4" width="4" height="16" />
+              <rect x="14" y="4" width="4" height="16" />
+            </svg>
+            Stop Listening
+          {:else}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            </svg>
+            Listen
+          {/if}
+        </button>
+
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-(--color-text-muted)">Sensitivity:</span>
+          <input
+            type="range"
+            min="5"
+            max="50"
+            step="1"
+            bind:value={sensitivity}
+            class="w-24 accent-(--color-accent)"
+          />
+          <span class="text-xs text-(--color-text) w-6">{sensitivity}</span>
+        </div>
+
+        {#if isListening}
+          <!-- Amplitude indicator -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-(--color-text-muted)">Level:</span>
+            <div class="w-24 h-4 bg-(--color-border) relative overflow-hidden">
+              <div
+                class="h-full transition-all duration-75 {signalDetected ? 'bg-green-500' : 'bg-(--color-accent)'}"
+                style="width: {currentAmplitude}%"
+              ></div>
+              <!-- Threshold marker -->
+              <div
+                class="absolute top-0 bottom-0 w-0.5 bg-red-500"
+                style="left: {sensitivity}%"
+              ></div>
+            </div>
+            {#if signalDetected}
+              <span class="text-xs text-green-500 font-medium">SIGNAL</span>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      {#if listeningError}
+        <div class="mb-3 p-2 bg-red-500/10 border border-red-500/30 text-red-500 text-xs">
+          {listeningError}
+        </div>
+      {/if}
+    {/if}
+
+    <!-- Keyboard Mode Controls -->
+    {#if inputMode === "keyboard"}
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <button
+          onclick={startKeyboardInput}
+          disabled={isPlaying}
+          class="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 {isKeyboardActive
+            ? 'bg-red-600 text-white hover:bg-red-700'
+            : 'bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover)'}"
+        >
+          {#if isKeyboardActive}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <rect x="6" y="4" width="4" height="16" />
+              <rect x="14" y="4" width="4" height="16" />
+            </svg>
+            Stop
+          {:else}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z" />
+            </svg>
+            Start Keyboard
+          {/if}
+        </button>
+
+        {#if isKeyboardActive}
+          <!-- Tap area for keyboard input -->
+          <div
+            class="flex-1 min-w-48 h-16 border-2 border-dashed flex items-center justify-center text-sm font-medium transition-colors select-none cursor-pointer {keyboardSignalActive
+              ? 'border-green-500 bg-green-500/20 text-green-500'
+              : 'border-(--color-border) text-(--color-text-muted) hover:border-(--color-accent)'}"
+            tabindex="0"
+            onkeydown={handleKeyboardDown}
+            onkeyup={handleKeyboardUp}
+            role="button"
+          >
+            {#if keyboardSignalActive}
+              SIGNAL
+            {:else}
+              Hold SPACE for signal (focus here first)
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- Timing Thresholds (collapsible) -->
+    <details class="mb-4">
+      <summary class="text-xs text-(--color-text-muted) cursor-pointer hover:text-(--color-text) select-none">
+        Timing Settings (adjust if detection is off)
+      </summary>
+      <div class="mt-3 p-3 border border-(--color-border) bg-(--color-bg) flex flex-wrap gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-(--color-text-muted) w-20">Dot max:</span>
+          <input
+            type="range"
+            min="100"
+            max="400"
+            step="10"
+            bind:value={listenDotMax}
+            class="w-20 accent-(--color-accent)"
+          />
+          <span class="text-xs text-(--color-text) w-12">{listenDotMax}ms</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-(--color-text-muted) w-20">Letter gap:</span>
+          <input
+            type="range"
+            min="150"
+            max="500"
+            step="10"
+            bind:value={listenLetterGap}
+            class="w-20 accent-(--color-accent)"
+          />
+          <span class="text-xs text-(--color-text) w-12">{listenLetterGap}ms</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-(--color-text-muted) w-20">Word gap:</span>
+          <input
+            type="range"
+            min="400"
+            max="1000"
+            step="25"
+            bind:value={listenWordGap}
+            class="w-20 accent-(--color-accent)"
+          />
+          <span class="text-xs text-(--color-text) w-12">{listenWordGap}ms</span>
+        </div>
+        <p class="w-full text-xs text-(--color-text-muted)">
+          Playback uses: dot=100ms, dash=300ms, letter gap=300ms, word gap=700ms
+        </p>
+      </div>
+    </details>
+
+    {#if isListening || isKeyboardActive || detectedText || currentMorseChar}
+      <div class="space-y-2">
+        <!-- Current morse character being detected -->
+        {#if (isListening || isKeyboardActive) && currentMorseChar}
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-(--color-text-muted)">Current:</span>
+            <span class="font-mono text-lg tracking-widest text-(--color-accent)">{currentMorseChar}</span>
+            <span class="text-xs text-(--color-text-muted) animate-pulse">detecting...</span>
+          </div>
+        {/if}
+
+        <!-- Detected output -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs text-(--color-text-muted)">Detected Text:</span>
+            <div class="flex gap-3">
+              <button
+                onclick={useListeningOutput}
+                disabled={!detectedText}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50"
+              >
+                Use as Input
+              </button>
+              <button
+                onclick={copyListeningOutput}
+                disabled={!detectedText}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50"
+              >
+                Copy
+              </button>
+              <button
+                onclick={clearListeningOutput}
+                disabled={!detectedText && !currentMorseChar}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div class="w-full min-h-12 p-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) font-mono text-sm">
+            {#if detectedText}
+              {detectedText}
+            {:else}
+              <span class="text-(--color-text-muted)">
+                {#if isListening}
+                  Start sending morse signals...
+                {:else if isKeyboardActive}
+                  Hold SPACE for dot/dash, release to end signal...
+                {:else}
+                  Click Listen or Start Keyboard to begin
+                {/if}
+              </span>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    <p class="mt-3 text-xs text-(--color-text-muted)">
+      {#if inputMode === "mic"}
+        Tip: Use any sustained sound (tapping, whistling, beeps). Short = dot, long = dash.
+      {:else}
+        Tip: Hold SPACE briefly for dot, hold longer for dash. Pause between letters/words.
+      {/if}
+    </p>
   </div>
 
   <!-- Morse Code Reference -->
