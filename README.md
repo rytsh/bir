@@ -12,3 +12,10 @@ Clone the repository and install dependencies and start the development server:
 pnpm i
 pnpm run dev
 ```
+
+Run API server for some tools:
+
+```sh
+cd api
+go run cmd/bir/main.go
+```

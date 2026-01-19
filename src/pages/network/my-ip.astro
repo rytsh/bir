@@ -1,0 +1,8 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MyIpTool from "../../components/tools/MyIpTool.svelte";
+---
+
+<Layout title="My IP Address" currentPath="/network/my-ip">
+  <MyIpTool client:load />
+</Layout>

@@ -361,14 +361,22 @@ const rawCategories: Category[] = [
     name: "Network",
     icon: "🌐",
     tools: [
-      {
-        id: "cors-checker",
-        name: "CORS Checker",
-        description: "Check if a URL has CORS enabled and view its CORS headers",
-        icon: "🔓",
-        path: "/network/cors",
-        keywords: "cors checker, cors test, cross-origin, access-control-allow-origin, cors headers, cors validation, api cors, cors enabled, cors policy",
-      },
+{
+      id: "cors-checker",
+      name: "CORS Checker",
+      description: "Check if a URL has CORS enabled and view its CORS headers",
+      icon: "🔓",
+      path: "/network/cors",
+      keywords: "cors checker, cors test, cross-origin, access-control-allow-origin, cors headers, cors validation, api cors, cors enabled, cors policy",
+    },
+    {
+      id: "my-ip",
+      name: "My IP",
+      description: "Display your public IP address as seen by external servers",
+      icon: "📍",
+      path: "/network/my-ip",
+      keywords: "my ip, public ip, ip address, what is my ip, external ip, wan ip, internet ip, ip lookup, ip checker",
+    },
       {
         id: "subnet-calculator",
         name: "IP Subnet",
