@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import SoundTransferTool from "../../components/tools/sound-transfer/SoundTransferTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/sound-transfer");
+---
+
+<Layout title="Sound Transfer - Transfer Files & Data Over Sound" description={tool?.description} keywords={tool?.keywords} currentPath="/codecs/sound-transfer">
+  <h1 slot="navbar-title">Sound Transfer</h1>
+  <SoundTransferTool client:load />
+</Layout>

@@ -253,6 +253,14 @@ const rawCategories: Category[] = [
         path: "/codecs/morse",
         keywords: "morse code, morse encoder, morse decoder, morse converter, morse translator, dot dash, telegraph, signal, flash, visual morse",
       },
+      {
+        id: "sound-transfer",
+        name: "Sound Transfer",
+        description: "Transfer files and data between devices using sound waves with multiple protocols including ultrasonic for privacy",
+        icon: "🔊",
+        path: "/codecs/sound-transfer",
+        keywords: "sound transfer, data over sound, audio transfer, ggwave, file transfer, ultrasonic, FSK, acoustic modem, air gap, sonic transfer, audio data",
+      },
     ],
   },
   {
