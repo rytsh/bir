@@ -1,14 +1,11 @@
 // @ts-check
-import "dotenv/config";
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
 import svelte from "@astrojs/svelte";
 import sitemap from "@astrojs/sitemap";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import AstroPWA from "@vite-pwa/astro";
-import basicSsl from "@vitejs/plugin-basic-ssl";
-
-const ENABLE_SSL = process.env.ENABLE_SSL;
+// import basicSsl from "@vitejs/plugin-basic-ssl";
 
 // https://astro.build/config
 export default defineConfig({
@@ -110,7 +107,7 @@ export default defineConfig({
           },
         ],
       }),
-      ...(ENABLE_SSL === "true" ? [basicSsl()] : []),
+      // basicSsl(),
     ],
   },
 });
