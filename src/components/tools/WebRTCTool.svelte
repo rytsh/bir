@@ -75,6 +75,12 @@
   let chatInput = $state("");
   let chatContainer: HTMLDivElement;
 
+  // Renegotiation
+  let isNegotiating = $state(false);
+  let makingOffer = $state(false);
+  let ignoreOffer = $state(false);
+  let isPolite = $state(false); // The peer that received the offer is "polite"
+
   // Video
   let localVideoElement = $state<HTMLVideoElement | null>(null);
   let remoteVideoElement = $state<HTMLVideoElement | null>(null);
@@ -168,6 +174,7 @@
       connectionState = "creating";
       iceCandidates = [];
       iceGatheringComplete = false;
+      isPolite = false; // The initiator (offerer) is NOT polite
 
       peerConnection = new RTCPeerConnection({
         iceServers: activeIceServers,
@@ -208,6 +215,7 @@
       connectionState = "connecting";
       iceCandidates = [];
       iceGatheringComplete = false;
+      isPolite = true; // The peer that receives the offer IS polite
 
       peerConnection = new RTCPeerConnection({
         iceServers: activeIceServers,
@@ -314,6 +322,14 @@
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         iceCandidates = [...iceCandidates, event.candidate];
+
+        // If we're connected and renegotiating, send candidates through data channel
+        if (connectionState === "connected" && dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({
+            type: "renegotiate-candidate",
+            candidate: event.candidate.toJSON(),
+          }));
+        }
       }
     };
 
@@ -334,6 +350,32 @@
       }
     };
 
+    peerConnection.onsignalingstatechange = () => {
+      isNegotiating = peerConnection?.signalingState !== "stable";
+    };
+
+    // Handle renegotiation when tracks are added after connection
+    peerConnection.onnegotiationneeded = async () => {
+      if (!peerConnection || connectionState !== "connected") return;
+
+      try {
+        makingOffer = true;
+        await peerConnection.setLocalDescription();
+
+        // Send offer through data channel
+        if (dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({
+            type: "renegotiate-offer",
+            sdp: peerConnection.localDescription!.sdp,
+          }));
+        }
+      } catch (err) {
+        console.error("Negotiation error:", err);
+      } finally {
+        makingOffer = false;
+      }
+    };
+
     peerConnection.ondatachannel = (event) => {
       if (event.channel.label === "chat") {
         dataChannel = event.channel;
@@ -346,7 +388,16 @@
     };
 
     peerConnection.ontrack = (event) => {
-      remoteStream = event.streams[0];
+      // Always create a new MediaStream from the received tracks
+      // This ensures we get all tracks even when added via renegotiation
+      if (!remoteStream) {
+        remoteStream = new MediaStream();
+      }
+      event.streams[0].getTracks().forEach((track) => {
+        if (!remoteStream!.getTracks().includes(track)) {
+          remoteStream!.addTrack(track);
+        }
+      });
       if (remoteVideoElement) {
         remoteVideoElement.srcObject = remoteStream;
       }
@@ -354,16 +405,67 @@
   }
 
   function setupDataChannelHandlers(channel: RTCDataChannel) {
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
+      const data = event.data;
+
+      // Check if this is a signaling message for renegotiation
+      if (typeof data === "string" && data.startsWith("{")) {
+        try {
+          const message = JSON.parse(data);
+          if (message.type === "renegotiate-offer" || message.type === "renegotiate-answer" || message.type === "renegotiate-candidate") {
+            await handleRenegotiationMessage(message);
+            return;
+          }
+        } catch {
+          // Not JSON, treat as chat message
+        }
+      }
+
       const message: ChatMessage = {
         id: crypto.randomUUID(),
-        text: event.data,
+        text: data,
         sender: "remote",
         timestamp: new Date(),
       };
       chatMessages = [...chatMessages, message];
       scrollToBottom();
     };
+  }
+
+  async function handleRenegotiationMessage(message: { type: string; sdp?: string; candidate?: RTCIceCandidateInit }) {
+    if (!peerConnection) return;
+
+    try {
+      if (message.type === "renegotiate-offer") {
+        // Received an offer from the remote peer
+        const offerCollision = makingOffer || peerConnection.signalingState !== "stable";
+
+        ignoreOffer = !isPolite && offerCollision;
+        if (ignoreOffer) {
+          return;
+        }
+
+        await peerConnection.setRemoteDescription({ type: "offer", sdp: message.sdp });
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        // Send answer back through data channel
+        if (dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({
+            type: "renegotiate-answer",
+            sdp: peerConnection.localDescription!.sdp,
+          }));
+        }
+      } else if (message.type === "renegotiate-answer") {
+        // Received an answer to our offer
+        await peerConnection.setRemoteDescription({ type: "answer", sdp: message.sdp });
+      } else if (message.type === "renegotiate-candidate" && message.candidate) {
+        // Received an ICE candidate during renegotiation
+        await peerConnection.addIceCandidate(message.candidate);
+      }
+    } catch (err) {
+      console.error("Renegotiation error:", err);
+    }
   }
 
   function setupFileChannelHandlers(channel: RTCDataChannel) {
@@ -409,6 +511,11 @@
     chatMessages = [];
     fileTransfers = [];
     activeTab = "connect";
+    // Reset renegotiation state
+    isNegotiating = false;
+    makingOffer = false;
+    ignoreOffer = false;
+    isPolite = false;
   }
 
   // Chat
