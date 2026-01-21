@@ -76,8 +76,8 @@
   let chatContainer: HTMLDivElement;
 
   // Video
-  let localVideoElement: HTMLVideoElement;
-  let remoteVideoElement: HTMLVideoElement;
+  let localVideoElement = $state<HTMLVideoElement | null>(null);
+  let remoteVideoElement = $state<HTMLVideoElement | null>(null);
   let isAudioMuted = $state(false);
   let isVideoMuted = $state(false);
   let callDuration = $state(0);
@@ -91,6 +91,20 @@
   let isConnected = $derived(connectionState === "connected");
   let canSendMessage = $derived(isConnected && chatInput.trim() !== "");
   let activeIceServers = $derived(buildIceServers(selectedStunServers));
+
+  // Sync video streams with video elements reactively
+  // This handles the case where ontrack fires before the video element is bound
+  $effect(() => {
+    if (remoteVideoElement && remoteStream) {
+      remoteVideoElement.srcObject = remoteStream;
+    }
+  });
+
+  $effect(() => {
+    if (localVideoElement && localStream) {
+      localVideoElement.srcObject = localStream;
+    }
+  });
 
   // STUN server management
   function toggleStunServer(url: string) {
