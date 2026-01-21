@@ -164,20 +164,20 @@
   </header>
 
   <!-- Tabs -->
-  <div class="flex gap-2 mb-4">
+  <div class="flex gap-0 mb-4 border-b border-(--color-border)">
     <button
       onclick={() => switchTab("forward")}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'forward'
-        ? 'bg-(--color-accent) text-(--color-btn-text)'
-        : 'bg-(--color-bg-alt) text-(--color-text-muted) hover:text-(--color-text)'}"
+        ? 'text-(--color-text) border-b-2 border-(--color-accent)'
+        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       Forward Lookup
     </button>
     <button
       onclick={() => switchTab("reverse")}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'reverse'
-        ? 'bg-(--color-accent) text-(--color-btn-text)'
-        : 'bg-(--color-bg-alt) text-(--color-text-muted) hover:text-(--color-text)'}"
+        ? 'text-(--color-text) border-b-2 border-(--color-accent)'
+        : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       Reverse Lookup (PTR)
     </button>

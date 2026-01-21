@@ -430,6 +430,14 @@ const rawCategories: Category[] = [
         keywords: "whois lookup, domain lookup, domain info, registrar, domain registration, domain expiry, nameservers, domain owner, domain age",
         api: true,
       },
+      {
+        id: "webrtc-tool",
+        name: "WebRTC",
+        description: "Peer-to-peer communication tool for text chat, video calls, and file transfer using WebRTC. Connect devices via link sharing or manual paste, no server required.",
+        icon: "📡",
+        path: "/network/webrtc",
+        keywords: "webrtc, p2p, peer to peer, video call, chat, file transfer, data channel, real-time communication, screen share",
+      },
     ],
   },
   {
