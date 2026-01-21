@@ -84,6 +84,7 @@ export const createTheme = (dark: boolean): Extension[] => {
 export const editorHeightExtension = EditorView.theme({
   "&": { height: "100%" },
   ".cm-scroller": { overflow: "auto" },
+  ".cm-content": { wordBreak: "break-all" },
 });
 
 export interface EditorConfig {

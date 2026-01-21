@@ -136,7 +136,7 @@
   let removedCount = $derived(diffLines.filter((line) => line.type === "removed").length);
 </script>
 
-<div class="h-full flex flex-col">
+<div class="h-full flex flex-col overflow-hidden">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
       Compare two texts and see the differences highlighted.
@@ -144,7 +144,7 @@
   </header>
 
   <!-- Config Toggle -->
-  <div class="mb-4 flex items-center gap-4">
+  <div class="mb-4 flex items-center gap-6">
     <label class="flex items-center gap-2 cursor-pointer">
       <span class="text-sm text-(--color-text-muted)">Inline Mode</span>
       <button
@@ -163,9 +163,9 @@
   </div>
 
   <!-- Editors - Side by Side -->
-  <div class="flex-1 flex flex-col lg:flex-row gap-4 mb-4">
+  <div class="flex-1 flex flex-col lg:flex-row gap-4 mb-4 min-h-0">
     <!-- Old Text Editor -->
-    <div class="flex-1 flex flex-col min-h-[150px]">
+    <div class="flex-1 flex flex-col min-h-[150px] min-w-0">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           Old Text
@@ -185,7 +185,7 @@
           </button>
         </div>
       </div>
-      <div class="flex-1 border border-(--color-border) overflow-hidden">
+      <div class="flex-1 min-h-0 border border-(--color-border) overflow-hidden">
         <CodeMirror
           bind:value={oldValue}
           placeholder="Enter original text..."
@@ -195,7 +195,7 @@
     </div>
 
     <!-- New Text Editor -->
-    <div class="flex-1 flex flex-col min-h-[150px]">
+    <div class="flex-1 flex flex-col min-h-[150px] min-w-0">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           New Text
@@ -215,7 +215,7 @@
           </button>
         </div>
       </div>
-      <div class="flex-1 border border-(--color-border) overflow-hidden">
+      <div class="flex-1 min-h-0 border border-(--color-border) overflow-hidden">
         <CodeMirror
           bind:value={newValue}
           placeholder="Enter new text..."
@@ -226,8 +226,8 @@
   </div>
 
   <!-- Diff Output -->
-  <div class="flex-1 flex flex-col min-h-[200px] mt-2">
-    <div class="flex justify-between items-center mb-2">
+  <div class="flex-1 flex flex-col min-h-[200px] min-w-0 overflow-hidden mt-2">
+    <div class="flex justify-between items-center mb-2 shrink-0">
       <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
         Differences
       </span>
@@ -238,7 +238,7 @@
         </div>
       {/if}
     </div>
-    <div class="flex-1 border border-(--color-border) overflow-auto bg-(--color-bg-alt) font-mono text-sm">
+    <div class="flex-1 min-h-0 border border-(--color-border) overflow-auto bg-(--color-bg-alt) font-mono text-sm">
       {#if !hasDiff && diffLines.length === 0}
         <div class="p-4 text-(--color-text-light) italic">
           Enter text in both editors to see differences...
@@ -252,7 +252,7 @@
         <div class="p-2">
           {#each diffLines as line}
             <div
-              class="flex font-mono whitespace-pre {line.type === 'added'
+              class="flex font-mono {line.type === 'added'
                 ? 'bg-(--color-diff-added-bg) text-(--color-diff-added-text)'
                 : line.type === 'removed'
                   ? 'bg-(--color-diff-removed-bg) text-(--color-diff-removed-text)'
@@ -273,7 +273,7 @@
                   &nbsp;
                 {/if}
               </span>
-              <span class="flex-1">{line.content}</span>
+              <span class="flex-1 min-w-0 break-all whitespace-pre-wrap">{line.content}</span>
             </div>
           {/each}
         </div>
@@ -281,11 +281,11 @@
         <!-- Side by Side Mode -->
         <div class="flex h-full">
           <!-- Old Side -->
-          <div class="flex-1 border-r border-(--color-border)">
+          <div class="flex-1 min-w-0 border-r border-(--color-border)">
             {#each diffLines as line}
               {#if line.type === "removed" || line.type === "unchanged"}
                 <div
-                  class="flex font-mono whitespace-pre {line.type === 'removed'
+                  class="flex font-mono {line.type === 'removed'
                     ? 'bg-(--color-diff-removed-bg) text-(--color-diff-removed-text)'
                     : ''}"
                 >
@@ -299,25 +299,25 @@
                       &nbsp;
                     {/if}
                   </span>
-                  <span class="flex-1 pl-1">{line.content}</span>
+                  <span class="flex-1 min-w-0 break-all whitespace-pre-wrap pl-1">{line.content}</span>
                 </div>
               {:else}
-                <div class="flex font-mono whitespace-pre">
+                <div class="flex font-mono">
                   <span class="w-10 text-right pr-2 text-(--color-text-light) select-none shrink-0 border-r border-(--color-border)">
                     &nbsp;
                   </span>
                   <span class="w-4 text-center select-none shrink-0">&nbsp;</span>
-                  <span class="flex-1 pl-1">&nbsp;</span>
+                  <span class="pl-1">&nbsp;</span>
                 </div>
               {/if}
             {/each}
           </div>
           <!-- New Side -->
-          <div class="flex-1">
+          <div class="flex-1 min-w-0">
             {#each diffLines as line}
               {#if line.type === "added" || line.type === "unchanged"}
                 <div
-                  class="flex font-mono whitespace-pre {line.type === 'added'
+                  class="flex font-mono {line.type === 'added'
                     ? 'bg-(--color-diff-added-bg) text-(--color-diff-added-text)'
                     : ''}"
                 >
@@ -331,15 +331,15 @@
                       &nbsp;
                     {/if}
                   </span>
-                  <span class="flex-1 pl-1">{line.content}</span>
+                  <span class="flex-1 min-w-0 break-all whitespace-pre-wrap pl-1">{line.content}</span>
                 </div>
               {:else}
-                <div class="flex font-mono whitespace-pre">
+                <div class="flex font-mono">
                   <span class="w-10 text-right pr-2 text-(--color-text-light) select-none shrink-0 border-r border-(--color-border)">
                     &nbsp;
                   </span>
                   <span class="w-4 text-center select-none shrink-0">&nbsp;</span>
-                  <span class="flex-1 pl-1">&nbsp;</span>
+                  <span class="pl-1">&nbsp;</span>
                 </div>
               {/if}
             {/each}
