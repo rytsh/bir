@@ -18,7 +18,8 @@ server:
           allow_methods:
             - GET
             - POST
-          allow_credentials: true
+            - OPTIONS
+          allow_credentials: false
           allow_headers:
             - "Authorization"
             - "Content-Type"

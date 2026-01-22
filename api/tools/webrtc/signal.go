@@ -272,11 +272,6 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	room.mu.Unlock()
 
-	// Set CORS headers for SSE
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

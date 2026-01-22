@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}"
 
 FROM ghcr.io/rytsh/dock/curl:latest AS external
 
-RUN curl -fSL https://github.com/rakunlabs/turna/releases/download/v0.8.19/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C / turna
+RUN curl -fSL https://github.com/rakunlabs/turna/releases/download/v0.8.20/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C / turna
 
 FROM gcr.io/distroless/static:nonroot
 
