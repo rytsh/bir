@@ -17,9 +17,19 @@
     type FileMetadata,
   } from "../../lib/webrtc";
 
+  // API URL from environment
+  const API_URL = import.meta.env.PUBLIC_API_URL || "http://127.0.0.1:8080";
+
   // Types
   type TabType = "connect" | "chat" | "video" | "files";
   type ConnectionState = "disconnected" | "creating" | "waiting" | "connecting" | "connected";
+  type ConnectionMode = "quick" | "manual";
+
+  // Signaling message types
+  interface SignalMessage {
+    type: string;
+    payload?: unknown;
+  }
 
   interface ChatMessage {
     id: string;
@@ -44,9 +54,16 @@
   // State
   let activeTab = $state<TabType>("connect");
   let connectionState = $state<ConnectionState>("disconnected");
+  let connectionMode = $state<ConnectionMode>("quick");
   let error = $state("");
   let copied = $state(false);
   let copiedField = $state<string | null>(null);
+
+  // Quick Connect (Room Code)
+  let eventSource = $state<EventSource | null>(null);
+  let roomCode = $state("");
+  let joinRoomCode = $state("");
+  let isHost = $state(false);
 
   // STUN server selection
   let selectedStunServers = $state<string[]>([
@@ -97,6 +114,9 @@
   let isConnected = $derived(connectionState === "connected");
   let canSendMessage = $derived(isConnected && chatInput.trim() !== "");
   let activeIceServers = $derived(buildIceServers(selectedStunServers));
+  // Allow access to chat/files tabs if there's history to view (even when disconnected)
+  let hasChatHistory = $derived(chatMessages.length > 0);
+  let hasFileTransfers = $derived(fileTransfers.length > 0);
 
   // Sync video streams with video elements reactively
   // This handles the case where ontrack fires before the video element is bound
@@ -150,6 +170,18 @@
       }
     }
 
+    // Check for room code in URL (Quick Connect link)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get("room");
+    if (roomParam) {
+      joinRoomCode = roomParam.toUpperCase();
+      connectionMode = "quick";
+      // Clear the URL parameter after reading
+      window.history.replaceState({}, "", window.location.pathname);
+      // Auto-join the room
+      joinQuickConnection();
+    }
+
     return () => {
       cleanup();
     };
@@ -164,6 +196,260 @@
     }
     if (peerConnection) {
       peerConnection.close();
+    }
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  }
+
+  // Quick Connect - HTTP + SSE Signaling Functions
+  async function sendSignalMessage(msg: SignalMessage) {
+    if (!roomCode) return;
+
+    try {
+      const sender = isHost ? "host" : "guest";
+      await fetch(`${API_URL}/webrtc/room/${roomCode}/signal?sender=${sender}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+      });
+    } catch (err) {
+      console.error("Failed to send signal message:", err);
+    }
+  }
+
+  function connectToEventSource(code: string, role: "host" | "guest") {
+    eventSource = new EventSource(`${API_URL}/webrtc/room/${code}/events?role=${role}`);
+    let hasConnected = false;
+
+    eventSource.onopen = () => {
+      hasConnected = true;
+      console.debug("SSE connection opened");
+    };
+
+    eventSource.addEventListener("message", (event) => {
+      const msg = JSON.parse(event.data) as SignalMessage;
+      handleSignalMessage(msg);
+    });
+
+    eventSource.addEventListener("connected", () => {
+      console.debug("SSE connected event received");
+    });
+
+    eventSource.onerror = (e) => {
+      console.debug("SSE error", e, "readyState:", eventSource?.readyState, "hasConnected:", hasConnected);
+      // Check if connection is permanently closed
+      if (eventSource?.readyState === EventSource.CLOSED) {
+        console.debug("SSE connection closed");
+        // Only show error if we were waiting for a peer (not already connected via WebRTC)
+        if (connectionState === "waiting" || connectionState === "connecting") {
+          if (!hasConnected) {
+            error = "Failed to connect to room. Please check if the server is running.";
+          } else {
+            error = "Connection to room lost. The room may have expired.";
+          }
+          connectionState = "disconnected";
+          // Clean up
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          roomCode = "";
+          joinRoomCode = "";
+          isHost = false;
+        }
+      } else {
+        console.debug("SSE error/reconnecting");
+      }
+    };
+  }
+
+  async function handleSignalMessage(msg: SignalMessage) {
+    switch (msg.type) {
+      case "peer_joined":
+        // A peer joined our room, create and send offer
+        await createOfferForSignaling();
+        break;
+
+      case "offer":
+        // Received offer from host
+        await handleSignalingOffer(msg.payload as { sdp: string });
+        break;
+
+      case "answer":
+        // Received answer from guest
+        await handleSignalingAnswer(msg.payload as { sdp: string });
+        break;
+
+      case "candidate":
+        // Received ICE candidate
+        await handleSignalingCandidate(msg.payload as RTCIceCandidateInit);
+        break;
+
+      case "peer_left":
+        // Peer disconnected - the WebRTC connection state change handler will handle UI
+        break;
+    }
+  }
+
+  async function createQuickConnection() {
+    try {
+      error = "";
+      connectionState = "creating";
+      isHost = true;
+
+      // Create room via HTTP POST
+      const response = await fetch(`${API_URL}/webrtc/room`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to create room");
+      }
+      const data = await response.json();
+      roomCode = data.room;
+
+      // Initialize peer connection
+      peerConnection = new RTCPeerConnection({
+        iceServers: activeIceServers,
+      });
+
+      setupPeerConnectionHandlers();
+      setupQuickConnectIceHandler();
+
+      dataChannel = peerConnection.createDataChannel("chat", { ordered: true });
+      setupDataChannelHandlers(dataChannel);
+
+      fileChannel = peerConnection.createDataChannel("files", { ordered: true });
+      fileChannel.binaryType = "arraybuffer";
+      setupFileChannelHandlers(fileChannel);
+
+      // Connect to SSE for receiving messages
+      connectToEventSource(roomCode, "host");
+
+      connectionState = "waiting";
+    } catch (err) {
+      error = `Failed to create connection: ${err}`;
+      connectionState = "disconnected";
+    }
+  }
+
+  async function joinQuickConnection() {
+    if (!joinRoomCode.trim()) {
+      error = "Please enter a room code";
+      return;
+    }
+
+    try {
+      error = "";
+      connectionState = "connecting";
+      isHost = false;
+      isPolite = true;
+
+      const code = joinRoomCode.trim().toUpperCase();
+
+      // Join room via HTTP POST
+      const response = await fetch(`${API_URL}/webrtc/room/${code}/join`, { method: "POST" });
+      if (!response.ok) {
+        const data = await response.json();
+        if (response.status === 404) {
+          error = "Room not found. Please check the code and try again.";
+        } else if (response.status === 409) {
+          error = "Room is full. Only 2 peers can connect.";
+        } else {
+          error = data.error || "Failed to join room";
+        }
+        connectionState = "disconnected";
+        return;
+      }
+
+      roomCode = code;
+
+      // Initialize peer connection
+      peerConnection = new RTCPeerConnection({
+        iceServers: activeIceServers,
+      });
+
+      setupPeerConnectionHandlers();
+      setupQuickConnectIceHandler();
+
+      // Connect to SSE for receiving messages
+      connectToEventSource(roomCode, "guest");
+    } catch (err) {
+      error = `Failed to join: ${err}`;
+      connectionState = "disconnected";
+    }
+  }
+
+  function setupQuickConnectIceHandler() {
+    if (!peerConnection) return;
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendSignalMessage({
+          type: "candidate",
+          payload: event.candidate.toJSON(),
+        });
+      }
+    };
+  }
+
+  async function createOfferForSignaling() {
+    if (!peerConnection) return;
+
+    try {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      sendSignalMessage({
+        type: "offer",
+        payload: { sdp: offer.sdp },
+      });
+    } catch (err) {
+      error = `Failed to create offer: ${err}`;
+    }
+  }
+
+  async function handleSignalingOffer(payload: { sdp: string }) {
+    if (!peerConnection) return;
+
+    try {
+      await peerConnection.setRemoteDescription({
+        type: "offer",
+        sdp: payload.sdp,
+      });
+
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      sendSignalMessage({
+        type: "answer",
+        payload: { sdp: answer.sdp },
+      });
+    } catch (err) {
+      error = `Failed to handle offer: ${err}`;
+    }
+  }
+
+  async function handleSignalingAnswer(payload: { sdp: string }) {
+    if (!peerConnection) return;
+
+    try {
+      await peerConnection.setRemoteDescription({
+        type: "answer",
+        sdp: payload.sdp,
+      });
+    } catch (err) {
+      error = `Failed to handle answer: ${err}`;
+    }
+  }
+
+  async function handleSignalingCandidate(candidate: RTCIceCandidateInit) {
+    if (!peerConnection) return;
+
+    try {
+      await peerConnection.addIceCandidate(candidate);
+    } catch (err) {
+      // Ignore candidate errors - they're often benign
+      console.debug("ICE candidate error:", err);
     }
   }
 
@@ -344,9 +630,35 @@
       if (state === "connected") {
         connectionState = "connected";
         activeTab = "chat";
+        // Close the SSE connection - room signaling is no longer needed
+        // once peer-to-peer WebRTC connection is established
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        // Clear room code since we're now connected peer-to-peer
+        roomCode = "";
       } else if (state === "disconnected" || state === "failed" || state === "closed") {
         connectionState = "disconnected";
-        stopCallTimer();
+        // Stop video call when peer disconnects
+        stopVideoCall();
+        // Clean up connection resources but preserve chat messages and file transfers
+        // so user can still view chat history and download received files
+        if (peerConnection) {
+          peerConnection.close();
+        }
+        peerConnection = null;
+        dataChannel = null;
+        fileChannel = null;
+        remoteStream = null;
+        localConnectionData = null;
+        shareURL = "";
+        remoteConnectionInput = "";
+        // Reset renegotiation state
+        isNegotiating = false;
+        makingOffer = false;
+        ignoreOffer = false;
+        isPolite = false;
       }
     };
 
@@ -497,7 +809,19 @@
     });
   }
 
-  function disconnect() {
+  async function disconnect() {
+    // If using Quick Connect, notify server that we're leaving the room
+    if (connectionMode === "quick" && roomCode) {
+      try {
+        const sender = isHost ? "host" : "guest";
+        await fetch(`${API_URL}/webrtc/room/${roomCode}/leave?sender=${sender}`, {
+          method: "POST",
+        });
+      } catch (err) {
+        console.debug("Failed to notify server of room exit:", err);
+      }
+    }
+
     cleanup();
     peerConnection = null;
     dataChannel = null;
@@ -516,6 +840,10 @@
     makingOffer = false;
     ignoreOffer = false;
     isPolite = false;
+    // Reset quick connect state
+    roomCode = "";
+    joinRoomCode = "";
+    isHost = false;
   }
 
   // Chat
@@ -794,7 +1122,7 @@
       {:else if connectionState === "connecting"}
         Connecting...
       {:else}
-        Connected
+        Connected{#if connectionMode === "quick" && roomCode} (Room: {roomCode}){/if}
       {/if}
     </span>
     {#if isConnected}
@@ -802,7 +1130,7 @@
         onclick={disconnect}
         class="ml-auto text-xs text-(--color-error-text) hover:underline"
       >
-        Disconnect
+        {connectionMode === "quick" ? "Exit Room" : "Disconnect"}
       </button>
     {/if}
   </div>
@@ -810,9 +1138,13 @@
   <!-- Tabs -->
   <div class="flex gap-0 mb-4 border-b border-(--color-border)">
     {#each [{ id: "connect", label: "Connect" }, { id: "chat", label: "Chat" }, { id: "video", label: "Video" }, { id: "files", label: "Files" }] as tab}
+      {@const isTabEnabled = tab.id === "connect" ||
+        isConnected ||
+        (tab.id === "chat" && hasChatHistory) ||
+        (tab.id === "files" && hasFileTransfers)}
       <button
         onclick={() => (activeTab = tab.id as TabType)}
-        disabled={tab.id !== "connect" && !isConnected}
+        disabled={!isTabEnabled}
         class="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed {activeTab === tab.id
           ? 'text-(--color-text) border-b-2 border-(--color-accent)'
           : 'text-(--color-text-muted) hover:text-(--color-text)'}"
@@ -835,6 +1167,102 @@
     {#if activeTab === "connect"}
       {#if connectionState === "disconnected"}
         <div class="space-y-4">
+          <!-- Connection Mode Toggle -->
+          <div class="flex gap-2 p-1 bg-(--color-bg-alt) border border-(--color-border)">
+            <button
+              onclick={() => (connectionMode = "quick")}
+              class="flex-1 px-4 py-2 text-sm font-medium transition-colors {connectionMode === 'quick'
+                ? 'bg-(--color-accent) text-(--color-btn-text)'
+                : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+            >
+              Quick Connect
+            </button>
+            <button
+              onclick={() => (connectionMode = "manual")}
+              class="flex-1 px-4 py-2 text-sm font-medium transition-colors {connectionMode === 'manual'
+                ? 'bg-(--color-accent) text-(--color-btn-text)'
+                : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+            >
+              Manual
+            </button>
+          </div>
+
+          {#if connectionMode === "quick"}
+            <!-- Quick Connect Mode -->
+            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Create Room</h2>
+              <p class="text-xs text-(--color-text-muted) mb-3">Create a room and share the code with your peer.</p>
+              <button
+                onclick={createQuickConnection}
+                disabled={selectedStunServers.length === 0}
+                class="w-full px-4 py-3 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+              >
+                Create Room
+              </button>
+              {#if selectedStunServers.length === 0}
+                <p class="mt-2 text-xs text-(--color-error-text)">Please configure STUN servers below</p>
+              {/if}
+            </div>
+
+            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Join Room</h2>
+              <p class="text-xs text-(--color-text-muted) mb-3">Enter the room code shared by your peer.</p>
+              <div class="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  bind:value={joinRoomCode}
+                  placeholder="Enter room code (e.g., ABC123)"
+                  maxlength="6"
+                  class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm text-center tracking-widest uppercase focus:border-(--color-text-light) outline-none"
+                  onkeydown={(e) => e.key === "Enter" && joinQuickConnection()}
+                />
+                <button
+                  onclick={joinQuickConnection}
+                  disabled={!joinRoomCode.trim() || selectedStunServers.length === 0}
+                  class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+                >
+                  Join
+                </button>
+              </div>
+            </div>
+          {:else}
+            <!-- Manual Mode - Original UI -->
+            <!-- Create Connection -->
+            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Create Connection</h2>
+              <button
+                onclick={createConnection}
+                disabled={selectedStunServers.length === 0}
+                class="w-full px-4 py-3 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+              >
+                Create New Connection
+              </button>
+              {#if selectedStunServers.length === 0}
+                <p class="mt-2 text-xs text-(--color-error-text)">Please select at least one STUN server</p>
+              {/if}
+            </div>
+
+            <!-- Join Connection -->
+            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Join Existing Connection</h2>
+              <div class="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  bind:value={remoteConnectionInput}
+                  placeholder="Paste connection data or URL..."
+                  class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
+                />
+                <button
+                  onclick={handlePastedData}
+                  disabled={!remoteConnectionInput.trim() || selectedStunServers.length === 0}
+                  class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+                >
+                  Connect
+                </button>
+              </div>
+            </div>
+          {/if}
+
           <!-- STUN Server Settings -->
           <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
             <button
@@ -911,115 +1339,115 @@
               </div>
             {/if}
           </div>
-
-          <!-- Create Connection -->
-          <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-            <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Create Connection</h2>
-            <button
-              onclick={createConnection}
-              disabled={selectedStunServers.length === 0}
-              class="w-full px-4 py-3 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
-            >
-              Create New Connection
-            </button>
-            {#if selectedStunServers.length === 0}
-              <p class="mt-2 text-xs text-(--color-error-text)">Please select at least one STUN server</p>
-            {/if}
-          </div>
-
-          <!-- Join Connection -->
-          <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-            <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Join Existing Connection</h2>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                bind:value={remoteConnectionInput}
-                placeholder="Paste connection data or URL..."
-                class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
-              />
-              <button
-                onclick={handlePastedData}
-                disabled={!remoteConnectionInput.trim() || selectedStunServers.length === 0}
-                class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
-              >
-                Connect
-              </button>
-            </div>
-          </div>
         </div>
       {:else if connectionState === "waiting" || connectionState === "connecting"}
         <div class="space-y-4">
-          <!-- Share Connection -->
-          <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-            <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">
-              {#if localConnectionData?.type === "offer"}
-                Share With Peer
-              {:else}
-                Share Answer With Initiator
-              {/if}
-            </h2>
-
-            <!-- Share URL -->
-            <div class="mb-4">
-              <label class="block text-xs text-(--color-text-muted) mb-2">Share Link</label>
-              <div class="flex gap-2">
-                <input
-                  type="text"
-                  value={shareURL}
-                  readonly
-                  class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm"
-                />
+          {#if connectionMode === "quick" && roomCode}
+            <!-- Quick Connect - Room Code Display -->
+            <div class="p-6 bg-(--color-bg-alt) border border-(--color-border) text-center">
+              <h2 class="text-sm tracking-wider text-(--color-text-muted) font-medium mb-2">Room Code</h2>
+              <div class="flex items-center justify-center gap-3">
+                <span class="text-4xl font-mono font-bold tracking-widest text-(--color-text)">{roomCode}</span>
                 <button
-                  onclick={() => handleCopy("url", shareURL)}
-                  class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors"
+                  onclick={() => handleCopy("room", roomCode)}
+                  class="px-3 py-1 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-xs hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
                 >
-                  {copiedField === "url" ? "Copied!" : "Copy"}
+                  {copiedField === "room" ? "Copied!" : "Copy Code"}
+                </button>
+                <button
+                  onclick={() => handleCopy("roomLink", `${window.location.origin}${window.location.pathname}?room=${roomCode}`)}
+                  class="px-3 py-1 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-xs hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
+                >
+                  {copiedField === "roomLink" ? "Copied!" : "Copy Link"}
                 </button>
               </div>
+              <p class="text-sm text-(--color-text-muted) mt-4">Share the code or link with your peer</p>
+              <div class="flex items-center justify-center gap-2 mt-2">
+                <div class="w-2 h-2 bg-yellow-500 animate-pulse rounded-full"></div>
+                <span class="text-xs text-(--color-text-muted)">Waiting for peer to join...</span>
+              </div>
             </div>
+          {:else if connectionMode === "quick" && !isHost}
+            <!-- Quick Connect - Joining -->
+            <div class="p-6 bg-(--color-bg-alt) border border-(--color-border) text-center">
+              <div class="flex items-center justify-center gap-2">
+                <div class="w-3 h-3 bg-yellow-500 animate-pulse rounded-full"></div>
+                <span class="text-sm text-(--color-text)">Connecting to room...</span>
+              </div>
+            </div>
+          {:else}
+            <!-- Manual Mode - Share Connection -->
+            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">
+                {#if localConnectionData?.type === "offer"}
+                  Share With Peer
+                {:else}
+                  Share Answer With Initiator
+                {/if}
+              </h2>
 
-            <!-- Raw data -->
-            {#if localConnectionData}
-              <div>
-                <label class="block text-xs text-(--color-text-muted) mb-2">Or Copy Raw Data</label>
+              <!-- Share URL -->
+              <div class="mb-4">
+                <label class="block text-xs text-(--color-text-muted) mb-2">Share Link</label>
                 <div class="flex gap-2">
                   <input
                     type="text"
-                    value={encodeConnectionData(localConnectionData)}
+                    value={shareURL}
                     readonly
                     class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm"
                   />
                   <button
-                    onclick={() => handleCopy("data", encodeConnectionData(localConnectionData!))}
-                    class="px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-sm font-medium hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
+                    onclick={() => handleCopy("url", shareURL)}
+                    class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors"
                   >
-                    {copiedField === "data" ? "Copied!" : "Copy"}
+                    {copiedField === "url" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Raw data -->
+              {#if localConnectionData}
+                <div>
+                  <label class="block text-xs text-(--color-text-muted) mb-2">Or Copy Raw Data</label>
+                  <div class="flex gap-2">
+                    <input
+                      type="text"
+                      value={encodeConnectionData(localConnectionData)}
+                      readonly
+                      class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm"
+                    />
+                    <button
+                      onclick={() => handleCopy("data", encodeConnectionData(localConnectionData!))}
+                      class="px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-sm font-medium hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
+                    >
+                      {copiedField === "data" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+
+            {#if localConnectionData?.type === "offer"}
+              <!-- Paste Answer -->
+              <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+                <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Paste Peer's Answer</h2>
+                <div class="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="text"
+                    bind:value={remoteConnectionInput}
+                    placeholder="Paste answer data..."
+                    class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
+                  />
+                  <button
+                    onclick={handleReceivedAnswer}
+                    disabled={!remoteConnectionInput.trim()}
+                    class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+                  >
+                    Connect
                   </button>
                 </div>
               </div>
             {/if}
-          </div>
-
-          {#if localConnectionData?.type === "offer"}
-            <!-- Paste Answer -->
-            <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-              <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">Paste Peer's Answer</h2>
-              <div class="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  bind:value={remoteConnectionInput}
-                  placeholder="Paste answer data..."
-                  class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
-                />
-                <button
-                  onclick={handleReceivedAnswer}
-                  disabled={!remoteConnectionInput.trim()}
-                  class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
-                >
-                  Connect
-                </button>
-              </div>
-            </div>
           {/if}
 
           <button
@@ -1034,10 +1462,19 @@
           <div class="flex items-center gap-3 mb-3">
             <div class="w-3 h-3 bg-green-500"></div>
             <span class="text-lg font-medium text-(--color-text)">Connected</span>
+            {#if connectionMode === "quick" && roomCode}
+              <span class="text-sm text-(--color-text-muted)">(Room: {roomCode})</span>
+            {/if}
           </div>
-          <p class="text-sm text-(--color-text-muted)">
+          <p class="text-sm text-(--color-text-muted) mb-4">
             You can now use Chat, Video, and File transfer tabs.
           </p>
+          <button
+            onclick={disconnect}
+            class="w-full px-4 py-2 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm hover:opacity-80 transition-colors"
+          >
+            {connectionMode === "quick" ? "Exit Room" : "Disconnect"}
+          </button>
         </div>
       {/if}
 
@@ -1070,22 +1507,26 @@
 
         <!-- Input -->
         <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-          <div class="flex gap-3">
-            <input
-              type="text"
-              bind:value={chatInput}
-              onkeydown={handleKeyDown}
-              placeholder="Type a message..."
-              class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm focus:border-(--color-text-light) outline-none"
-            />
-            <button
-              onclick={sendMessage}
-              disabled={!canSendMessage}
-              class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
-            >
-              Send
-            </button>
-          </div>
+          {#if isConnected}
+            <div class="flex gap-3">
+              <input
+                type="text"
+                bind:value={chatInput}
+                onkeydown={handleKeyDown}
+                placeholder="Type a message..."
+                class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm focus:border-(--color-text-light) outline-none"
+              />
+              <button
+                onclick={sendMessage}
+                disabled={!canSendMessage}
+                class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          {:else}
+            <p class="text-sm text-(--color-text-muted) text-center">Connection closed. Chat history preserved above.</p>
+          {/if}
         </div>
       </div>
 
@@ -1157,24 +1598,30 @@
     {:else if activeTab === "files"}
       <div class="space-y-4">
         <!-- Drop Zone -->
-        <div
-          class="p-8 bg-(--color-bg-alt) border-2 border-dashed transition-colors text-center {dragOver
-            ? 'border-(--color-accent) bg-(--color-accent)/10'
-            : 'border-(--color-border)'}"
-          ondragover={(e) => {
-            e.preventDefault();
-            dragOver = true;
-          }}
-          ondragleave={() => (dragOver = false)}
-          ondrop={handleFileDrop}
-        >
-          <p class="text-(--color-text-muted) mb-2">Drag and drop a file here</p>
-          <p class="text-(--color-text-muted) text-xs mb-4">or</p>
-          <label class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm cursor-pointer hover:bg-(--color-accent-hover) transition-colors">
-            Select File
-            <input type="file" class="hidden" onchange={handleFileSelect} />
-          </label>
-        </div>
+        {#if isConnected}
+          <div
+            class="p-8 bg-(--color-bg-alt) border-2 border-dashed transition-colors text-center {dragOver
+              ? 'border-(--color-accent) bg-(--color-accent)/10'
+              : 'border-(--color-border)'}"
+            ondragover={(e) => {
+              e.preventDefault();
+              dragOver = true;
+            }}
+            ondragleave={() => (dragOver = false)}
+            ondrop={handleFileDrop}
+          >
+            <p class="text-(--color-text-muted) mb-2">Drag and drop a file here</p>
+            <p class="text-(--color-text-muted) text-xs mb-4">or</p>
+            <label class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm cursor-pointer hover:bg-(--color-accent-hover) transition-colors">
+              Select File
+              <input type="file" class="hidden" onchange={handleFileSelect} />
+            </label>
+          </div>
+        {:else}
+          <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+            <p class="text-sm text-(--color-text-muted) text-center">Connection closed. You can still download received files below.</p>
+          </div>
+        {/if}
 
         <!-- Transfers -->
         {#if fileTransfers.length > 0}

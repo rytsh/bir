@@ -16,6 +16,7 @@ import (
 	"github.com/rytsh/bir/api/tools/dns"
 	"github.com/rytsh/bir/api/tools/ip"
 	"github.com/rytsh/bir/api/tools/ssl"
+	"github.com/rytsh/bir/api/tools/webrtc"
 	"github.com/rytsh/bir/api/tools/whois"
 )
 
@@ -52,10 +53,16 @@ func run(ctx context.Context) error {
 	setMiddleware(server, cfg.Middleware)
 
 	// tools endpoints
-	server.GET("/ip", ip.IP)
-	server.GET("/dns", dns.DNS)
-	server.GET("/ssl", ssl.SSL)
-	server.GET("/whois", whois.Whois)
+	server.GET("/ip", server.Wrap(ip.IP))
+	server.GET("/dns", server.Wrap(dns.DNS))
+	server.GET("/ssl", server.Wrap(ssl.SSL))
+	server.GET("/whois", server.Wrap(whois.Whois))
+
+	// WebRTC signaling endpoints (HTTP + SSE)
+	server.POST("/webrtc/room", webrtc.CreateRoomHandler)
+	server.POST("/webrtc/room/{code}/join", webrtc.JoinRoomHandler)
+	server.POST("/webrtc/room/{code}/signal", webrtc.SignalHandler)
+	server.GET("/webrtc/room/{code}/events", webrtc.EventsHandler)
 
 	return server.StartWithContext(ctx, cfg.Address)
 }
@@ -65,9 +72,9 @@ func getConfig(ctx context.Context) (*config, error) {
 		Middleware: Middleware{
 			Cors: mcors.Cors{
 				AllowOrigins:     []string{"*"},
-				AllowMethods:     []string{"GET", "POST"},
+				AllowMethods:     []string{"GET", "POST", "OPTIONS"},
 				AllowHeaders:     []string{"Content-Type", "Authorization"},
-				AllowCredentials: true,
+				AllowCredentials: false,
 				MaxAge:           3600,
 			},
 		},

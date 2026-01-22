@@ -2,11 +2,12 @@ package dns
 
 import (
 	"context"
-	"encoding/json"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rakunlabs/ada"
 )
 
 type MXRecord struct {
@@ -43,42 +44,29 @@ type DNSRecords struct {
 	SOA   *SOARecord `json:"SOA,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, DNSResponse{Error: message})
-}
-
 // DNS handles DNS lookup requests
-func DNS(w http.ResponseWriter, r *http.Request) {
-	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
-	ip := strings.TrimSpace(r.URL.Query().Get("ip"))
+func DNS(c *ada.Context) error {
+	domain := strings.TrimSpace(c.Request.URL.Query().Get("domain"))
+	ip := strings.TrimSpace(c.Request.URL.Query().Get("ip"))
 
 	// Reverse DNS lookup
 	if ip != "" {
-		handleReverseLookup(w, ip)
-		return
+		return handleReverseLookup(c, ip)
 	}
 
 	// Forward DNS lookup
 	if domain == "" {
-		writeError(w, http.StatusBadRequest, "domain or ip parameter is required")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(DNSResponse{Error: "domain or ip parameter is required"})
 	}
 
 	// Clean domain (remove protocol if present)
 	domain = cleanDomain(domain)
 
 	if !isValidDomain(domain) {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(DNSResponse{Error: "invalid domain format"})
 	}
 
-	handleForwardLookup(w, domain)
+	return handleForwardLookup(c, domain)
 }
 
 func cleanDomain(domain string) string {
@@ -113,12 +101,11 @@ func isValidDomain(domain string) bool {
 	return true
 }
 
-func handleReverseLookup(w http.ResponseWriter, ip string) {
+func handleReverseLookup(c *ada.Context, ip string) error {
 	// Validate IP
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
-		writeError(w, http.StatusBadRequest, "invalid IP address")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(DNSResponse{Error: "invalid IP address"})
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -127,12 +114,11 @@ func handleReverseLookup(w http.ResponseWriter, ip string) {
 	resolver := &net.Resolver{}
 	names, err := resolver.LookupAddr(ctx, ip)
 	if err != nil {
-		writeJSON(w, http.StatusOK, DNSResponse{
+		return c.SetStatus(http.StatusOK).SendJSON(DNSResponse{
 			IP:      ip,
 			Reverse: []string{},
 			Error:   "no PTR records found",
 		})
-		return
 	}
 
 	// Clean trailing dots from hostnames
@@ -141,13 +127,13 @@ func handleReverseLookup(w http.ResponseWriter, ip string) {
 		cleanNames[i] = strings.TrimSuffix(name, ".")
 	}
 
-	writeJSON(w, http.StatusOK, DNSResponse{
+	return c.SetStatus(http.StatusOK).SendJSON(DNSResponse{
 		IP:      ip,
 		Reverse: cleanNames,
 	})
 }
 
-func handleForwardLookup(w http.ResponseWriter, domain string) {
+func handleForwardLookup(c *ada.Context, domain string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -224,7 +210,7 @@ func handleForwardLookup(w http.ResponseWriter, domain string) {
 		response.Errors = errors
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	return c.SetStatus(http.StatusOK).SendJSON(response)
 }
 
 func isNotFoundError(err error) bool {

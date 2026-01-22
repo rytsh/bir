@@ -2,7 +2,6 @@ package ssl
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -10,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rakunlabs/ada"
 )
 
 type CertificateInfo struct {
@@ -53,32 +54,20 @@ type SSLResponse struct {
 	Error           string             `json:"error,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, SSLResponse{Error: message})
-}
-
 // SSL handles SSL/TLS certificate checking requests
-func SSL(w http.ResponseWriter, r *http.Request) {
-	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
-	portStr := strings.TrimSpace(r.URL.Query().Get("port"))
+func SSL(c *ada.Context) error {
+	domain := strings.TrimSpace(c.Request.URL.Query().Get("domain"))
+	portStr := strings.TrimSpace(c.Request.URL.Query().Get("port"))
 
 	if domain == "" {
-		writeError(w, http.StatusBadRequest, "domain parameter is required")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(SSLResponse{Error: "domain parameter is required"})
 	}
 
 	// Clean domain
 	domain = cleanDomain(domain)
 
 	if !isValidDomain(domain) {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(SSLResponse{Error: "invalid domain format"})
 	}
 
 	// Parse port
@@ -87,8 +76,7 @@ func SSL(w http.ResponseWriter, r *http.Request) {
 		var err error
 		port, err = strconv.Atoi(portStr)
 		if err != nil || port < 1 || port > 65535 {
-			writeError(w, http.StatusBadRequest, "invalid port number")
-			return
+			return c.SetStatus(http.StatusBadRequest).SendJSON(SSLResponse{Error: "invalid port number"})
 		}
 	}
 
@@ -104,26 +92,24 @@ func SSL(w http.ResponseWriter, r *http.Request) {
 		ServerName:         domain,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, SSLResponse{
+		return c.SetStatus(http.StatusOK).SendJSON(SSLResponse{
 			Domain: domain,
 			Port:   port,
 			Valid:  false,
 			Error:  fmt.Sprintf("connection failed: %s", simplifyTLSError(err)),
 		})
-		return
 	}
 	defer conn.Close()
 
 	state := conn.ConnectionState()
 
 	if len(state.PeerCertificates) == 0 {
-		writeJSON(w, http.StatusOK, SSLResponse{
+		return c.SetStatus(http.StatusOK).SendJSON(SSLResponse{
 			Domain: domain,
 			Port:   port,
 			Valid:  false,
 			Error:  "no certificates received",
 		})
-		return
 	}
 
 	// Get the leaf certificate
@@ -191,7 +177,7 @@ func SSL(w http.ResponseWriter, r *http.Request) {
 		Expired:         expired,
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	return c.SetStatus(http.StatusOK).SendJSON(response)
 }
 
 func cleanDomain(domain string) string {

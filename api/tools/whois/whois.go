@@ -1,13 +1,13 @@
 package whois
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/likexian/whois"
+	"github.com/rakunlabs/ada"
 )
 
 type WhoisResponse struct {
@@ -23,31 +23,19 @@ type WhoisResponse struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, WhoisResponse{Error: message})
-}
-
 // Whois handles WHOIS lookup requests
-func Whois(w http.ResponseWriter, r *http.Request) {
-	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+func Whois(c *ada.Context) error {
+	domain := strings.TrimSpace(c.Request.URL.Query().Get("domain"))
 
 	if domain == "" {
-		writeError(w, http.StatusBadRequest, "domain parameter is required")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(WhoisResponse{Error: "domain parameter is required"})
 	}
 
 	// Clean domain
 	domain = cleanDomain(domain)
 
 	if !isValidDomain(domain) {
-		writeError(w, http.StatusBadRequest, "invalid domain format")
-		return
+		return c.SetStatus(http.StatusBadRequest).SendJSON(WhoisResponse{Error: "invalid domain format"})
 	}
 
 	// Perform WHOIS lookup
@@ -56,24 +44,15 @@ func Whois(w http.ResponseWriter, r *http.Request) {
 		raw, err = whois.Whois(domain, "whois.iana.org")
 	}
 	if err != nil {
-		writeJSON(w, http.StatusOK, WhoisResponse{
+		return c.SetStatus(http.StatusOK).SendJSON(WhoisResponse{
 			Domain: domain,
 			Error:  simplifyError(err),
 		})
-		return
 	}
 
 	// Parse the raw WHOIS response
 	response := parseWhoisResponse(domain, raw)
-	writeJSON(w, http.StatusOK, response)
-}
-
-func getTLD(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[len(parts)-1]
+	return c.SetStatus(http.StatusOK).SendJSON(response)
 }
 
 func cleanDomain(domain string) string {

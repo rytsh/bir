@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/likexian/whois v1.15.7
-	github.com/rakunlabs/ada v0.2.7
+	github.com/rakunlabs/ada v0.2.9
 	github.com/rakunlabs/ada/middleware/cors v0.1.3
 	github.com/rakunlabs/chu v0.3.0
 	github.com/rakunlabs/into v0.4.2

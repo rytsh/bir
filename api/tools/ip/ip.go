@@ -1,9 +1,10 @@
 package ip
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/rakunlabs/ada"
 )
 
 type Response struct {
@@ -59,13 +60,12 @@ func getClientIP(r *http.Request) string {
 	return remoteAddr
 }
 
-func IP(w http.ResponseWriter, r *http.Request) {
-	ip := getClientIP(r)
+func IP(c *ada.Context) error {
+	ip := getClientIP(c.Request)
 
 	resp := Response{
 		IP: ip,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	return c.SendJSON(resp)
 }
