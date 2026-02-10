@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MediaConverterTool from "../../components/tools/MediaConverterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/media");
+---
+
+<Layout title="Media Converter - Image, Video & Audio Format Conversion" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/media">
+  <h1 slot="navbar-title">Media Converter</h1>
+  <MediaConverterTool client:load />
+</Layout>

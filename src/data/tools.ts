@@ -142,6 +142,15 @@ const rawCategories: Category[] = [
         keywords: "formatter, prettifier, beautifier, JSON formatter, YAML formatter, TOML formatter, Markdown formatter, code formatter, pretty print, format code, beautify",
       },
       {
+        id: "media-converter",
+        name: "Media Converter",
+        description: "Convert images, videos, and audio files between formats using ImageMagick and FFmpeg WASM, running entirely in your browser",
+        icon: "🎞️",
+        path: "/converter/media",
+        keywords: "media converter, image converter, video converter, audio converter, png to jpg, jpg to png, mp4 to webm, webm to mp4, mp3 to wav, wav to mp3, format converter, file converter, imagemagick, ffmpeg, wasm, batch converter",
+        wasm: true,
+      },
+      {
         id: "bitwise-calculator",
         name: "Bitwise",
         description: "Perform bitwise operations (AND, OR, XOR, NOT, shifts) with visual bit representation",

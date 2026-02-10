@@ -109,5 +109,8 @@ export default defineConfig({
       }),
       // basicSsl(),
     ],
+    optimizeDeps: {
+      exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+    },
   },
 });
