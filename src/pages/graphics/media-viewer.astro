@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MediaViewerTool from "../../components/tools/MediaViewerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/media-viewer");
+---
+
+<Layout title="Media Viewer" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/media-viewer">
+  <h1 slot="navbar-title">Media Viewer</h1>
+  <MediaViewerTool client:load />
+</Layout>

@@ -600,6 +600,14 @@ const rawCategories: Category[] = [
         keywords: "exif viewer, image metadata, remove exif, metadata remover, photo metadata, gps data, camera info, privacy, jpeg metadata, png metadata, exif remover, strip metadata",
       },
       {
+        id: "media-viewer",
+        name: "Media Viewer",
+        description: "View images, play videos and audio with speed control, subtitles (SRT/VTT), keyboard shortcuts, picture-in-picture, and casting support",
+        icon: "🎬",
+        path: "/graphics/media-viewer",
+        keywords: "media player, video player, audio player, image viewer, subtitles, srt, vtt, speed control, picture in picture, pip, chromecast, airplay, fullscreen, zoom, pan, waveform, keyboard shortcuts",
+      },
+      {
         id: "css-pattern-generator",
         name: "CSS Pattern",
         description: "Create repeating CSS background patterns with visual editor, animations, layering support, and custom SVG shapes",

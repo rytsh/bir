@@ -27,6 +27,7 @@
     "@huggingface/transformers": "^3.8.1",
     "@imagemagick/magick-wasm": "^0.0.38",
     "@paralleldrive/cuid2": "^3.0.6",
+    "@plussub/srt-vtt-parser": "^2.0.5",
     "@projectwallace/format-css": "^2.1.1",
     "@tailwindcss/vite": "^4.1.18",
     "@toon-format/toon": "^2.1.0",
