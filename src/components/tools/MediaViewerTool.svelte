@@ -3,8 +3,8 @@
 
   // Types
   type MediaType = "image" | "video" | "audio" | "none";
-  type SubtitlePosition = "top" | "bottom";
   type SubtitleSize = "small" | "medium" | "large" | "xlarge";
+  type SubtitleFont = "inter" | "consolas" | "roboto" | "asap";
 
   interface SubtitleCue {
     id: string;
@@ -17,7 +17,8 @@
     enabled: boolean;
     cues: SubtitleCue[];
     fontSize: SubtitleSize;
-    position: SubtitlePosition;
+    fontFamily: SubtitleFont;
+    positionY: number; // 0-100 percentage from top
     textColor: string;
     backgroundColor: string;
     backgroundOpacity: number;
@@ -62,7 +63,8 @@
     enabled: false,
     cues: [],
     fontSize: "medium",
-    position: "bottom",
+    fontFamily: "inter",
+    positionY: 85, // 85% from top (near bottom)
     textColor: "#ffffff",
     backgroundColor: "#000000",
     backgroundOpacity: 0.75,
@@ -92,6 +94,14 @@
     medium: "1.25rem",
     large: "1.75rem",
     xlarge: "2.25rem",
+  };
+
+  // Font family map
+  const fontFamilyMap: Record<SubtitleFont, { name: string; value: string; weight?: number }> = {
+    inter: { name: "Inter", value: "'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif" },
+    consolas: { name: "Consolas", value: "Consolas, 'Courier New', monospace" },
+    roboto: { name: "Roboto Black", value: "'Roboto', Arial, sans-serif", weight: 900 },
+    asap: { name: "Asap Condensed", value: "'Asap Condensed', Arial, sans-serif", weight: 500 },
   };
 
   // Supported formats
@@ -867,27 +877,18 @@
             crossorigin="anonymous"
           />
 
-          <!-- Play/Pause Indicator (center) -->
-          {#if !isPlaying}
-            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div class="p-6 bg-black/50">
-                <svg class="h-16 w-16 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-            </div>
-          {/if}
-
           <!-- Subtitle Overlay -->
           {#if subtitles.enabled && currentSubtitle}
             <div
               class="absolute left-0 right-0 flex justify-center px-4 pointer-events-none"
-              style="{subtitles.position === 'top' ? 'top: 2rem;' : 'bottom: 6rem;'}"
+              style="top: {subtitles.positionY}%; transform: translateY(-50%);"
             >
               <div
                 class="max-w-[80%] px-4 py-2 text-center"
                 style="
                   font-size: {fontSizeMap[subtitles.fontSize]};
+                  font-family: {fontFamilyMap[subtitles.fontFamily].value};
+                  font-weight: {fontFamilyMap[subtitles.fontFamily].weight || 400};
                   color: {subtitles.textColor};
                   background-color: {subtitles.backgroundColor}{Math.round(subtitles.backgroundOpacity * 255).toString(16).padStart(2, '0')};
                 "
@@ -907,15 +908,30 @@
           >
             <!-- Progress Bar -->
             <div class="px-4 pt-3">
-              <input
-                type="range"
-                min="0"
-                max={duration}
-                step="0.1"
-                value={currentTime}
-                oninput={(e) => seek(Number((e.target as HTMLInputElement).value))}
-                class="h-1 w-full cursor-pointer appearance-none bg-white/30 accent-white"
-              />
+              <div
+                class="relative h-1 w-full cursor-pointer bg-white/30"
+                onclick={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const percent = (e.clientX - rect.left) / rect.width;
+                  seek(percent * duration);
+                }}
+                role="slider"
+                aria-label="Seek"
+                aria-valuemin={0}
+                aria-valuemax={duration}
+                aria-valuenow={currentTime}
+                tabindex="0"
+                onkeydown={(e) => {
+                  if (e.code === "ArrowLeft") seekRelative(-5);
+                  else if (e.code === "ArrowRight") seekRelative(5);
+                }}
+              >
+                <!-- Played portion (red) -->
+                <div
+                  class="absolute top-0 left-0 h-full bg-red-500"
+                  style="width: {duration > 0 ? (currentTime / duration) * 100 : 0}%;"
+                ></div>
+              </div>
             </div>
 
             <!-- Controls Row -->
@@ -1281,22 +1297,37 @@
               </div>
             </div>
 
-            <!-- Position -->
+            <!-- Font Family -->
             <div class="p-3 border border-(--color-border) bg-(--color-bg)">
-              <span class="text-xs uppercase tracking-wider text-(--color-text-muted) font-medium mb-2 block">Position</span>
-              <div class="flex gap-1">
-                <button
-                  onclick={() => (subtitles.position = "top")}
-                  class="flex-1 px-3 py-1 text-sm border transition-colors {subtitles.position === 'top' ? 'border-(--color-accent) bg-(--color-accent)/10 text-(--color-accent)' : 'border-(--color-border) bg-(--color-bg-alt) text-(--color-text)'}"
-                >
-                  Top
-                </button>
-                <button
-                  onclick={() => (subtitles.position = "bottom")}
-                  class="flex-1 px-3 py-1 text-sm border transition-colors {subtitles.position === 'bottom' ? 'border-(--color-accent) bg-(--color-accent)/10 text-(--color-accent)' : 'border-(--color-border) bg-(--color-bg-alt) text-(--color-text)'}"
-                >
-                  Bottom
-                </button>
+              <span class="text-xs uppercase tracking-wider text-(--color-text-muted) font-medium mb-2 block">Font Family</span>
+              <select
+                value={subtitles.fontFamily}
+                onchange={(e) => (subtitles.fontFamily = (e.target as HTMLSelectElement).value as SubtitleFont)}
+                class="w-full px-2 py-1 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) outline-none focus:border-(--color-accent)"
+              >
+                {#each (["inter", "consolas", "roboto", "asap"] as SubtitleFont[]) as font}
+                  <option value={font}>{fontFamilyMap[font].name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- Position Y -->
+            <div class="p-3 border border-(--color-border) bg-(--color-bg)">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-(--color-text-muted) font-medium">Position: {subtitles.positionY}%</span>
+                <button onclick={() => (subtitles.positionY = 85)} class="text-xs text-(--color-accent) hover:underline">Reset</button>
+              </div>
+              <input
+                type="range"
+                min="5"
+                max="95"
+                step="1"
+                bind:value={subtitles.positionY}
+                class="h-1 w-full cursor-pointer appearance-none bg-(--color-border) accent-(--color-accent)"
+              />
+              <div class="mt-1 flex justify-between text-xs text-(--color-text-muted)">
+                <span>Top</span>
+                <span>Bottom</span>
               </div>
             </div>
 

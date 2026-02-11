@@ -118,6 +118,14 @@ const rawCategories: Category[] = [
         path: "/text/ascii-art",
         keywords: "ascii art, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text",
       },
+      {
+        id: "subtitle-editor",
+        name: "Subtitle Editor",
+        description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
+        icon: "🎬",
+        path: "/text/subtitle",
+        keywords: "subtitle editor, srt editor, vtt editor, ass editor, subtitle converter, subtitle sync, time shift, subtitle format, caption editor, closed captions, webvtt, subrip",
+      },
     ],
   },
   {
