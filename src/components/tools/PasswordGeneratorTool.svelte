@@ -1,6 +1,8 @@
 <script lang="ts">
   import { random } from "../../lib/random";
 
+  type OutputFormat = "characters" | "hex";
+
   interface Preset {
     name: string;
     length: number;
@@ -8,6 +10,7 @@
     upper: boolean;
     digits: boolean;
     special: boolean;
+    format?: OutputFormat;
   }
 
   interface GeneratedPassword {
@@ -49,9 +52,28 @@
       digits: true,
       special: false,
     },
+    {
+      name: "Hex 32",
+      length: 32,
+      lower: false,
+      upper: false,
+      digits: false,
+      special: false,
+      format: "hex",
+    },
+    {
+      name: "Hex 64",
+      length: 64,
+      lower: false,
+      upper: false,
+      digits: false,
+      special: false,
+      format: "hex",
+    },
   ];
 
   let selectedPreset = $state("");
+  let outputFormat = $state<OutputFormat>("characters");
   let length = $state(16);
   let includeLower = $state(true);
   let includeUpper = $state(true);
@@ -71,6 +93,7 @@
     const preset = presets.find((p) => p.name === presetName);
     if (preset) {
       length = preset.length;
+      outputFormat = preset.format ?? "characters";
       includeLower = preset.lower;
       includeUpper = preset.upper;
       includeDigits = preset.digits;
@@ -92,6 +115,17 @@
   const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const DIGITS = "0123456789";
   const SPECIAL = "`~!@#$%^&*()-=_+[]{}|;':\",./<>?";
+
+  // Generate hex password from cryptographically secure random bytes
+  const generateHexPassword = (hexLength: number): string => {
+    const byteLength = Math.ceil(hexLength / 2);
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return hex.slice(0, hexLength);
+  };
 
   const getCharacterSet = (chars: string, exclude: string): string => {
     return chars
@@ -178,9 +212,12 @@
       const newPasswords: GeneratedPassword[] = [];
 
       for (let i = 0; i < safeCount; i++) {
+        const value = outputFormat === "hex" 
+          ? generateHexPassword(length)
+          : generatePassword();
         newPasswords.push({
           id: nextId++,
-          value: generatePassword(),
+          value,
           copied: false,
         });
       }
@@ -232,6 +269,10 @@
   let hasAnyCharType = $derived(
     includeLower || includeUpper || includeDigits || includeSpecial,
   );
+
+  let canGenerate = $derived(
+    outputFormat === "hex" || hasAnyCharType,
+  );
 </script>
 
 <div class="h-full flex flex-col">
@@ -243,6 +284,38 @@
 
   <!-- Controls -->
   <div class="mb-4 flex flex-col gap-4">
+    <!-- Format Selector -->
+    <div class="flex gap-4 items-center">
+      <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Format</span>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input
+          type="radio"
+          name="format"
+          value="characters"
+          checked={outputFormat === "characters"}
+          onchange={() => outputFormat = "characters"}
+          class="w-4 h-4 accent-(--color-accent)"
+        />
+        <span class="text-sm text-(--color-text)">Characters</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input
+          type="radio"
+          name="format"
+          value="hex"
+          checked={outputFormat === "hex"}
+          onchange={() => outputFormat = "hex"}
+          class="w-4 h-4 accent-(--color-accent)"
+        />
+        <span class="text-sm text-(--color-text)">Hex</span>
+      </label>
+      {#if outputFormat === "hex"}
+        <span class="text-xs text-(--color-text-muted)">
+          ({Math.ceil(length / 2)} bytes)
+        </span>
+      {/if}
+    </div>
+
     <!-- Basic Settings Row -->
     <div class="flex flex-row flex-wrap gap-4 items-end">
       <!-- Length Input -->
@@ -284,7 +357,7 @@
       <!-- Generate Button -->
       <button
         onclick={handleGenerate}
-        disabled={!hasAnyCharType}
+        disabled={!canGenerate}
         class="px-6 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Generate
@@ -304,6 +377,7 @@
       </select>
     </div>
 
+    {#if outputFormat === "characters"}
     <!-- Character Type Checkboxes -->
     <div class="px-4 py-2 border border-(--color-border) bg-(--color-bg-alt)">
       <div
@@ -413,6 +487,7 @@
         </p>
       </div>
     </div>
+    {/if}
   </div>
 
   <!-- Error Message -->

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import LuwiTool from "../../components/tools/LuwiTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/luwi");
+---
+
+<Layout title="Luwi - Lua File Parser" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/luwi">
+  <h1 slot="navbar-title">Luwi</h1>
+  <LuwiTool client:load />
+</Layout>

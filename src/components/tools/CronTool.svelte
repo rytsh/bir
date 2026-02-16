@@ -8,7 +8,7 @@
   // Initialize WASM module on component mount
   $effect(() => {
     // @ts-expect-error - browser entry accepts optional wasmUrl, but types default to node
-    init("/wasm/cron.wasm")
+    init("https://cdn.jsdelivr.net/npm/cron-js-wasm@0.0.2/wasm/module.wasm")
       .then(() => {
         wasmReady = true;
       })

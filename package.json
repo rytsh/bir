@@ -44,6 +44,7 @@
     "jose": "^6.1.3",
     "jsqr": "^1.4.0",
     "ksuid-edge": "^0.0.4",
+    "luwi": "^0.1.0",
     "nanoid": "^5.1.6",
     "papaparse": "^5.5.3",
     "properties-parser": "^0.6.0",

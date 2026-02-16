@@ -199,6 +199,15 @@ const rawCategories: Category[] = [
         path: "/converter/timestamp",
         keywords: "timestamp converter, unix timestamp, epoch time, date converter, unix time, epoch converter, time converter, rfc3339, iso8601",
       },
+      {
+        id: "luwi",
+        name: "Luwi",
+        description: "Parse text files using custom Lua scripts powered by WebAssembly - define flexible parsing rules with tag-based filtering",
+        icon: "🌙",
+        path: "/converter/luwi",
+        keywords: "luwi, lua parser, file parser, wasm, lua script, text parser, custom parser, lua wasm, tag filter, line parser, csv export, rust wasm",
+        wasm: true,
+      },
     ],
   },
   {

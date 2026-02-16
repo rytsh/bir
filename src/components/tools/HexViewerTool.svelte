@@ -4,9 +4,11 @@
   import { createDarkModeObserver, getInitialDarkMode, createTheme, editorHeightExtension } from "../../lib/codemirror.js";
 
   type InputMode = "text" | "file" | "base64";
+  type ViewMode = "pretty" | "raw";
 
   // State
   let inputMode = $state<InputMode>("text");
+  let viewMode = $state<ViewMode>("pretty");
   let textInput = $state("");
   let fileInput = $state<File | null>(null);
   let base64Input = $state("");
@@ -328,7 +330,7 @@
   };
 
   const handleCopy = () => {
-    const text = generatePlainText();
+    const text = viewMode === "raw" ? rawHexString : generatePlainText();
     if (text) {
       navigator.clipboard.writeText(text);
       copied = true;
@@ -379,20 +381,25 @@
       }
     });
 
-    // ResizeObserver for container
+    return () => {
+      cleanup();
+    };
+  });
+
+  // Separate effect for ResizeObserver that reacts to containerEl changes
+  $effect(() => {
+    if (!containerEl) return;
+
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         containerHeight = entry.contentRect.height;
       }
     });
 
-    if (containerEl) {
-      resizeObserver.observe(containerEl);
-      containerHeight = containerEl.clientHeight;
-    }
+    resizeObserver.observe(containerEl);
+    containerHeight = containerEl.clientHeight;
 
     return () => {
-      cleanup();
       resizeObserver.disconnect();
     };
   });
@@ -478,6 +485,15 @@
 
   // Midpoint for visual separator (half of bytesPerRow)
   let midpoint = $derived(Math.floor(bytesPerRow / 2) - 1);
+
+  // Raw hex string for raw view mode
+  let rawHexString = $derived.by(() => {
+    if (rawBytes.length === 0) return "";
+    const hex = Array.from(rawBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return uppercase ? hex.toUpperCase() : hex;
+  });
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
@@ -591,22 +607,45 @@
     <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm shrink-0">{errorMessage}</div>
   {/if}
 
-  <!-- Search Bar -->
-  <div class="mb-2 flex items-center gap-2 shrink-0">
-    <input
-      type="text"
-      bind:value={searchQuery}
-      placeholder="Search hex or ASCII..."
-      class="w-48 px-3 py-1.5 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm font-mono focus:outline-none focus:border-(--color-accent)"
-    />
-    {#if isSearching}
-      <span class="text-xs text-(--color-text-muted)">Searching...</span>
-    {:else if searchResultsArray.length > 0}
-      <span class="text-xs text-(--color-text-muted) font-mono">{currentSearchIndex + 1}/{searchResultsArray.length}</span>
-      <button onclick={() => navigateSearch("prev")} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--color-bg-alt) transition-colors">Prev</button>
-      <button onclick={() => navigateSearch("next")} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--color-bg-alt) transition-colors">Next</button>
-    {:else if searchQuery.trim() && byteCount > 0}
-      <span class="text-xs text-(--color-text-muted)">No matches</span>
+  <!-- View Mode Tabs & Search Bar -->
+  <div class="mb-2 flex items-center gap-4 shrink-0">
+    <!-- View Mode Tabs -->
+    <div class="flex border-b border-(--color-border)">
+      <button
+        onclick={() => viewMode = "pretty"}
+        class="px-4 py-2 text-sm font-medium transition-colors {viewMode === 'pretty'
+          ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+      >
+        Pretty
+      </button>
+      <button
+        onclick={() => viewMode = "raw"}
+        class="px-4 py-2 text-sm font-medium transition-colors {viewMode === 'raw'
+          ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
+          : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+      >
+        Raw
+      </button>
+    </div>
+
+    <!-- Search (only in pretty mode) -->
+    {#if viewMode === "pretty"}
+      <input
+        type="text"
+        bind:value={searchQuery}
+        placeholder="Search hex or ASCII..."
+        class="w-48 px-3 py-1.5 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm font-mono focus:outline-none focus:border-(--color-accent)"
+      />
+      {#if isSearching}
+        <span class="text-xs text-(--color-text-muted)">Searching...</span>
+      {:else if searchResultsArray.length > 0}
+        <span class="text-xs text-(--color-text-muted) font-mono">{currentSearchIndex + 1}/{searchResultsArray.length}</span>
+        <button onclick={() => navigateSearch("prev")} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--color-bg-alt) transition-colors">Prev</button>
+        <button onclick={() => navigateSearch("next")} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--color-bg-alt) transition-colors">Next</button>
+      {:else if searchQuery.trim() && byteCount > 0}
+        <span class="text-xs text-(--color-text-muted)">No matches</span>
+      {/if}
     {/if}
 
     <div class="flex-1"></div>
@@ -624,12 +663,13 @@
     </button>
   </div>
 
-  <!-- Hex Output with Virtualization -->
+  <!-- Hex Output -->
+  <!-- Pretty View with Virtualization -->
   <div
     bind:this={containerEl}
     onscroll={handleScroll}
     onmouseleave={() => (hoveredOffset = null)}
-    class="flex-1 min-h-0 border border-(--color-border) bg-(--color-bg) overflow-auto font-mono text-sm"
+    class="flex-1 min-h-0 border border-(--color-border) bg-(--color-bg) overflow-auto font-mono text-sm {viewMode !== 'pretty' ? 'hidden' : ''}"
   >
     {#if byteCount > 0}
       <!-- Header -->
@@ -689,6 +729,18 @@
           </div>
         {/each}
       </div>
+    {:else}
+      <div class="p-6 text-center text-(--color-text-muted)">
+        <p>No data to display</p>
+        <p class="mt-2 text-xs">Enter text, upload a file, or paste Base64 data above</p>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Raw Hex View -->
+  <div class="flex-1 min-h-0 border border-(--color-border) bg-(--color-bg) overflow-auto {viewMode !== 'raw' ? 'hidden' : ''}">
+    {#if byteCount > 0}
+      <pre class="p-4 font-mono text-sm text-(--color-text) whitespace-pre-wrap break-all select-all">{rawHexString}</pre>
     {:else}
       <div class="p-6 text-center text-(--color-text-muted)">
         <p>No data to display</p>
