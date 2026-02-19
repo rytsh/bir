@@ -113,6 +113,9 @@ importers:
       ksuid-edge:
         specifier: ^0.0.4
         version: 0.0.4
+      lucide-static:
+        specifier: ^0.575.0
+        version: 0.575.0
       luwi:
         specifier: ^0.1.0
         version: 0.1.0
@@ -125,6 +128,9 @@ importers:
       properties-parser:
         specifier: ^0.6.0
         version: 0.6.0
+      simple-icons:
+        specifier: ^16.9.0
+        version: 16.9.0
       smol-toml:
         specifier: ^1.6.0
         version: 1.6.0
@@ -2842,6 +2848,9 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
+  lucide-static@0.575.0:
+    resolution: {integrity: sha512-XbHfIufz9ZDW6iLjUphffUmcEWg6gLjufIQOb6heDjYZCRk+ePRbkp8Ax/Rq3Ek4OkT8tyBO/gTCOPDvFMuC4w==}
+
   luwi@0.1.0:
     resolution: {integrity: sha512-M2JnFachCKtU0Fjg3XO8/SE5YWDHk/lgDRw1C2MJls+lzgK1evoqGFcDqTQioM6KniIcNEkqKjp5TN8NxgwQOQ==}
 
@@ -3413,6 +3422,10 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
+
+  simple-icons@16.9.0:
+    resolution: {integrity: sha512-aKst2C7cLkFyaiQ/Crlwxt9xYOpGPk05XuJZ0ZTJNNCzHCKYrGWz2ebJSi5dG8CmTCxUF/BGs6A8uyJn/EQxqw==}
+    engines: {node: '>=0.12.18'}
 
   simple-swizzle@0.2.4:
     resolution: {integrity: sha512-nAu1WFPQSMNr2Zn9PGSZK9AGn4t/y97lEm+MXTtUDwfP0ksAIX4nO+6ruD9Jwut4C49SB1Ws+fbXsm/yScWOHw==}
@@ -6875,6 +6888,8 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
+  lucide-static@0.575.0: {}
+
   luwi@0.1.0: {}
 
   magic-string@0.25.9:
@@ -7789,6 +7804,8 @@ snapshots:
       side-channel-weakmap: 1.0.2
 
   signal-exit@4.1.0: {}
+
+  simple-icons@16.9.0: {}
 
   simple-swizzle@0.2.4:
     dependencies:

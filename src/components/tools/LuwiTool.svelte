@@ -76,6 +76,8 @@
     readFile(file, (content) => {
       fileContent = content;
     });
+    // Reset input value to allow re-selecting the same file
+    input.value = "";
   }
 
   function handleLuaChange(e: Event) {
@@ -86,6 +88,8 @@
     readFile(file, (content) => {
       luaScript = content;
     });
+    // Reset input value to allow re-selecting the same file
+    input.value = "";
   }
 
   // Process file
@@ -383,8 +387,8 @@
               <div class="text-2xl font-mono text-(--color-text)">{result.total.toLocaleString()}</div>
             </div>
             <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-              <div class="text-xs text-(--color-text-muted) mb-1 uppercase tracking-wider">Output Lines</div>
-              <div class="text-2xl font-mono text-(--color-text)">{result.resp.length.toLocaleString()}</div>
+              <div class="text-xs text-(--color-text-muted) mb-1 uppercase tracking-wider">Processed</div>
+              <div class="text-2xl font-mono text-(--color-text)">{(result.count1 + result.count2).toLocaleString()}</div>
             </div>
           </div>
 

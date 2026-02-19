@@ -632,6 +632,14 @@ const rawCategories: Category[] = [
         path: "/graphics/css-pattern",
         keywords: "css pattern, background pattern, stripes, checkerboard, dots, grid, repeating pattern, css texture, animated background, polka dots, houndstooth, tartan, herringbone, carbon fiber, honeycomb, waves, gradient pattern, svg pattern",
       },
+      {
+        id: "favicon-generator",
+        name: "Favicon Generator",
+        description: "Create favicons from icons with customizable colors, shapes, and sizes. Browse Lucide and Simple Icons libraries with search, live preview, and export to PNG, ICO, and SVG",
+        icon: "🎯",
+        path: "/graphics/favicon",
+        keywords: "favicon generator, favicon maker, icon to favicon, favicon creator, ico generator, favicon design, app icon, website icon, lucide icons, simple icons, favicon converter, icon favicon, brand favicon",
+      },
     ],
   },
   {
