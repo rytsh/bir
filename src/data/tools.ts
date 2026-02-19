@@ -287,6 +287,14 @@ const rawCategories: Category[] = [
         path: "/codecs/sound-transfer",
         keywords: "sound transfer, data over sound, audio transfer, ggwave, file transfer, ultrasonic, FSK, acoustic modem, air gap, sonic transfer, audio data",
       },
+      {
+        id: "pgp",
+        name: "PGP",
+        description: "Generate PGP key pairs, encrypt and decrypt messages, sign and verify signatures using OpenPGP. All operations run client-side in the browser.",
+        icon: "🛡️",
+        path: "/codecs/pgp",
+        keywords: "pgp, gpg, openpgp, encrypt, decrypt, sign, verify, public key, private key, rsa, ecc, curve25519, cryptography, armored, ascii armor, key pair",
+      },
     ],
   },
   {

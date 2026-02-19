@@ -47,6 +47,7 @@
     "lucide-static": "^0.575.0",
     "luwi": "^0.1.0",
     "nanoid": "^5.1.6",
+    "openpgp": "^6.3.0",
     "papaparse": "^5.5.3",
     "properties-parser": "^0.6.0",
     "simple-icons": "^16.9.0",

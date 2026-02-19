@@ -1,0 +1,17 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PgpTool from "../../components/tools/PgpTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/codecs/pgp");
+---
+
+<Layout
+  title="PGP - Encrypt, Decrypt, Sign & Verify"
+  description={tool?.description}
+  keywords={tool?.keywords}
+  currentPath="/codecs/pgp"
+>
+  <h1 slot="navbar-title">PGP</h1>
+  <PgpTool client:load />
+</Layout>
