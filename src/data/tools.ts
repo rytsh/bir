@@ -250,10 +250,10 @@ const rawCategories: Category[] = [
       {
         id: "hex-viewer",
         name: "Hex Viewer",
-        description: "View hex dump of text, files, or Base64 data",
+        description: "View hex dump of text, files, or Base64 data. Compare two files byte-by-byte with diff highlighting.",
         icon: "🔢",
         path: "/codecs/hex",
-        keywords: "hex viewer, hex dump, hexadecimal viewer, hex converter, binary viewer, hex editor, file hex, base64 hex",
+        keywords: "hex viewer, hex dump, hexadecimal viewer, hex converter, binary viewer, hex editor, file hex, base64 hex, hex diff, binary compare, file compare, byte diff",
       },
       {
         id: "jwt",
