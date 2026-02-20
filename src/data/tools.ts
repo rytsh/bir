@@ -472,6 +472,14 @@ const rawCategories: Category[] = [
         path: "/network/webrtc",
         keywords: "webrtc, p2p, peer to peer, video call, chat, file transfer, data channel, real-time communication, screen share",
       },
+      {
+        id: "cert-generator",
+        name: "Cert Generator",
+        description: "Generate CA, intermediate, and server certificates with custom DNS and IP SANs for development and internal PKI",
+        icon: "🛡️",
+        path: "/network/cert-generator",
+        keywords: "certificate generator, ssl certificate, tls certificate, ca certificate, intermediate ca, root ca, x509, pem, pkcs12, pfx, san, dns, ip, self-signed, openssl, pki, cert chain",
+      },
     ],
   },
   {
