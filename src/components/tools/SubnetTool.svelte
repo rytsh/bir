@@ -44,18 +44,41 @@
     return octets.map((o) => o.toString(2).padStart(8, "0")).join(".");
   };
 
-  // Binary IP display (derived from input)
-  let binaryIp = $derived.by(() => {
+  // Get effective octets (default to 0.0.0.0 when empty/invalid)
+  const getEffectiveOctets = (): number[] => {
     const octets = parseIp(ipInput);
-    if (!octets) return null;
-    return octetsToBinary(octets);
+    return octets ? [...octets] : [0, 0, 0, 0];
+  };
+
+  // Binary IP display (derived from input, always available)
+  let binaryIp = $derived.by(() => {
+    return octetsToBinary(getEffectiveOctets());
   });
+
+  // Get all 32 bits as an array for the interactive editor
+  let ipBits = $derived.by(() => {
+    const octets = getEffectiveOctets();
+    const bits: number[] = [];
+    for (const octet of octets) {
+      for (let i = 7; i >= 0; i--) {
+        bits.push((octet >> i) & 1);
+      }
+    }
+    return bits;
+  });
+
+  // Toggle a specific bit and update ipInput
+  const toggleBit = (bitIndex: number) => {
+    const octets = getEffectiveOctets();
+    const octetIndex = Math.floor(bitIndex / 8);
+    const bitPosition = 7 - (bitIndex % 8);
+    octets[octetIndex] ^= 1 << bitPosition;
+    ipInput = octetsToIp(octets);
+  };
 
   // Get binary representation with network/host bit highlighting
   let binaryParts = $derived.by(() => {
-    const octets = parseIp(ipInput);
-    if (!octets) return null;
-
+    const octets = getEffectiveOctets();
     const cidr = parseInt(cidrInput, 10);
     if (isNaN(cidr) || cidr < 0 || cidr > 32) return null;
 
@@ -66,24 +89,9 @@
     const networkBits = fullBinary.slice(0, cidr);
     const hostBits = fullBinary.slice(cidr);
 
-    // Format with dots for display (every 8 bits)
-    const formatWithDots = (bits: string, startIndex: number): string[] => {
-      const result: string[] = [];
-      for (let i = 0; i < bits.length; i++) {
-        const globalIndex = startIndex + i;
-        if (globalIndex > 0 && globalIndex % 8 === 0) {
-          result.push(".");
-        }
-        result.push(bits[i]);
-      }
-      return result;
-    };
-
     return {
       networkBits,
       hostBits,
-      networkFormatted: formatWithDots(networkBits, 0),
-      hostFormatted: formatWithDots(hostBits, cidr),
     };
   });
 
@@ -321,31 +329,48 @@
           placeholder="e.g., 192.168.1.0"
           class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono focus:border-(--color-text-light) outline-none"
         />
-        <!-- Binary representation -->
-        {#if binaryParts}
-          <div class="mt-2 p-2 bg-(--color-bg) border border-(--color-border)">
-            <div class="flex justify-between items-center mb-1">
-              <span class="text-xs text-(--color-text-muted)">Binary</span>
+        <!-- Interactive binary bit editor (always visible) -->
+        <div class="mt-2 p-2 bg-(--color-bg) border border-(--color-border)">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs text-(--color-text-muted)">Binary (click bits to toggle)</span>
+            <button
+              onclick={() => handleCopy("binary-ip", binaryIp)}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              {copiedField === "binary-ip" ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <div class="font-mono text-xs flex flex-wrap items-center gap-px">
+            {#each ipBits as bit, i}
+              {#if i > 0 && i % 8 === 0}
+                <span class="w-1.5 shrink-0"></span>
+              {/if}
+              {@const isNetwork = i < parseInt(cidrInput, 10)}
               <button
-                onclick={() => handleCopy("binary-ip", binaryIp || "")}
-                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+                type="button"
+                onclick={() => toggleBit(i)}
+                class="w-5 h-5 inline-flex items-center justify-center rounded-[2px] transition-all cursor-pointer border
+                  {bit === 1
+                    ? isNetwork
+                      ? 'bg-(--color-text) border-(--color-text) text-(--color-bg)'
+                      : 'bg-(--color-text-muted) border-(--color-text-muted) text-(--color-bg)'
+                    : isNetwork
+                      ? 'bg-transparent border-(--color-text-light) text-(--color-text) hover:bg-(--color-text)/5'
+                      : 'bg-transparent border-(--color-border) text-(--color-text-muted) hover:bg-(--color-text)/5'
+                  }"
+                title="Bit {i} — Click to toggle"
               >
-                {copiedField === "binary-ip" ? "Copied!" : "Copy"}
+                {bit}
               </button>
-            </div>
-            <div class="font-mono text-sm break-all">
-              <span class="text-(--color-primary)" title="Network bits ({binaryParts.networkBits.length} bits)">{#each binaryParts.networkFormatted as char}{#if char === "."}<span class="text-(--color-text-muted)">.</span>{:else}{char}{/if}{/each}</span><span class="text-(--color-text-muted)" title="Host bits ({binaryParts.hostBits.length} bits)">{#each binaryParts.hostFormatted as char}{#if char === "."}<span class="text-(--color-text-muted)">.</span>{:else}{char}{/if}{/each}</span>
-            </div>
+            {/each}
+          </div>
+          {#if binaryParts}
             <div class="flex gap-4 mt-1 text-xs">
-              <span class="text-(--color-primary)">Network: {binaryParts.networkBits.length} bits</span>
+              <span class="text-(--color-text)">Network: {binaryParts.networkBits.length} bits</span>
               <span class="text-(--color-text-muted)">Host: {binaryParts.hostBits.length} bits</span>
             </div>
-          </div>
-        {:else if ipInput.trim() && !parseIp(ipInput)}
-          <div class="mt-2 p-2 bg-(--color-bg) border border-(--color-border)">
-            <span class="text-xs text-(--color-text-muted)">Binary: Invalid IP format</span>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
       <div class="w-full sm:w-32">
         <label for="cidr-input" class="block text-sm text-(--color-text-muted) mb-2">

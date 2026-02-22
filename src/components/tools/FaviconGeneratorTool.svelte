@@ -11,7 +11,7 @@
   }
 
   type Shape = "square" | "rounded" | "circle" | "squircle" | "hexagon" | "shield";
-  type ExportFormat = "png" | "ico" | "svg";
+  type ExportFormat = "png" | "ico";
   type ExportSize = 16 | 32 | 48 | 64 | 128 | 192 | 256 | 512;
 
   // ── State ──────────────────────────────────────────────────────────
@@ -463,62 +463,6 @@
     link.click();
   }
 
-  function generateSvgFavicon(): string {
-    if (!selectedIcon) return "";
-
-    const svgWithColor = selectedIcon.svg
-      .replace(/currentColor/g, iconColor)
-      .replace(/stroke="[^"]*"/g, `stroke="${iconColor}"`)
-      .replace(/fill="none"/g, 'fill="none"')
-      .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
-
-    // Parse inner SVG content
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgWithColor, "image/svg+xml");
-    const svgEl = doc.querySelector("svg");
-    const innerContent = svgEl ? svgEl.innerHTML : "";
-
-    const size = 256;
-    const iconPixelSize = (iconSize / 100) * size;
-    const offset = (size - iconPixelSize) / 2;
-
-    let shapePath = "";
-    switch (shape) {
-      case "square":
-        shapePath = `<rect width="${size}" height="${size}" fill="${bgTransparent ? "none" : bgColor}"/>`;
-        break;
-      case "rounded": {
-        const r = (cornerRadius / 100) * (size / 2);
-        shapePath = `<rect width="${size}" height="${size}" rx="${r}" ry="${r}" fill="${bgTransparent ? "none" : bgColor}"/>`;
-        break;
-      }
-      case "circle":
-        shapePath = `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${bgTransparent ? "none" : bgColor}"/>`;
-        break;
-      default:
-        shapePath = `<rect width="${size}" height="${size}" fill="${bgTransparent ? "none" : bgColor}"/>`;
-    }
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  ${shapePath}
-  <svg x="${offset}" y="${offset}" width="${iconPixelSize}" height="${iconPixelSize}" viewBox="0 0 24 24">
-    ${innerContent}
-  </svg>
-</svg>`;
-  }
-
-  function downloadSvg() {
-    if (!selectedIcon) return;
-    const svg = generateSvgFavicon();
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "favicon.svg";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   async function downloadIco() {
     if (!selectedIcon) return;
     // Generate ICO with 16, 32, 48 sizes
@@ -640,14 +584,9 @@
     }
     files.push({ name: "favicon.ico", data: new Blob([ico], { type: "image/x-icon" }) });
 
-    // Generate SVG
-    const svg = generateSvgFavicon();
-    files.push({ name: "favicon.svg", data: new Blob([svg], { type: "image/svg+xml" }) });
-
     // Generate HTML snippet
     const html = `<!-- Favicon Setup -->
 <link rel="icon" href="/favicon.ico" sizes="48x48">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/favicon-192x192.png">
 <link rel="manifest" href="/manifest.webmanifest">
 
@@ -760,18 +699,8 @@
     return (crc ^ 0xffffffff) >>> 0;
   }
 
-  function copySvgCode() {
-    const svg = generateSvgFavicon();
-    navigator.clipboard.writeText(svg);
-    copied = "svg";
-    setTimeout(() => {
-      copied = null;
-    }, 2000);
-  }
-
   function copyHtmlSnippet() {
     const html = `<link rel="icon" href="/favicon.ico" sizes="48x48">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/favicon-192x192.png">`;
     navigator.clipboard.writeText(html);
     copied = "html";
@@ -792,7 +721,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Create favicons from icons with customizable colors, shapes, and sizes. Download as PNG, ICO, or SVG.
+      Create favicons from icons with customizable colors, shapes, and sizes. Download as PNG or ICO.
     </p>
   </header>
 
@@ -970,13 +899,6 @@
             Download ICO (16, 32, 48)
           </button>
           <button
-            onclick={downloadSvg}
-            disabled={!selectedIcon}
-            class="w-full px-4 py-2 border border-(--color-border) text-(--color-text) text-sm font-medium hover:bg-(--color-bg) transition-colors disabled:opacity-50"
-          >
-            Download SVG
-          </button>
-          <button
             onclick={downloadAll}
             disabled={!selectedIcon}
             class="w-full px-4 py-2 border border-(--color-border) text-(--color-text) text-sm font-medium hover:bg-(--color-bg) transition-colors disabled:opacity-50"
@@ -986,13 +908,6 @@
         </div>
 
         <div class="flex gap-2 mt-3">
-          <button
-            onclick={copySvgCode}
-            disabled={!selectedIcon}
-            class="flex-1 px-3 py-1.5 border border-(--color-border) text-(--color-text) text-xs hover:bg-(--color-bg) transition-colors disabled:opacity-50"
-          >
-            {copied === "svg" ? "Copied!" : "Copy SVG"}
-          </button>
           <button
             onclick={copyHtmlSnippet}
             class="flex-1 px-3 py-1.5 border border-(--color-border) text-(--color-text) text-xs hover:bg-(--color-bg) transition-colors"
