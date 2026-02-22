@@ -5,6 +5,21 @@
   let loading = $state(false);
   let error = $state("");
   let copiedField = $state<string | null>(null);
+  let mode = $state<"server" | "browser">("server");
+
+  interface BrowserCheckResult {
+    domain: string;
+    port: number;
+    reachable: boolean;
+    responseTimeMs: number;
+    httpStatus?: number;
+    httpStatusText?: string;
+    errorMessage?: string;
+    checkedAt: string;
+    opaque: boolean;
+  }
+
+  let browserResult = $state<BrowserCheckResult | null>(null);
 
   interface CertificateInfo {
     subject: string;
@@ -107,6 +122,100 @@
     }
   }
 
+  async function checkSSLBrowser() {
+    if (!domain.trim()) {
+      error = "Please enter a domain";
+      return;
+    }
+
+    const portNum = parseInt(port, 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      error = "Invalid port number (1-65535)";
+      return;
+    }
+
+    loading = true;
+    error = "";
+    browserResult = null;
+
+    const targetUrl = portNum === 443
+      ? `https://${domain.trim()}`
+      : `https://${domain.trim()}:${portNum}`;
+
+    const startTime = performance.now();
+
+    try {
+      // Try cors first to get status info; fall back to no-cors
+      let response: Response | null = null;
+      let opaque = false;
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        response = await fetch(targetUrl, {
+          method: "HEAD",
+          mode: "cors",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch {
+        // CORS blocked -- retry with no-cors (opaque response)
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          response = await fetch(targetUrl, {
+            method: "HEAD",
+            mode: "no-cors",
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+          opaque = true;
+        } catch (noCorsErr) {
+          const elapsed = Math.round(performance.now() - startTime);
+          const msg = noCorsErr instanceof DOMException && noCorsErr.name === "AbortError"
+            ? "Request timed out after 15 seconds"
+            : "Could not reach the server. The domain may be unreachable, DNS may have failed, or the connection was refused.";
+          browserResult = {
+            domain: domain.trim(),
+            port: portNum,
+            reachable: false,
+            responseTimeMs: elapsed,
+            errorMessage: msg,
+            checkedAt: new Date().toISOString(),
+            opaque: false,
+          };
+          return;
+        }
+      }
+
+      const elapsed = Math.round(performance.now() - startTime);
+
+      browserResult = {
+        domain: domain.trim(),
+        port: portNum,
+        reachable: true,
+        responseTimeMs: elapsed,
+        httpStatus: opaque ? undefined : response?.status,
+        httpStatusText: opaque ? undefined : response?.statusText,
+        checkedAt: new Date().toISOString(),
+        opaque,
+      };
+    } catch (err) {
+      const elapsed = Math.round(performance.now() - startTime);
+      browserResult = {
+        domain: domain.trim(),
+        port: portNum,
+        reachable: false,
+        responseTimeMs: elapsed,
+        errorMessage: err instanceof Error ? err.message : "An unexpected error occurred",
+        checkedAt: new Date().toISOString(),
+        opaque: false,
+      };
+    } finally {
+      loading = false;
+    }
+  }
+
   function handleCopy(field: string, value: string) {
     navigator.clipboard.writeText(value);
     copiedField = field;
@@ -119,17 +228,26 @@
     domain = "";
     port = "443";
     result = null;
+    browserResult = null;
     error = "";
+  }
+
+  function runCheck() {
+    if (mode === "browser") {
+      checkSSLBrowser();
+    } else {
+      checkSSL();
+    }
   }
 
   function applyPreset(value: string) {
     domain = value;
-    checkSSL();
+    runCheck();
   }
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Enter") {
-      checkSSL();
+      runCheck();
     }
   }
 
@@ -206,6 +324,28 @@
     </p>
   </header>
 
+  <!-- Mode Toggle -->
+  <div class="mb-4 flex gap-0 border border-(--color-border) w-fit">
+    <button
+      onclick={() => { mode = "server"; result = null; browserResult = null; error = ""; }}
+      class="px-4 py-2 text-sm font-medium transition-colors {mode === 'server' ? 'bg-(--color-accent) text-(--color-btn-text)' : 'bg-(--color-bg-alt) text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      Server Check
+    </button>
+    <button
+      onclick={() => { mode = "browser"; result = null; browserResult = null; error = ""; }}
+      class="px-4 py-2 text-sm font-medium transition-colors {mode === 'browser' ? 'bg-(--color-accent) text-(--color-btn-text)' : 'bg-(--color-bg-alt) text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      Browser Check
+    </button>
+  </div>
+
+  {#if mode === "browser"}
+    <div class="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 text-sm text-(--color-text-muted)">
+      <strong class="text-amber-400">Browser Mode:</strong> Checks if the domain is reachable over HTTPS directly from your browser. Useful when the backend API cannot reach the target. Certificate details are not available in this mode — see guidance below on how to view them in your browser.
+    </div>
+  {/if}
+
   <!-- Input Section -->
   <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border)">
     <div class="flex justify-between items-center mb-3">
@@ -236,7 +376,7 @@
         class="w-20 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none text-center"
       />
       <button
-        onclick={checkSSL}
+        onclick={runCheck}
         disabled={loading}
         class="px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
       >
@@ -266,7 +406,7 @@
   {/if}
 
   <!-- Results -->
-  {#if result}
+  {#if mode === "server" && result}
     {@const expiryStatus = getExpiryStatus(result.daysUntilExpiry, result.expired)}
     <div class="flex-1 flex flex-col gap-4 overflow-auto">
       <!-- Status Header -->
@@ -435,17 +575,204 @@
         {/if}
       {/if}
     </div>
+  {:else if mode === "browser" && browserResult}
+    {@const targetUrl = `https://${browserResult.domain}${browserResult.port !== 443 ? `:${browserResult.port}` : ""}`}
+    <div class="flex-1 flex flex-col gap-4 overflow-auto">
+      <!-- Reachability Status -->
+      <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-4 h-4 rounded-full {browserResult.reachable ? 'bg-green-500' : 'bg-red-500'}"></div>
+          <span class="text-lg font-medium text-(--color-text)">
+            {browserResult.domain}{browserResult.port !== 443 ? `:${browserResult.port}` : ""}
+          </span>
+          <span class="text-xs px-2 py-0.5 rounded {browserResult.reachable ? 'bg-green-500' : 'bg-red-500'} text-white">
+            {browserResult.reachable ? "Reachable" : "Unreachable"}
+          </span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <div>
+            <span class="text-(--color-text-muted) block text-xs">Response Time</span>
+            <span class="font-mono text-(--color-text)">{browserResult.responseTimeMs} ms</span>
+          </div>
+          {#if browserResult.httpStatus}
+            <div>
+              <span class="text-(--color-text-muted) block text-xs">HTTP Status</span>
+              <span class="font-mono text-(--color-text)">{browserResult.httpStatus} {browserResult.httpStatusText || ""}</span>
+            </div>
+          {/if}
+          <div>
+            <span class="text-(--color-text-muted) block text-xs">Checked At</span>
+            <span class="font-mono text-(--color-text)">{formatDate(browserResult.checkedAt)}</span>
+          </div>
+          {#if browserResult.opaque}
+            <div>
+              <span class="text-(--color-text-muted) block text-xs">Response Type</span>
+              <span class="font-mono text-(--color-text)">Opaque (CORS)</span>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      {#if browserResult.reachable}
+        <!-- Success details + quick actions -->
+        <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
+              TLS Connection Successful
+            </h2>
+          </div>
+          <p class="text-sm text-(--color-text-muted) mb-4">
+            Your browser successfully established a secure HTTPS connection to <code class="px-1 py-0.5 bg-(--color-bg) rounded font-mono">{browserResult.domain}</code>. The SSL/TLS certificate is valid and trusted by your browser.
+          </p>
+
+          <!-- Quick actions -->
+          <div class="flex flex-col sm:flex-row gap-3">
+            <a
+              href={targetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-(--color-accent) text-(--color-btn-text) text-sm font-medium hover:bg-(--color-accent-hover) transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Open in Browser to View Certificate
+            </a>
+            <button
+              onclick={() => handleCopy("cli", `openssl s_client -connect ${browserResult?.domain}:${browserResult?.port} -servername ${browserResult?.domain} < /dev/null 2>/dev/null | openssl x509 -outform PEM`)}
+              class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-sm hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              {copiedField === "cli" ? "Copied!" : "Copy openssl Command"}
+            </button>
+          </div>
+
+          {#if browserResult.opaque}
+            <p class="text-xs text-(--color-text-muted) mt-3">
+              The server did not include CORS headers, so detailed HTTP status information is not available. However, the TLS handshake and TCP connection were successful.
+            </p>
+          {/if}
+        </div>
+      {:else}
+        <!-- Failure details -->
+        <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
+              Connection Failed
+            </h2>
+          </div>
+          {#if browserResult.errorMessage}
+            <p class="text-sm text-(--color-text-muted) mb-3">{browserResult.errorMessage}</p>
+          {/if}
+          <div class="text-xs text-(--color-text-muted) space-y-1 mb-4">
+            <p>Possible reasons:</p>
+            <ul class="list-disc list-inside ml-2 space-y-0.5">
+              <li>The domain does not exist or DNS resolution failed</li>
+              <li>The server is down or not accepting connections on port {browserResult.port}</li>
+              <li>The SSL/TLS certificate is invalid, expired, or self-signed</li>
+              <li>A firewall or network policy is blocking the connection</li>
+              <li>The connection timed out</li>
+            </ul>
+          </div>
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) text-sm hover:text-(--color-text) hover:border-(--color-text-light) transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Try Opening in Browser Anyway
+          </a>
+        </div>
+      {/if}
+
+      <!-- How to Download Certificate -->
+      <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+        <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-2">
+          How to Download the Certificate
+        </h2>
+        <p class="text-xs text-(--color-text-muted) mb-4">
+          Browsers do not expose TLS certificate data to JavaScript — this is a security restriction, not a limitation of this tool. Use one of the methods below to view and export the full certificate.
+        </p>
+
+        <div class="space-y-3">
+          <!-- CLI - most useful, shown first -->
+          <div class="p-3 bg-(--color-bg) border border-(--color-border)">
+            <h3 class="text-sm font-medium text-(--color-text) mb-2">Terminal (fastest way to download PEM)</h3>
+            <div class="p-2 bg-(--color-bg-alt) border border-(--color-border) rounded mb-2">
+              <div class="flex items-start justify-between gap-2">
+                <code class="text-xs text-(--color-text) break-all font-mono leading-relaxed">openssl s_client -connect {browserResult.domain}:{browserResult.port} -servername {browserResult.domain} &lt; /dev/null 2&gt;/dev/null | openssl x509 -outform PEM &gt; {browserResult.domain}.pem</code>
+                <button
+                  onclick={() => handleCopy("cli-full", `openssl s_client -connect ${browserResult?.domain}:${browserResult?.port} -servername ${browserResult?.domain} < /dev/null 2>/dev/null | openssl x509 -outform PEM > ${browserResult?.domain}.pem`)}
+                  class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors shrink-0 mt-0.5"
+                >
+                  {copiedField === "cli-full" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+            <p class="text-xs text-(--color-text-muted)">Downloads the leaf certificate. Add <code class="px-1 py-0.5 bg-(--color-bg-alt) rounded">-showcerts</code> to get the full chain.</p>
+          </div>
+
+          <!-- Chrome -->
+          <div class="p-3 bg-(--color-bg) border border-(--color-border)">
+            <h3 class="text-sm font-medium text-(--color-text) mb-2">Chrome / Edge</h3>
+            <ol class="text-xs text-(--color-text-muted) list-decimal list-inside space-y-1 ml-1">
+              <li>Open <a href={targetUrl} target="_blank" rel="noopener noreferrer" class="text-(--color-accent) hover:underline">{targetUrl}</a> in a new tab</li>
+              <li>Click the <strong>padlock icon</strong> (or "Not secure") in the address bar</li>
+              <li>Click <strong>"Connection is secure"</strong> then <strong>"Certificate is valid"</strong></li>
+              <li>Go to <strong>"Details"</strong> tab and click <strong>"Export"</strong> to save the PEM file</li>
+            </ol>
+          </div>
+
+          <!-- Firefox -->
+          <div class="p-3 bg-(--color-bg) border border-(--color-border)">
+            <h3 class="text-sm font-medium text-(--color-text) mb-2">Firefox</h3>
+            <ol class="text-xs text-(--color-text-muted) list-decimal list-inside space-y-1 ml-1">
+              <li>Open <a href={targetUrl} target="_blank" rel="noopener noreferrer" class="text-(--color-accent) hover:underline">{targetUrl}</a> in a new tab</li>
+              <li>Click the <strong>padlock icon</strong> and then <strong>"Connection secure" &gt; "More information"</strong></li>
+              <li>Click <strong>"View Certificate"</strong> — opens a dedicated certificate viewer tab</li>
+              <li>Scroll to <strong>"Miscellaneous"</strong> to find <strong>"Download"</strong> links for PEM (leaf, intermediate, root)</li>
+            </ol>
+          </div>
+
+          <!-- Safari -->
+          <div class="p-3 bg-(--color-bg) border border-(--color-border)">
+            <h3 class="text-sm font-medium text-(--color-text) mb-2">Safari</h3>
+            <ol class="text-xs text-(--color-text-muted) list-decimal list-inside space-y-1 ml-1">
+              <li>Open <a href={targetUrl} target="_blank" rel="noopener noreferrer" class="text-(--color-accent) hover:underline">{targetUrl}</a> in a new tab</li>
+              <li>Click the <strong>padlock icon</strong> and then <strong>"Show Certificate"</strong></li>
+              <li>Expand <strong>"Details"</strong> to view all certificate fields</li>
+              <li>Drag the certificate icon to your desktop to export it</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
   {:else if !error}
     <div class="flex-1 flex items-center justify-center p-4 bg-(--color-bg-alt) border border-(--color-border)">
-      <span class="text-sm text-(--color-text-muted)">Enter a domain to check its SSL/TLS certificate</span>
+      <span class="text-sm text-(--color-text-muted)">
+        {mode === "browser"
+          ? "Enter a domain to check its reachability from your browser"
+          : "Enter a domain to check its SSL/TLS certificate"}
+      </span>
     </div>
   {/if}
 
   <!-- Info Section -->
   <div class="mt-4 p-3 bg-(--color-bg-alt) border border-(--color-border) text-sm text-(--color-text-muted)">
     <strong class="text-(--color-text)">About SSL/TLS Certificates:</strong>
-    SSL/TLS certificates secure communication between browsers and servers. This tool connects to the
-    specified domain, retrieves the certificate, and displays details including validity period,
-    issuer, subject alternative names (SANs), and the certificate chain.
+    SSL/TLS certificates secure communication between browsers and servers.
+    <strong>Server Check</strong> uses a backend API to retrieve full certificate details including chain, validity, and PEM downloads.
+    <strong>Browser Check</strong> tests reachability directly from your browser — useful when the backend cannot reach the target (e.g., internal or restricted domains).
   </div>
 </div>
