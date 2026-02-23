@@ -288,6 +288,14 @@ const rawCategories: Category[] = [
         keywords: "sound transfer, data over sound, audio transfer, ggwave, file transfer, ultrasonic, FSK, acoustic modem, air gap, sonic transfer, audio data",
       },
       {
+        id: "aes",
+        name: "AES Encrypt / Decrypt",
+        description: "Encrypt and decrypt text using AES-256-CBC, AES-256-CTR, and AES-256-GCM. Supports password-based key derivation (PBKDF2) and raw key/IV input with Base64 and Hex output formats. All operations run client-side in the browser.",
+        icon: "🔐",
+        path: "/codecs/aes",
+        keywords: "aes, encrypt, decrypt, aes-256, cbc, ctr, gcm, cipher, cryptography, symmetric encryption, pbkdf2, aes-256-cbc, aes-256-ctr, aes-256-gcm, openssl",
+      },
+      {
         id: "pgp",
         name: "PGP",
         description: "Generate PGP key pairs, encrypt and decrypt messages, sign and verify signatures using OpenPGP. All operations run client-side in the browser.",
