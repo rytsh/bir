@@ -571,7 +571,7 @@
     <p class="text-sm text-(--color-text-muted)">
       Encrypt and decrypt text using AES-256 with CBC, CTR, or GCM modes.
       Supports PBKDF2 key derivation, OpenSSL/CryptoJS-compatible password mode (EVP_BytesToKey), and raw key/IV input.
-      Compatible with n8n encrypted credentials. All operations run entirely in your browser.
+      All operations run entirely in your browser.
     </p>
   </header>
 
@@ -698,11 +698,11 @@
           id="passphrase-openssl"
           type="password"
           bind:value={passphrase}
-          placeholder="Enter your passphrase (e.g. N8N_ENCRYPTION_KEY)"
+          placeholder="Enter your passphrase (e.g. ENCRYPTION_KEY)"
           class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent)"
         />
         <p class="mt-1 text-xs text-(--color-text-muted)">
-          Uses EVP_BytesToKey (MD5-based) key derivation — compatible with OpenSSL, CryptoJS, and n8n credential encryption.
+          Uses EVP_BytesToKey (MD5-based) key derivation — compatible with OpenSSL and CryptoJS.
           Salt and IV are embedded in the ciphertext automatically.
         </p>
       </div>
@@ -980,6 +980,6 @@
     <strong>GCM</strong> (Galois/Counter Mode) provides both encryption and authentication, ensuring data integrity.
     <strong>PBKDF2</strong> mode derives keys using PBKDF2 with SHA-256 and a configurable iteration count.
     <strong>OpenSSL/CryptoJS</strong> mode uses EVP_BytesToKey (MD5-based) key derivation, producing ciphertext in the standard OpenSSL "Salted__" format.
-    This mode is compatible with <code>openssl enc</code>, CryptoJS, and n8n credential encryption — paste your <code>N8N_ENCRYPTION_KEY</code> as the passphrase to decrypt n8n credentials.
+    This mode is compatible with <code>openssl enc</code> and CryptoJS.
   </div>
 </div>
