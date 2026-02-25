@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CurrencyExchangeTool from "../../components/tools/CurrencyExchangeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/currency");
+---
+
+<Layout title="Currency Exchange - Live Rates, Converter & Historical Chart" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/currency">
+  <h1 slot="navbar-title">Currency Exchange</h1>
+  <CurrencyExchangeTool client:load />
+</Layout>

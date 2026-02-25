@@ -200,6 +200,15 @@ const rawCategories: Category[] = [
         keywords: "timestamp converter, unix timestamp, epoch time, date converter, unix time, epoch converter, time converter, rfc3339, iso8601",
       },
       {
+        id: "currency-exchange",
+        name: "Currency Exchange",
+        description: "Convert between world currencies using live ECB exchange rates with multi-currency output, historical line chart, and rate lookup dating back to 1999",
+        icon: "💱",
+        path: "/converter/currency",
+        keywords: "currency converter, exchange rate, forex, currency exchange, money converter, usd, eur, gbp, jpy, live rates, ecb, european central bank, fx, foreign exchange, historical rates, currency chart",
+        api: true,
+      },
+      {
         id: "luwi",
         name: "Luwi",
         description: "Parse text files using custom Lua scripts powered by WebAssembly - define flexible parsing rules with tag-based filtering",
