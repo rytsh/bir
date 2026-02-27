@@ -497,6 +497,14 @@ const rawCategories: Category[] = [
         path: "/network/cert-generator",
         keywords: "certificate generator, ssl certificate, tls certificate, ca certificate, intermediate ca, root ca, x509, pem, pkcs12, pfx, san, dns, ip, self-signed, openssl, pki, cert chain",
       },
+      {
+        id: "oauth2-explorer",
+        name: "OAuth 2.0 Explorer",
+        description: "Explore, build, and test OAuth 2.0 authorization flows with step-by-step visualization and live request testing. Supports Authorization Code, PKCE, Implicit, Client Credentials, Device Code, and Password Grant flows with real URL generation, PKCE challenge computation, and callback handling — all client-side in the browser.",
+        icon: "🔓",
+        path: "/network/oauth2",
+        keywords: "oauth, oauth2, oauth 2.0, authorization code, pkce, implicit, client credentials, device code, password grant, ropc, access token, refresh token, authorization, authentication, bearer token, openid connect, oidc, flow, grant type, test oauth, live testing",
+      },
     ],
   },
   {
