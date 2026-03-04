@@ -119,6 +119,14 @@ const rawCategories: Category[] = [
         keywords: "ascii art, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text",
       },
       {
+        id: "markdown-preview",
+        name: "Markdown Preview",
+        description: "Live markdown editor with preview supporting GitHub Flavored Markdown, Mermaid diagrams, syntax-highlighted code blocks, and KaTeX math rendering",
+        icon: "📖",
+        path: "/text/markdown-preview",
+        keywords: "markdown, preview, editor, mermaid, gfm, github, gitlab, katex, math, latex, diagram, live, render, markdown preview, markdown editor",
+      },
+      {
         id: "subtitle-editor",
         name: "Subtitle Editor",
         description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
