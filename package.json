@@ -58,6 +58,8 @@
     "nanoid": "^5.1.6",
     "openpgp": "^6.3.0",
     "papaparse": "^5.5.3",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.5.207",
     "properties-parser": "^0.6.0",
     "simple-icons": "^16.9.0",
     "smol-toml": "^1.6.0",

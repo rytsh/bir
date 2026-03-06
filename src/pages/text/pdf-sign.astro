@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PdfSignTool from "../../components/tools/PdfSignTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/pdf-sign");
+---
+
+<Layout title="PDF View & Sign - Add Signatures to PDFs" description={tool?.description} keywords={tool?.keywords} currentPath="/text/pdf-sign">
+  <h1 slot="navbar-title">PDF View & Sign</h1>
+  <PdfSignTool client:load />
+</Layout>

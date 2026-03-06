@@ -135,6 +135,14 @@ const rawCategories: Category[] = [
         keywords: "docx viewer, word viewer, docx reader, word document, microsoft word, docx to html, docx to markdown, document viewer, office viewer, word file, docx preview",
       },
       {
+        id: "pdf-sign",
+        name: "PDF Sign",
+        description: "E-sign PDF documents by drawing, typing, or uploading a signature image. Signatures are embedded directly into the original PDF preserving full quality. Embeds signer name, timestamp, and SHA-256 integrity hash into PDF metadata for tamper detection. Auto-verifies previously signed documents.",
+        icon: "✍️",
+        path: "/text/pdf-sign",
+        keywords: "pdf sign, pdf signature, sign pdf, pdf viewer, digital signature, draw signature, upload signature, sign document, pdf editor, e-sign, electronic signature, esignature, flatten pdf, tamper proof, integrity hash, verify signature",
+      },
+      {
         id: "subtitle-editor",
         name: "Subtitle Editor",
         description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
