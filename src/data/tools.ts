@@ -127,6 +127,14 @@ const rawCategories: Category[] = [
         keywords: "markdown, preview, editor, mermaid, gfm, github, gitlab, katex, math, latex, diagram, live, render, markdown preview, markdown editor",
       },
       {
+        id: "docx-viewer",
+        name: "DOCX Viewer",
+        description: "View Microsoft Word (.docx) documents directly in the browser with full formatting, headers, footers, and page breaks. Export to HTML or Markdown.",
+        icon: "📄",
+        path: "/text/docx-viewer",
+        keywords: "docx viewer, word viewer, docx reader, word document, microsoft word, docx to html, docx to markdown, document viewer, office viewer, word file, docx preview",
+      },
+      {
         id: "subtitle-editor",
         name: "Subtitle Editor",
         description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",

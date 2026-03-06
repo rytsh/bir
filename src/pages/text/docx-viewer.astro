@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocxViewerTool from "../../components/tools/DocxViewerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/docx-viewer");
+---
+
+<Layout title="DOCX Viewer - View Word Documents in Browser" description={tool?.description} keywords={tool?.keywords} currentPath="/text/docx-viewer">
+  <h1 slot="navbar-title">DOCX Viewer</h1>
+  <DocxViewerTool client:load />
+</Layout>
