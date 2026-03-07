@@ -322,6 +322,295 @@
       outputFormat = temp;
     }
   };
+
+  const dataToTable = (data: unknown): { columns: string[]; rows: string[][] } | null => {
+    if (data === null || data === undefined) return null;
+
+    let items: Record<string, unknown>[];
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) return null;
+      // Array of objects — the ideal case
+      if (typeof data[0] === "object" && data[0] !== null) {
+        items = data as Record<string, unknown>[];
+      } else {
+        // Array of primitives
+        items = data.map((v, i) => ({ "#": i + 1, value: v }));
+      }
+    } else if (typeof data === "object") {
+      // Single object — flatten top-level keys as a single row,
+      // or if values are objects/arrays, treat each key as a row
+      const obj = data as Record<string, unknown>;
+      const values = Object.values(obj);
+      const allPrimitive = values.every(
+        (v) => v === null || v === undefined || typeof v !== "object",
+      );
+      if (allPrimitive) {
+        // Single row table
+        items = [obj];
+      } else {
+        // Try to treat nested objects as rows
+        const nestedArrays = values.filter(Array.isArray);
+        if (nestedArrays.length === 1 && Array.isArray(nestedArrays[0]) && nestedArrays[0].length > 0) {
+          // Common pattern: root object with one array property
+          const arr = nestedArrays[0] as unknown[];
+          if (typeof arr[0] === "object" && arr[0] !== null) {
+            items = arr as Record<string, unknown>[];
+          } else {
+            items = arr.map((v, i) => ({ "#": i + 1, value: v }));
+          }
+        } else {
+          // Flatten: each key becomes a row with key/value columns
+          items = Object.entries(obj).map(([key, value]) => ({
+            key,
+            value: typeof value === "object" ? JSON.stringify(value) : value,
+          }));
+        }
+      }
+    } else {
+      // Primitive value
+      return { columns: ["value"], rows: [[String(data)]] };
+    }
+
+    // Collect all unique columns across all items
+    const columnSet = new Set<string>();
+    for (const item of items) {
+      if (item && typeof item === "object") {
+        for (const k of Object.keys(item)) columnSet.add(k);
+      }
+    }
+    const columns = Array.from(columnSet);
+    if (columns.length === 0) return null;
+
+    const rows = items.map((item) =>
+      columns.map((col) => {
+        const val = item?.[col];
+        if (val === null || val === undefined) return "";
+        if (typeof val === "object") return JSON.stringify(val);
+        return String(val);
+      }),
+    );
+
+    return { columns, rows };
+  };
+
+  const tableHTML = (output: { rows?: string[][]; columns: string[] } | null): string => {
+    if (!output) {
+      return "<table><thead></thead><tbody></tbody></table>";
+    }
+
+    if (!output.rows) {
+      output.rows = [];
+    }
+
+    const escapeHtml = (s: string): string =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const headerRow =
+      '<th class="row-number-header">#</th>' +
+      output.columns
+        .map(
+          (col, idx) =>
+            `<th onclick="sortTable(${idx}, event)" class="sortable">${escapeHtml(col)} <span class="sort-icon"></span><span class="sort-order"></span></th>`,
+        )
+        .join("");
+
+    const bodyRows = output.rows
+      .map((row, rowIndex) => {
+        const rowData = row
+          .map(
+            (cell) =>
+              `<td title="${escapeHtml(cell)}" onclick="handleCellClick(event, this)" style="cursor: pointer;">${escapeHtml(cell)}</td>`,
+          )
+          .join("");
+        return `<tr><td class="row-number">${rowIndex + 1}</td>${rowData}</tr>`;
+      })
+      .join("");
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Table View</title>
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .table-container { padding: 10px; background: #ffffff; }
+  .search-container { margin-bottom: 10px; display: flex; gap: 8px; }
+  .search-input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  .search-input:focus { outline: none; border-color: #666; }
+  .search-clear { padding: 6px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  .search-clear:hover { background: #e0e0e0; }
+  .table-wrapper { border: 1px solid #ddd; overflow-x: auto; overflow-y: auto; }
+  .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table thead { background: #f5f5f5; position: sticky; top: 0; z-index: 10; }
+  .data-table th { padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd; cursor: pointer; user-select: none; white-space: nowrap; min-width: 100px; }
+  .data-table th.row-number-header { cursor: default; width: 20px; min-width: 10px; text-align: center; background: #e8e8e8; position: sticky; left: 0; z-index: 11; }
+  .data-table td.row-number { text-align: center; font-weight: 500; color: #666; background: #fafafa; width: 20px; min-width: 10px; position: sticky; left: 0; z-index: 5; }
+  .data-table th.sortable:hover { background: #e8e8e8; }
+  .data-table th .sort-icon { margin-left: 4px; font-size: 11px; display: inline-block; min-width: 12px; }
+  .data-table th .sort-icon::before { content: '\\2195'; opacity: 0.4; }
+  .data-table th.sorted-asc .sort-icon::before { content: '\\25B2'; opacity: 1; }
+  .data-table th.sorted-desc .sort-icon::before { content: '\\25BC'; opacity: 1; }
+  .data-table th .sort-order { margin-left: 2px; font-size: 9px; color: #666; font-weight: bold; }
+  .data-table tbody tr { border-bottom: 1px solid #eee; }
+  .data-table tbody tr:hover { background: #fff085; }
+  .data-table tbody tr:nth-child(even) { background: #fafafa; }
+  .data-table tbody tr:nth-child(even):hover { background: #fff085; }
+  .data-table td { padding: 8px 12px; min-width: 100px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-right: 1px solid #eee; }
+  .data-table td:hover { overflow: visible; white-space: normal; word-wrap: break-word; position: relative; z-index: 20; background: #fffacd; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .data-table tbody tr:hover td.row-number { background: #fff085; }
+  .data-table tbody tr:nth-child(even):hover td.row-number { background: #fff085; }
+  .table-info { margin-bottom: 10px; padding: 8px; background: #f9f9f9; border: 1px solid #ddd; font-size: 12px; display: flex; justify-content: space-between; }
+</style>
+</head><body>
+<div class="table-container">
+  <div class="table-info">
+    <span>Total: <strong id="totalRows">${output.rows.length}</strong></span>
+    <span style="font-size: 11px; color: #666;">Click columns to sort (supports multiple columns) | Ctrl+Click cell to copy</span>
+  </div>
+  <div class="search-container">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search..." oninput="filterTable()" />
+    <button class="search-clear" onclick="clearSearch()">Clear</button>
+    <button class="search-clear" onclick="resetSort()">Reset Sort</button>
+  </div>
+  <div class="table-wrapper">
+    <table class="data-table" id="dataTable">
+      <thead><tr>${headerRow}</tr></thead>
+      <tbody id="tableBody">${bodyRows}</tbody>
+    </table>
+  </div>
+</div>
+<script>
+  let sortColumns = [];
+  let originalOrder = [];
+
+  window.addEventListener('DOMContentLoaded', function() {
+    var tbody = document.getElementById('tableBody');
+    if (tbody) { originalOrder = Array.from(tbody.getElementsByTagName('tr')); }
+  });
+
+  function sortTable(columnIndex, event) {
+    var table = document.getElementById('dataTable');
+    var tbody = document.getElementById('tableBody');
+    var rows = Array.from(tbody.getElementsByTagName('tr'));
+    var headers = table.getElementsByTagName('th');
+    if (originalOrder.length === 0) { originalOrder = Array.from(rows); }
+    var existingIndex = sortColumns.findIndex(function(s) { return s.column === columnIndex; });
+    var direction = 'asc';
+    if (existingIndex >= 0) {
+      var current = sortColumns[existingIndex].direction;
+      if (current === 'asc') { direction = 'desc'; }
+      else {
+        sortColumns.splice(existingIndex, 1);
+        updateSortUI(headers);
+        if (sortColumns.length === 0) { originalOrder.forEach(function(row) { tbody.appendChild(row); }); }
+        else { performSort(rows, tbody); }
+        return;
+      }
+      sortColumns[existingIndex].direction = direction;
+    } else { sortColumns.push({ column: columnIndex, direction: direction }); }
+    updateSortUI(headers);
+    performSort(rows, tbody);
+  }
+
+  function updateSortUI(headers) {
+    for (var i = 0; i < headers.length; i++) {
+      headers[i].classList.remove('sorted-asc', 'sorted-desc');
+      var orderSpan = headers[i].querySelector('.sort-order');
+      if (orderSpan) orderSpan.textContent = '';
+    }
+    sortColumns.forEach(function(sort, index) {
+      headers[sort.column + 1].classList.add('sorted-' + sort.direction);
+      var orderSpan = headers[sort.column + 1].querySelector('.sort-order');
+      if (orderSpan && sortColumns.length > 1) { orderSpan.textContent = (index + 1); }
+    });
+  }
+
+  function performSort(rows, tbody) {
+    rows.sort(function(a, b) {
+      var aCells = a.getElementsByTagName('td');
+      var bCells = b.getElementsByTagName('td');
+      for (var i = 0; i < sortColumns.length; i++) {
+        var sort = sortColumns[i];
+        var aValue = aCells[sort.column + 1].textContent;
+        var bValue = bCells[sort.column + 1].textContent;
+        var aNum = parseFloat(aValue);
+        var bNum = parseFloat(bValue);
+        var comparison = 0;
+        if (!isNaN(aNum) && !isNaN(bNum)) { comparison = aNum - bNum; }
+        else { comparison = aValue.localeCompare(bValue); }
+        if (comparison !== 0) { return sort.direction === 'asc' ? comparison : -comparison; }
+      }
+      return 0;
+    });
+    rows.forEach(function(row) { tbody.appendChild(row); });
+  }
+
+  function filterTable() {
+    var input = document.getElementById('searchInput');
+    var filter = input.value.toLowerCase();
+    var tbody = document.getElementById('tableBody');
+    var rows = tbody.getElementsByTagName('tr');
+    var visibleCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].getElementsByTagName('td');
+      var found = false;
+      for (var j = 0; j < cells.length; j++) {
+        if (cells[j].textContent.toLowerCase().includes(filter)) { found = true; break; }
+      }
+      rows[i].style.display = found ? '' : 'none';
+      if (found) visibleCount++;
+    }
+    document.getElementById('totalRows').textContent = visibleCount + ' / ' + ${output.rows.length};
+  }
+
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    filterTable();
+    document.getElementById('totalRows').textContent = ${output.rows.length};
+  }
+
+  function resetSort() {
+    var table = document.getElementById('dataTable');
+    var tbody = document.getElementById('tableBody');
+    var headers = table.getElementsByTagName('th');
+    sortColumns = [];
+    updateSortUI(headers);
+    originalOrder.forEach(function(row) { tbody.appendChild(row); });
+  }
+
+  function handleCellClick(event, cell) {
+    if (event.ctrlKey || event.metaKey) {
+      var value = cell.textContent;
+      navigator.clipboard.writeText(value);
+      var originalBg = cell.style.backgroundColor;
+      cell.style.backgroundColor = '#90EE90';
+      setTimeout(function() { cell.style.backgroundColor = originalBg; }, 200);
+    }
+  }
+<\/script>
+</body></html>`;
+  };
+
+  const openInTable = () => {
+    if (!sourceValue.trim()) return;
+
+    try {
+      const parsed = parse(sourceValue, sourceFormat);
+      const tableData = dataToTable(parsed);
+
+      if (!tableData) {
+        error = "Cannot convert data to table format.";
+        return;
+      }
+
+      const html = tableHTML(tableData);
+      const popup = window.open("", "_blank", "width=1000,height=700,scrollbars=yes,resizable=yes");
+      if (popup) {
+        popup.document.write(html);
+        popup.document.close();
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to open table view";
+    }
+  };
 </script>
 
 <div class="h-full flex flex-col">
@@ -418,6 +707,16 @@
         />
         <span class="text-sm text-(--color-text-muted)">Sort keys</span>
       </label>
+
+      <!-- Open in Table -->
+      <button
+        onclick={openInTable}
+        disabled={!sourceValue.trim()}
+        class="ml-auto px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) hover:bg-(--color-border) cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Open data in table view (new window)"
+      >
+        Table &#8599;
+      </button>
     </div>
   </div>
 
