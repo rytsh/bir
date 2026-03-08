@@ -190,9 +190,13 @@
     URL.revokeObjectURL(url);
   }
 
+  let copied = $state(false);
+
   function copyOutput() {
     if (outputText) {
       navigator.clipboard.writeText(outputText);
+      copied = true;
+      setTimeout(() => { copied = false; }, 2000);
     }
   }
 
@@ -225,59 +229,128 @@
     </p>
   </header>
 
+  <!-- Configuration bar -->
+  <div class="mb-4 py-1 px-2 bg-(--color-bg-alt) border border-(--color-border)">
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Source Format -->
+      <div class="flex items-center gap-2">
+        <label
+          for="source-format"
+          class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+        >
+          From
+        </label>
+        <select
+          id="source-format"
+          bind:value={sourceFormat}
+          onchange={() => clear()}
+          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+        >
+          {#each formats as fmt}
+            <option value={fmt.id}>{fmt.label}</option>
+          {/each}
+        </select>
+      </div>
+
+      <button
+        onclick={swapFormats}
+        class="px-2 py-1 text-sm border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors cursor-pointer"
+        title="Swap formats"
+      >
+        &#8644;
+      </button>
+
+      <!-- Target Format -->
+      <div class="flex items-center gap-2">
+        <label
+          for="target-format"
+          class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+        >
+          To
+        </label>
+        <select
+          id="target-format"
+          bind:value={targetFormat}
+          class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+        >
+          {#each formats.filter((f) => f.id !== sourceFormat) as fmt}
+            <option value={fmt.id}>{fmt.label}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="hidden sm:block w-px h-6 bg-(--color-border)"></div>
+
+      <!-- Convert button -->
+      <button
+        onclick={convert}
+        disabled={!hasInput || isConverting || isLoadingWasm}
+        class="px-3 py-1 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {#if isLoadingWasm}
+          Loading...
+        {:else if isConverting}
+          Converting...
+        {:else}
+          Convert
+        {/if}
+      </button>
+
+      {#if loadProgress}
+        <span class="text-xs text-(--color-text-muted)">{loadProgress}</span>
+      {/if}
+
+      {#if wasmLoaded}
+        <span class="text-xs text-green-500">Pandoc ready</span>
+      {/if}
+
+      <!-- Clear button (pushed right) -->
+      <button
+        onclick={clear}
+        class="ml-auto px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) hover:bg-(--color-border) cursor-pointer"
+      >
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Error -->
   {#if errorMessage}
-    <div class="mb-4 p-3 border border-red-500 bg-red-500/10 text-red-500 text-sm">
+    <div class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">
       {errorMessage}
     </div>
   {/if}
 
-  <!-- Format selectors -->
-  <div class="mb-4 flex items-center gap-3 flex-wrap">
-    <div class="flex-1 min-w-[140px]">
-      <label class="block text-xs text-(--color-text-muted) mb-1">From</label>
-      <select
-        bind:value={sourceFormat}
-        onchange={() => clear()}
-        class="w-full px-3 py-2 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-accent) focus:outline-none"
-      >
-        {#each formats as fmt}
-          <option value={fmt.id}>{fmt.label}</option>
-        {/each}
-      </select>
-    </div>
-
-    <button
-      onclick={swapFormats}
-      class="mt-4 px-3 py-2 text-sm border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors"
-      title="Swap formats"
-    >
-      &#8644;
-    </button>
-
-    <div class="flex-1 min-w-[140px]">
-      <label class="block text-xs text-(--color-text-muted) mb-1">To</label>
-      <select
-        bind:value={targetFormat}
-        class="w-full px-3 py-2 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-accent) focus:outline-none"
-      >
-        {#each formats.filter((f) => f.id !== sourceFormat) as fmt}
-          <option value={fmt.id}>{fmt.label}</option>
-        {/each}
-      </select>
-    </div>
-  </div>
-
-  <!-- Input area -->
-  <div class="flex-1 flex flex-col min-h-0 gap-4 lg:flex-row">
+  <!-- Editors - Side by Side -->
+  <div class="flex-1 flex flex-col lg:flex-row gap-4">
     <!-- Source panel -->
-    <div class="flex-1 flex flex-col min-h-[200px]">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide">Input ({sourceFormatObj.label})</span>
-        {#if inputFileName}
-          <span class="text-xs text-(--color-text-muted)">
-            {inputFileName} ({inputFile ? formatFileSize(inputFile.size) : ""})
-          </span>
-        {/if}
+    <div class="flex-1 flex flex-col min-h-[300px]">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+          Input ({sourceFormatObj.label})
+        </span>
+        <div class="flex gap-3">
+          {#if inputFileName}
+            <span class="text-xs text-(--color-text-muted)">
+              {inputFileName} ({inputFile ? formatFileSize(inputFile.size) : ""})
+            </span>
+            <button
+              onclick={() => { inputFile = null; inputFileName = ""; }}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              Clear file
+            </button>
+          {/if}
+          <label class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors cursor-pointer">
+            Upload
+            <input
+              type="file"
+              accept={sourceFormatObj.binary ? `.${sourceFormatObj.ext}` : acceptExts}
+              onchange={handleFileChange}
+              class="hidden"
+            />
+          </label>
+        </div>
       </div>
 
       {#if sourceFormatObj.binary}
@@ -286,7 +359,7 @@
           ondrop={handleDrop}
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
-          class="flex-1 border-2 border-dashed {dragOver ? 'border-(--color-accent)' : 'border-(--color-border)'} flex flex-col items-center justify-center p-4 hover:border-(--color-accent) transition-colors cursor-pointer"
+          class="flex-1 border border-dashed {dragOver ? 'border-(--color-accent)' : 'border-(--color-border)'} flex flex-col items-center justify-center p-4 hover:border-(--color-accent) transition-colors cursor-pointer"
         >
           <input
             type="file"
@@ -297,69 +370,59 @@
           />
           <label for="doc-input" class="cursor-pointer text-center">
             {#if inputFile}
-              <div class="text-3xl mb-2">&#128196;</div>
               <p class="text-sm text-(--color-text)">{inputFileName}</p>
               <p class="text-xs text-(--color-text-muted) mt-1">{formatFileSize(inputFile.size)}</p>
             {:else}
-              <div class="text-3xl mb-2">&#128196;</div>
-              <p class="text-sm text-(--color-text)">Drop a .{sourceFormatObj.ext} file or click to select</p>
+              <p class="text-sm text-(--color-text-muted)">Drop a .{sourceFormatObj.ext} file or click to select</p>
               <p class="text-xs text-(--color-text-muted) mt-1">{sourceFormatObj.label} files</p>
             {/if}
           </label>
         </div>
       {:else}
-        <!-- Text input with file option -->
-        <div class="flex-1 flex flex-col min-h-0">
-          <div class="flex gap-2 mb-2">
-            <label class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:bg-(--color-bg-alt) cursor-pointer transition-colors">
-              Upload File
-              <input
-                type="file"
-                accept={acceptExts}
-                onchange={handleFileChange}
-                class="hidden"
-              />
-            </label>
-            {#if inputFileName}
-              <button onclick={() => { inputFile = null; inputFileName = ""; }} class="px-2 py-1 text-xs text-(--color-text-muted) hover:text-(--color-text)">
-                Clear file
-              </button>
-            {/if}
-          </div>
-          <textarea
-            bind:value={inputText}
-            placeholder="Paste your {sourceFormatObj.label} content here..."
-            class="flex-1 w-full p-3 text-sm font-mono bg-(--color-bg) border border-(--color-border) text-(--color-text) resize-none focus:border-(--color-accent) focus:outline-none"
-          ></textarea>
-        </div>
+        <!-- Text input -->
+        <textarea
+          bind:value={inputText}
+          placeholder="Paste your {sourceFormatObj.label} content here..."
+          class="flex-1 w-full p-3 text-sm font-mono bg-(--color-bg) border border-(--color-border) text-(--color-text) resize-none focus:border-(--color-accent) focus:outline-none"
+        ></textarea>
       {/if}
     </div>
 
     <!-- Output panel -->
-    <div class="flex-1 flex flex-col min-h-[200px]">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-(--color-text-muted) uppercase tracking-wide">Output ({targetFormatObj.label})</span>
-        {#if outputText || outputBlob}
-          <div class="flex gap-2">
+    <div class="flex-1 flex flex-col min-h-[300px]">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+          Output ({targetFormatObj.label})
+        </span>
+        <div class="flex gap-3">
+          {#if outputText || outputBlob}
             {#if !targetFormatObj.binary}
-              <button onclick={copyOutput} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:bg-(--color-bg-alt) transition-colors">
-                Copy
+              <button
+                onclick={copyOutput}
+                class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                {copied ? "Copied!" : "Copy"}
               </button>
             {/if}
-            <button onclick={downloadOutput} class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text-muted) hover:bg-(--color-bg-alt) transition-colors">
+            <button
+              onclick={downloadOutput}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
               Download .{targetFormatObj.ext}
             </button>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
 
       {#if targetFormatObj.binary && outputBlob}
-        <div class="flex-1 border border-(--color-border) flex items-center justify-center">
+        <div class="flex-1 border border-(--color-border) flex items-center justify-center bg-(--color-bg)">
           <div class="text-center">
-            <div class="text-3xl mb-2">&#128196;</div>
             <p class="text-sm text-(--color-text)">Conversion complete</p>
             <p class="text-xs text-(--color-text-muted) mt-1">{formatFileSize(outputBlob.size)}</p>
-            <button onclick={downloadOutput} class="mt-3 px-4 py-2 text-sm bg-(--color-accent) text-white hover:opacity-90 transition-opacity">
+            <button
+              onclick={downloadOutput}
+              class="mt-3 px-4 py-2 text-sm bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
+            >
               Download .{targetFormatObj.ext}
             </button>
           </div>
@@ -373,37 +436,5 @@
         ></textarea>
       {/if}
     </div>
-  </div>
-
-  <!-- Action bar -->
-  <div class="mt-4 flex items-center gap-3">
-    <button
-      onclick={convert}
-      disabled={!hasInput || isConverting || isLoadingWasm}
-      class="px-6 py-2 text-sm font-medium bg-(--color-accent) text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      {#if isLoadingWasm}
-        Loading...
-      {:else if isConverting}
-        Converting...
-      {:else}
-        Convert
-      {/if}
-    </button>
-
-    {#if loadProgress}
-      <span class="text-xs text-(--color-text-muted)">{loadProgress}</span>
-    {/if}
-
-    {#if wasmLoaded}
-      <span class="text-xs text-green-500">Pandoc ready</span>
-    {/if}
-
-    <button
-      onclick={clear}
-      class="ml-auto px-3 py-2 text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-    >
-      Clear
-    </button>
   </div>
 </div>
