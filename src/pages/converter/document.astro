@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocumentConverterTool from "../../components/tools/DocumentConverterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/document");
+---
+
+<Layout title="Document Converter - Convert DOCX, Markdown, HTML, EPUB & More" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/document">
+  <h1 slot="navbar-title">Document Converter</h1>
+  <DocumentConverterTool client:load />
+</Layout>

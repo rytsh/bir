@@ -53,6 +53,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,ico,png,svg,woff2,wasm,jpg}"],
+        globIgnores: ["**/pandoc.wasm"],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024, // 30 MiB
         navigateFallback: null,
         cleanupOutdatedCaches: true,
@@ -120,6 +121,11 @@ export default defineConfig({
             src: "node_modules/cron-js-wasm/wasm/module.wasm",
             dest: "wasm",
             rename: "cron.wasm",
+          },
+          {
+            src: "node_modules/pandoc-wasm/src/pandoc.wasm",
+            dest: "wasm",
+            rename: "pandoc.wasm",
           },
         ],
       }),

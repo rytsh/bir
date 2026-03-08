@@ -174,6 +174,15 @@ const rawCategories: Category[] = [
         keywords: "formatter, prettifier, beautifier, JSON formatter, YAML formatter, TOML formatter, Markdown formatter, code formatter, pretty print, format code, beautify",
       },
       {
+        id: "document-converter",
+        name: "Document Converter",
+        description: "Convert documents between Markdown, HTML, DOCX, EPUB, RTF, ODT, LaTeX, reStructuredText, DocBook, AsciiDoc, Org Mode, and more using Pandoc WASM in the browser",
+        icon: "📑",
+        path: "/converter/document",
+        keywords: "document converter, pandoc, docx converter, markdown to html, html to markdown, markdown to docx, docx to markdown, epub converter, rtf converter, odt converter, latex converter, rst converter, docbook converter, asciidoc, org mode, document format, file converter, wasm",
+        wasm: true,
+      },
+      {
         id: "media-converter",
         name: "Media Converter",
         description: "Convert images, videos, and audio files between formats using ImageMagick and FFmpeg WASM, running entirely in your browser",
