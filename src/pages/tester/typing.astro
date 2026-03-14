@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TypingSpeedTestTool from "../../components/tools/TypingSpeedTestTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/typing");
+---
+
+<Layout title="Typing Speed Test - WPM & Accuracy" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/typing">
+  <h1 slot="navbar-title">Typing Speed Test</h1>
+  <TypingSpeedTestTool client:load />
+</Layout>

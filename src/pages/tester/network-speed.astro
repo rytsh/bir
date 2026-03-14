@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import NetworkSpeedTestTool from "../../components/tools/NetworkSpeedTestTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/network-speed");
+---
+
+<Layout title="Network Speed Test - Download, Upload & Latency" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/network-speed">
+  <h1 slot="navbar-title">Network Speed Test</h1>
+  <NetworkSpeedTestTool client:load />
+</Layout>

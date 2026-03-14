@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MicrophoneTesterTool from "../../components/tools/MicrophoneTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/microphone");
+---
+
+<Layout title="Microphone Tester - Audio Input Diagnostics" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/microphone">
+  <h1 slot="navbar-title">Microphone Tester</h1>
+  <MicrophoneTesterTool client:load />
+</Layout>

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CodeScreenshotTool from "../../components/tools/CodeScreenshotTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/code-screenshot");
+---
+
+<Layout title="Code Screenshot - Beautiful Code Images" description={tool?.description} keywords={tool?.keywords} currentPath="/text/code-screenshot">
+  <h1 slot="navbar-title">Code Screenshot</h1>
+  <CodeScreenshotTool client:load />
+</Layout>

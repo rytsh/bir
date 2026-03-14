@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import OgPreviewTool from "../../components/tools/OgPreviewTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/og-preview");
+---
+
+<Layout title="Open Graph Preview - Social Media Card Preview" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/og-preview">
+  <h1 slot="navbar-title">Open Graph Preview</h1>
+  <OgPreviewTool client:load />
+</Layout>
