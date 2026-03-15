@@ -596,6 +596,21 @@ const rawCategories: Category[] = [
     ],
   },
   {
+    id: "math",
+    name: "Math",
+    icon: "🧮",
+    tools: [
+      {
+        id: "graph-plotter",
+        name: "Graph Plotter",
+        description: "Plot mathematical functions with interactive pan, zoom, and trace. Supports multiple functions, numerical derivatives, and export to PNG",
+        icon: "📈",
+        path: "/math/graph-plotter",
+        keywords: "graph plotter, function plotter, math graph, plot function, graphing calculator, desmos, sine, cosine, parabola, equation plotter, math visualization, coordinate plane, derivative",
+      },
+    ],
+  },
+  {
     id: "ai",
     name: "AI",
     icon: "🤖",
