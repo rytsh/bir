@@ -547,6 +547,14 @@ const rawCategories: Category[] = [
         keywords: "certificate generator, ssl certificate, tls certificate, ca certificate, intermediate ca, root ca, x509, pem, pkcs12, pfx, san, dns, ip, self-signed, openssl, pki, cert chain",
       },
       {
+        id: "http-status",
+        name: "HTTP Status",
+        description: "Complete reference of HTTP status codes organized by category (1xx-5xx) with descriptions, search, and filtering",
+        icon: "📟",
+        path: "/network/http-status",
+        keywords: "http status, status code, http code, 200, 301, 404, 500, http response, status reference, rest api, http error, 1xx, 2xx, 3xx, 4xx, 5xx",
+      },
+      {
         id: "oauth2-explorer",
         name: "OAuth 2.0 Explorer",
         description: "Explore, build, and test OAuth 2.0 authorization flows with step-by-step visualization and live request testing. Supports Authorization Code, PKCE, Implicit, Client Credentials, Device Code, and Password Grant flows with real URL generation, PKCE challenge computation, and callback handling — all client-side in the browser.",
