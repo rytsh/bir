@@ -425,6 +425,14 @@ const rawCategories: Category[] = [
         keywords: "totp, otp, one-time password, 2fa, two-factor authentication, authenticator, google authenticator, authy, mfa, multi-factor, time-based, security code",
       },
       {
+        id: "license-generator",
+        name: "License",
+        description: "Generate LICENSE files for GitHub projects with MIT, Apache 2.0, GPL 3.0, BSD (3/2/0-clause), ISC, MPL 2.0, and Unlicense templates, including permissions, conditions, and limitations summary",
+        icon: "📜",
+        path: "/generators/license",
+        keywords: "license generator, LICENSE file, github license, mit license, apache license, gpl license, bsd license, 0bsd, isc, unlicense, mpl, open source license, software license, copyright",
+      },
+      {
         id: "fake-data-generator",
         name: "Fake Data",
         description: "Generate fake data for testing with names, emails, addresses, and more",

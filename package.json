@@ -9,8 +9,8 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.6.0",
-    "@astrojs/svelte": "^7.2.4",
+    "@astrojs/sitemap": "^3.7.2",
+    "@astrojs/svelte": "^8.0.5",
     "@bjorn3/browser_wasi_shim": "^0.4.2",
     "@bwip-js/browser": "^4.8.0",
     "@codemirror/commands": "^6.10.1",
@@ -36,7 +36,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@toon-format/toon": "^2.1.0",
     "@vite-pwa/astro": "^1.2.0",
-    "astro": "^5.16.6",
+    "astro": "^6.1.6",
     "bcryptjs": "^3.0.3",
     "codemirror": "^6.0.2",
     "cron-js-wasm": "0.0.2",
