@@ -699,7 +699,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
   };
 </script>
 
-<div class="h-full flex flex-col">
+<div class="flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
       Generate a LICENSE file for your GitHub project. Fill in the copyright info, pick a license, then copy or download the file.
@@ -825,7 +825,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
   </div>
 
   <!-- Output -->
-  <div class="flex-1 flex flex-col min-h-[240px]">
+  <div class="flex flex-col">
     <div class="flex justify-between items-center mb-2">
       <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
         LICENSE Preview
@@ -845,10 +845,8 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
         </button>
       </div>
     </div>
-    <textarea
-      readonly
-      value={output}
-      class="flex-1 w-full p-3 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-xs font-mono resize-none focus:outline-none focus:border-(--color-accent)"
-    ></textarea>
+    <pre
+      class="w-full p-4 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-xs font-mono whitespace-pre-wrap break-words"
+    >{output}</pre>
   </div>
 </div>

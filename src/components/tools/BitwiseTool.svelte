@@ -139,6 +139,15 @@
     inputB = "";
   };
 
+  const flipBit = (which: "A" | "B", displayIndex: number) => {
+    const current = which === "A" ? (valueA ?? 0n) : (valueB ?? 0n);
+    const bitPos = BigInt(bitWidth - 1 - displayIndex);
+    const flipped = maskValue(current ^ (1n << bitPos));
+    const formatted = formatResult(flipped, inputFormat);
+    if (which === "A") inputA = formatted;
+    else inputB = formatted;
+  };
+
   const getPlaceholder = (format: InputFormat): string => {
     switch (format) {
       case "dec": return "e.g. 255";
@@ -355,83 +364,90 @@
   {/if}
 
   <!-- Bit visualization -->
-  {#if result !== null && valueA !== null}
-    <div class="mt-4">
-      <div class="text-xs tracking-wider text-(--color-text-light) font-medium mb-3">Bit Visualization</div>
-      <div class="overflow-x-auto">
-        <div class="space-y-2">
-          <!-- Value A -->
+  <div class="mt-4">
+    <div class="flex items-baseline justify-between mb-3">
+      <div class="text-xs tracking-wider text-(--color-text-light) font-medium">Bit Visualization</div>
+      <div class="text-xs text-(--color-text-muted)">Click a bit to flip it</div>
+    </div>
+    <div class="overflow-x-auto">
+      <div class="space-y-2">
+        <!-- Value A -->
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-(--color-text-muted) w-16 shrink-0">A</span>
+          <div class="inline-flex gap-px">
+            {#each formatResult(valueA ?? 0n, "bin").split("") as bit, i}
+              <button
+                type="button"
+                onclick={() => flipBit("A", i)}
+                class="w-5 h-5 flex items-center justify-center text-xs font-mono cursor-pointer hover:ring-1 hover:ring-(--color-accent) transition-shadow {bit === '1'
+                  ? 'bg-(--color-text) text-(--color-btn-text)'
+                  : 'bg-(--color-bg-alt) text-(--color-text-muted)'}"
+                title="Bit {bitWidth - 1 - i} — click to flip"
+              >
+                {bit}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Value B (only for binary operations) -->
+        {#if !isUnaryOp}
           <div class="flex items-center gap-3">
-            <span class="text-xs text-(--color-text-muted) w-16 shrink-0">A</span>
+            <span class="text-xs text-(--color-text-muted) w-16 shrink-0">B</span>
             <div class="inline-flex gap-px">
-              {#each formatResult(valueA, "bin").split("") as bit, i}
-                <div
-                  class="w-5 h-5 flex items-center justify-center text-xs font-mono {bit === '1'
+              {#each formatResult(valueB ?? 0n, "bin").split("") as bit, i}
+                <button
+                  type="button"
+                  onclick={() => flipBit("B", i)}
+                  class="w-5 h-5 flex items-center justify-center text-xs font-mono cursor-pointer hover:ring-1 hover:ring-(--color-accent) transition-shadow {bit === '1'
                     ? 'bg-(--color-text) text-(--color-btn-text)'
                     : 'bg-(--color-bg-alt) text-(--color-text-muted)'}"
-                  title="Bit {bitWidth - 1 - i}"
+                  title="Bit {bitWidth - 1 - i} — click to flip"
                 >
                   {bit}
-                </div>
+                </button>
               {/each}
             </div>
           </div>
+        {/if}
 
-          <!-- Value B (only for binary operations) -->
-          {#if !isUnaryOp && valueB !== null}
-            <div class="flex items-center gap-3">
-              <span class="text-xs text-(--color-text-muted) w-16 shrink-0">B</span>
-              <div class="inline-flex gap-px">
-                {#each formatResult(valueB, "bin").split("") as bit, i}
-                  <div
-                    class="w-5 h-5 flex items-center justify-center text-xs font-mono {bit === '1'
-                      ? 'bg-(--color-text) text-(--color-btn-text)'
-                      : 'bg-(--color-bg-alt) text-(--color-text-muted)'}"
-                    title="Bit {bitWidth - 1 - i}"
-                  >
-                    {bit}
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
+        <!-- Operation indicator -->
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-(--color-text-muted) w-16 shrink-0 font-mono">{currentOp.symbol}{operation === "lshift" || operation === "rshift" ? ` ${shiftAmount}` : ""}</span>
+          <div class="border-t border-(--color-border)" style="width: {bitWidth * 20 + (bitWidth - 1)}px;"></div>
+        </div>
 
-          <!-- Operation indicator -->
-          <div class="flex items-center gap-3">
-            <span class="text-xs text-(--color-text-muted) w-16 shrink-0 font-mono">{currentOp.symbol}{operation === "lshift" || operation === "rshift" ? ` ${shiftAmount}` : ""}</span>
-            <div class="border-t border-(--color-border)" style="width: {bitWidth * 20 + (bitWidth - 1)}px;"></div>
-          </div>
-
-          <!-- Result -->
-          <div class="flex items-center gap-3">
-            <span class="text-xs text-(--color-text-muted) w-16 shrink-0">Result</span>
-            <div class="inline-flex gap-px">
-              {#each formatResult(result, "bin").split("") as bit, i}
-                <div
-                  class="w-5 h-5 flex items-center justify-center text-xs font-mono {bit === '1'
+        <!-- Result -->
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-(--color-text-muted) w-16 shrink-0">Result</span>
+          <div class="inline-flex gap-px">
+            {#each formatResult(result ?? 0n, "bin").split("") as bit, i}
+              <div
+                class="w-5 h-5 flex items-center justify-center text-xs font-mono {result === null
+                  ? 'bg-(--color-bg-alt) text-(--color-text-muted) opacity-50'
+                  : bit === '1'
                     ? 'bg-(--color-accent) text-(--color-btn-text)'
                     : 'bg-(--color-bg-alt) text-(--color-text-muted)'}"
-                  title="Bit {bitWidth - 1 - i}"
-                >
-                  {bit}
-                </div>
-              {/each}
-            </div>
+                title="Bit {bitWidth - 1 - i}"
+              >
+                {bit}
+              </div>
+            {/each}
           </div>
+        </div>
 
-          <!-- Bit positions -->
-          <div class="flex items-center gap-3">
-            <span class="w-16 shrink-0"></span>
-            <div class="inline-flex gap-px">
-              {#each Array(bitWidth) as _, i}
-                <div class="w-5 text-center text-[9px] text-(--color-text-muted)">
-                  {bitWidth - 1 - i}
-                </div>
-              {/each}
-            </div>
+        <!-- Bit positions -->
+        <div class="flex items-center gap-3">
+          <span class="w-16 shrink-0"></span>
+          <div class="inline-flex gap-px">
+            {#each Array(bitWidth) as _, i}
+              <div class="w-5 text-center text-[9px] text-(--color-text-muted)">
+                {bitWidth - 1 - i}
+              </div>
+            {/each}
           </div>
         </div>
       </div>
     </div>
-  {/if}
+  </div>
 </div>
