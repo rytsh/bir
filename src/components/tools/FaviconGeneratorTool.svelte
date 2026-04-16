@@ -699,6 +699,103 @@
     return (crc ^ 0xffffffff) >>> 0;
   }
 
+  function generateSvgMarkup(): string {
+    if (!selectedIcon) return "";
+
+    // Apply colors to the icon's own SVG
+    const iconSvg = selectedIcon.svg
+      .replace(/currentColor/g, iconColor)
+      .replace(/stroke="[^"]*"/g, `stroke="${iconColor}"`)
+      .replace(/fill="none"/g, 'fill="none"')
+      .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
+
+    // Remove xmlns and existing width/height from nested icon SVG, then set position and size
+    const iconPixelSize = (iconSize / 100) * 24;
+    const offset = (24 - iconPixelSize) / 2;
+    const nestedSvg = iconSvg
+      .replace(/\s*xmlns="[^"]*"/, "")
+      .replace(/\s*width="[^"]*"/, "")
+      .replace(/\s*height="[^"]*"/, "")
+      .replace(/<svg/, `<svg x="${offset}" y="${offset}" width="${iconPixelSize}" height="${iconPixelSize}"`);
+
+    // Build background shape in viewBox 0 0 24 24
+    let bg = "";
+    if (!bgTransparent) {
+      switch (shape) {
+        case "square":
+          bg = `<rect width="24" height="24" fill="${bgColor}"/>`;
+          break;
+        case "rounded": {
+          const r = (cornerRadius / 100) * 12;
+          bg = `<rect width="24" height="24" rx="${r}" ry="${r}" fill="${bgColor}"/>`;
+          break;
+        }
+        case "circle":
+          bg = `<circle cx="12" cy="12" r="12" fill="${bgColor}"/>`;
+          break;
+        case "squircle": {
+          const n = 5;
+          let d = "";
+          for (let i = 0; i <= 200; i++) {
+            const t = (i / 200) * Math.PI * 2;
+            const x = 12 + 12 * Math.sign(Math.cos(t)) * Math.pow(Math.abs(Math.cos(t)), 2 / n);
+            const y = 12 + 12 * Math.sign(Math.sin(t)) * Math.pow(Math.abs(Math.sin(t)), 2 / n);
+            d += (i === 0 ? "M" : "L") + `${x.toFixed(2)},${y.toFixed(2)}`;
+          }
+          bg = `<path d="${d}Z" fill="${bgColor}"/>`;
+          break;
+        }
+        case "hexagon": {
+          let points = "";
+          for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i - Math.PI / 6;
+            points += `${(12 + 12 * Math.cos(angle)).toFixed(2)},${(12 + 12 * Math.sin(angle)).toFixed(2)} `;
+          }
+          bg = `<polygon points="${points.trim()}" fill="${bgColor}"/>`;
+          break;
+        }
+        case "shield":
+          bg = `<path d="M12,0 C18,0 24,1.2 24,3.6 L24,10.8 C24,18 18,22.8 12,24 C6,22.8 0,18 0,10.8 L0,3.6 C0,1.2 6,0 12,0Z" fill="${bgColor}"/>`;
+          break;
+      }
+    }
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">\n  ${bg}\n  ${nestedSvg}\n</svg>`;
+  }
+
+  function downloadSvg() {
+    if (!selectedIcon) return;
+    const svgMarkup = generateSvgMarkup();
+    const blob = new Blob([svgMarkup], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "favicon.svg";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copySvg() {
+    if (!selectedIcon) return;
+    const svgMarkup = generateSvgMarkup();
+    navigator.clipboard.writeText(svgMarkup);
+    copied = "svg";
+    setTimeout(() => {
+      copied = null;
+    }, 2000);
+  }
+
+  function copyDataUri() {
+    if (!selectedIcon) return;
+    const svgMarkup = generateSvgMarkup();
+    const dataUri = "data:image/svg+xml," + encodeURIComponent(svgMarkup);
+    navigator.clipboard.writeText(dataUri);
+    copied = "datauri";
+    setTimeout(() => {
+      copied = null;
+    }, 2000);
+  }
+
   function copyHtmlSnippet() {
     const html = `<link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="/favicon-192x192.png">`;
@@ -899,6 +996,13 @@
             Download ICO (16, 32, 48)
           </button>
           <button
+            onclick={downloadSvg}
+            disabled={!selectedIcon}
+            class="w-full px-4 py-2 border border-(--color-border) text-(--color-text) text-sm font-medium hover:bg-(--color-bg) transition-colors disabled:opacity-50"
+          >
+            Download SVG
+          </button>
+          <button
             onclick={downloadAll}
             disabled={!selectedIcon}
             class="w-full px-4 py-2 border border-(--color-border) text-(--color-text) text-sm font-medium hover:bg-(--color-bg) transition-colors disabled:opacity-50"
@@ -907,7 +1011,21 @@
           </button>
         </div>
 
-        <div class="flex gap-2 mt-3">
+        <div class="flex flex-wrap gap-2 mt-3">
+          <button
+            onclick={copySvg}
+            disabled={!selectedIcon}
+            class="flex-1 px-3 py-1.5 border border-(--color-border) text-(--color-text) text-xs hover:bg-(--color-bg) transition-colors disabled:opacity-50"
+          >
+            {copied === "svg" ? "Copied!" : "Copy SVG"}
+          </button>
+          <button
+            onclick={copyDataUri}
+            disabled={!selectedIcon}
+            class="flex-1 px-3 py-1.5 border border-(--color-border) text-(--color-text) text-xs hover:bg-(--color-bg) transition-colors disabled:opacity-50"
+          >
+            {copied === "datauri" ? "Copied!" : "Copy Data URI"}
+          </button>
           <button
             onclick={copyHtmlSnippet}
             class="flex-1 px-3 py-1.5 border border-(--color-border) text-(--color-text) text-xs hover:bg-(--color-bg) transition-colors"
