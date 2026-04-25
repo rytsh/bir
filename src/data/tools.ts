@@ -135,14 +135,6 @@ const rawCategories: Category[] = [
         keywords: "docx viewer, word viewer, docx reader, word document, microsoft word, docx to html, docx to markdown, document viewer, office viewer, word file, docx preview",
       },
       {
-        id: "pdf-sign",
-        name: "PDF Sign",
-        description: "E-sign PDF documents by drawing, typing, or uploading a signature image. Signatures are embedded directly into the original PDF preserving full quality. Embeds signer name, timestamp, and SHA-256 integrity hash into PDF metadata for tamper detection. Auto-verifies previously signed documents.",
-        icon: "✍️",
-        path: "/text/pdf-sign",
-        keywords: "pdf sign, pdf signature, sign pdf, pdf viewer, digital signature, draw signature, upload signature, sign document, pdf editor, e-sign, electronic signature, esignature, flatten pdf, tamper proof, integrity hash, verify signature",
-      },
-      {
         id: "subtitle-editor",
         name: "Subtitle Editor",
         description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
@@ -656,6 +648,22 @@ const rawCategories: Category[] = [
         icon: "🪄",
         path: "/graphics/background-remover",
         keywords: "background remover, remove background, bg remove, ai background removal, transparent background, image processing, portrait, modnet, transformers.js",
+        wasm: true,
+      },
+    ],
+  },
+  {
+    id: "pdf",
+    name: "PDF",
+    icon: "📄",
+    tools: [
+      {
+        id: "pdf-tools",
+        name: "PDF",
+        description: "All-in-one PDF toolkit with tabs for merge, split, organize, rotate, compress, crop, JPG/PDF conversion, HTML to PDF, image extraction, watermark, page numbers, redact, sign, OCR (Tesseract WASM), and compare. Auto-detects existing signatures and warns before destructive operations. All processing runs client-side.",
+        icon: "📄",
+        path: "/pdf",
+        keywords: "pdf, pdf tools, pdf toolkit, merge pdf, split pdf, organize pdf, rotate pdf, compress pdf, crop pdf, jpg to pdf, pdf to jpg, html to pdf, extract images, watermark pdf, page numbers, redact pdf, sign pdf, pdf signature, e-sign, ocr pdf, tesseract, compare pdf, pdf editor, pdf viewer, ilovepdf, smallpdf, pdf24, client-side, browser pdf",
         wasm: true,
       },
     ],

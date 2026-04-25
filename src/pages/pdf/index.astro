@@ -1,0 +1,17 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PdfTool from "../../components/tools/pdf/PdfTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/pdf");
+---
+
+<Layout
+  title="PDF Tools - Merge, Split, Compress, Convert, Sign and more"
+  description={tool?.description}
+  keywords={tool?.keywords}
+  currentPath="/pdf"
+>
+  <h1 slot="navbar-title">PDF Tools</h1>
+  <PdfTool client:load />
+</Layout>
