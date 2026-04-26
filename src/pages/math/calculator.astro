@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CalculatorTool from "../../components/tools/CalculatorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/math/calculator");
+---
+
+<Layout title="Calculator - Basic, Scientific, and Programmer" description={tool?.description} keywords={tool?.keywords} currentPath="/math/calculator">
+  <h1 slot="navbar-title">Calculator</h1>
+  <CalculatorTool client:load />
+</Layout>

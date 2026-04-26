@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import GeolocationSensorsTool from "../../components/tools/GeolocationSensorsTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/sensors");
+---
+
+<Layout title="Geolocation & Sensors Tester" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/sensors">
+  <h1 slot="navbar-title">Geolocation & Sensors</h1>
+  <GeolocationSensorsTool client:load />
+</Layout>

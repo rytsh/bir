@@ -144,9 +144,15 @@
   let gridData = $state<string[][]>([]);
   let gridZoom = $state(100); // Zoom percentage (50-200%)
   
-  // Computed cell size based on zoom
-  const gridCellSize = $derived(Math.round(16 * (gridZoom / 100))); // Base size 16px
-  const gridFontSize = $derived(Math.round(12 * (gridZoom / 100))); // Base font 12px
+  // Computed cell size based on zoom. Use the natural monospace aspect
+  // ratio (~0.6 width : 1.2 height for each glyph) so grid cells render
+  // characters at the same proportions as the plain text editor.
+  const gridFontSize = $derived(Math.round(14 * (gridZoom / 100))); // Base font 14px
+  const gridCellWidth = $derived(Math.max(1, Math.round(gridFontSize * 0.6)));
+  const gridCellHeight = $derived(Math.max(1, Math.round(gridFontSize * 1.2)));
+  // Kept for backward-compat where a single "cell size" is referenced
+  // (e.g. fixed-width gutters); use the height since rows are taller.
+  const gridCellSize = $derived(gridCellHeight);
   
   // Initialize grid
   function initGrid() {
@@ -972,11 +978,11 @@
           <div class="inline-block min-w-full">
             <!-- Column Numbers -->
             <div class="sticky top-0 z-10 flex bg-[#252525] border-b border-(--color-border)">
-              <div class="shrink-0 sticky left-0 bg-[#252525] z-20" style="width: 32px; height: {Math.max(20, gridCellSize)}px;"></div>
+              <div class="shrink-0 sticky left-0 bg-[#252525] z-20" style="width: 32px; height: {Math.max(20, gridCellHeight)}px;"></div>
               {#each Array(gridCols) as _, c}
                 <div 
                   class="flex items-center justify-center text-gray-500 shrink-0"
-                  style="width: {gridCellSize}px; height: {Math.max(20, gridCellSize)}px; font-size: {Math.max(8, gridFontSize * 0.7)}px;"
+                  style="width: {gridCellWidth}px; height: {Math.max(20, gridCellHeight)}px; font-size: {Math.max(8, gridFontSize * 0.7)}px;"
                 >
                   {(c + 1) % 10 === 0 ? (c + 1) : (c + 1) % 5 === 0 ? '·' : ''}
                 </div>
@@ -989,7 +995,7 @@
                 <!-- Row Number -->
                 <div 
                   class="shrink-0 flex items-center justify-end pr-1 bg-[#252525] border-r border-(--color-border) sticky left-0 z-10"
-                  style="width: 32px; height: {gridCellSize}px;"
+                  style="width: 32px; height: {gridCellHeight}px;"
                 >
                   <span class="text-gray-500" style="font-size: {Math.max(8, gridFontSize * 0.75)}px;">{r + 1}</span>
                 </div>
@@ -997,8 +1003,8 @@
                 {#each row as cell, c}
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div
-                    class="flex items-center justify-center cursor-crosshair hover:bg-[#333] border-r border-b border-[#2a2a2a] shrink-0 select-none"
-                    style="width: {gridCellSize}px; height: {gridCellSize}px; font-family: 'Courier New', Courier, monospace; font-size: {gridFontSize}px; line-height: 1;"
+                    class="flex items-center justify-center cursor-crosshair hover:bg-[#333] shrink-0 select-none"
+                    style="width: {gridCellWidth}px; height: {gridCellHeight}px; font-family: 'Courier New', Courier, monospace; font-size: {gridFontSize}px; line-height: 1.2;"
                     onmousedown={(e) => handleGridMouseDown(r, c, e)}
                     onmouseenter={(e) => handleGridMouseEnter(r, c, e)}
                     oncontextmenu={(e) => { e.preventDefault(); drawCell(r, c, true); }}

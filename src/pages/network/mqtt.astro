@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MqttClientTool from "../../components/tools/MqttClientTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/network/mqtt");
+---
+
+<Layout title="MQTT Browser Client - Connect, Publish, Subscribe over WebSocket" description={tool?.description} keywords={tool?.keywords} currentPath="/network/mqtt">
+  <h1 slot="navbar-title">MQTT Client</h1>
+  <MqttClientTool client:load />
+</Layout>

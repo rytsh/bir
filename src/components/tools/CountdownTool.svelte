@@ -328,6 +328,69 @@
     };
   });
 
+  // Wire MediaSession action handlers so the browser's native PiP overlay
+  // exposes play / pause / stop buttons that drive the timer.
+  $effect(() => {
+    if (!isPipActive) return;
+    if (typeof navigator === "undefined" || !navigator.mediaSession) return;
+
+    const ms = navigator.mediaSession;
+
+    const playHandler = () => {
+      if (!isRunning && isTimerSet && !timerFinished) handleStart();
+    };
+    const pauseHandler = () => {
+      if (isRunning) handlePause();
+    };
+    const stopHandler = () => {
+      handleReset();
+    };
+
+    try { ms.setActionHandler("play", playHandler); } catch {}
+    try { ms.setActionHandler("pause", pauseHandler); } catch {}
+    try { ms.setActionHandler("stop", stopHandler); } catch {}
+
+    return () => {
+      try { ms.setActionHandler("play", null); } catch {}
+      try { ms.setActionHandler("pause", null); } catch {}
+      try { ms.setActionHandler("stop", null); } catch {}
+      ms.metadata = null;
+    };
+  });
+
+  // Keep MediaSession's playback state and metadata in sync with the timer
+  // so the native PiP overlay shows the right play/pause icon and a label
+  // that reflects the current state ("Paused" -> Play button means resume).
+  // Also drive the underlying <video> element's play/pause — Chrome ties the
+  // PiP overlay's play/pause icon to the video's actual paused state, not
+  // just to mediaSession.playbackState.
+  $effect(() => {
+    if (!isPipActive) return;
+    if (typeof navigator === "undefined" || !navigator.mediaSession) return;
+
+    const ms = navigator.mediaSession;
+    ms.playbackState = isRunning ? "playing" : "paused";
+
+    if (pipVideo) {
+      if (isRunning && pipVideo.paused) {
+        pipVideo.play().catch(() => {});
+      } else if (!isRunning && !pipVideo.paused) {
+        pipVideo.pause();
+      }
+    }
+
+    let stateLabel: string;
+    if (timerFinished) stateLabel = "Finished";
+    else if (isRunning) stateLabel = "Running";
+    else if (remainingMs > 0) stateLabel = "Paused";
+    else stateLabel = "Ready";
+
+    ms.metadata = new MediaMetadata({
+      title: `Countdown Timer — ${stateLabel}`,
+      artist: "bir",
+    });
+  });
+
   // Broadcast timer state to extracted window
   const broadcastTimerState = () => {
     if (!broadcastChannel || !isExtracted) return;
@@ -1981,7 +2044,7 @@
             <!-- PiP Button Overlay -->
             <button
               onclick={togglePictureInPicture}
-              class="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded transition-all duration-200 opacity-0 group-hover:opacity-100 {isPipActive ? 'opacity-100 bg-green-600/70 hover:bg-green-600/90' : ''}"
+              class="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded transition-all duration-200 {isPipActive ? 'opacity-100 group-hover:opacity-0 bg-green-600/70 hover:bg-green-600/90' : 'opacity-0 group-hover:opacity-100'}"
               title={isPipActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture"}
             >
               {#if isPipActive}

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MouseTesterTool from "../../components/tools/MouseTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/mouse");
+---
+
+<Layout title="Mouse / Pointer Tester - Test Mouse Buttons, Scroll, and Polling Rate" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/mouse">
+  <h1 slot="navbar-title">Mouse / Pointer Tester</h1>
+  <MouseTesterTool client:load />
+</Layout>

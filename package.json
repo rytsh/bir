@@ -60,6 +60,7 @@
     "marked": "^17.0.3",
     "mathjs": "^15.1.1",
     "mermaid": "^11.12.3",
+    "mqtt": "^5.15.1",
     "nanoid": "^5.1.6",
     "openpgp": "^6.3.0",
     "pandoc-wasm": "^1.0.1",

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import SemanticSearchTool from "../../components/tools/SemanticSearchTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/ai/embeddings");
+---
+
+<Layout title="Local Embeddings & Semantic Search" description={tool?.description} keywords={tool?.keywords} currentPath="/ai/embeddings">
+  <h1 slot="navbar-title">Embeddings & Search</h1>
+  <SemanticSearchTool client:load />
+</Layout>

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import VibrationTesterTool from "../../components/tools/VibrationTesterTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/tester/vibration");
+---
+
+<Layout title="Vibration Tester - Test Haptic Feedback Patterns" description={tool?.description} keywords={tool?.keywords} currentPath="/tester/vibration">
+  <h1 slot="navbar-title">Vibration Tester</h1>
+  <VibrationTesterTool client:load />
+</Layout>

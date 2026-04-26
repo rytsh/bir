@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import WhisperTool from "../../components/tools/WhisperTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/ai/whisper");
+---
+
+<Layout title="Whisper Speech-to-Text - Local AI Transcription" description={tool?.description} keywords={tool?.keywords} currentPath="/ai/whisper">
+  <h1 slot="navbar-title">Whisper STT</h1>
+  <WhisperTool client:load />
+</Layout>
