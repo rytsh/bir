@@ -202,10 +202,10 @@ const rawCategories: Category[] = [
       {
         id: "cron-parser",
         name: "Cron",
-        description: "Parse and explain cron expressions with next and previous run times",
+        description: "Parse, build, and visualize cron expressions. Includes next/previous run lists, a visual builder, and a heatmap visualizer (day-of-week × hour) with optional A/B comparison of two expressions over 7 days, 30 days, or 1 year.",
         icon: "⏰",
         path: "/converter/cron",
-        keywords: "cron parser, cron expression, cron schedule, cron syntax, crontab, cron converter, cron explainer, cron next run, cron previous run, scheduled tasks",
+        keywords: "cron parser, cron expression, cron schedule, cron syntax, crontab, cron converter, cron explainer, cron next run, cron previous run, scheduled tasks, cron visualizer, cron heatmap, cron timeline, cron compare, crontab visualizer",
         wasm: true,
       },
       {
@@ -338,6 +338,14 @@ const rawCategories: Category[] = [
         keywords: "sound transfer, data over sound, audio transfer, ggwave, file transfer, ultrasonic, FSK, acoustic modem, air gap, sonic transfer, audio data",
       },
       {
+        id: "steganography",
+        name: "Steganography",
+        description: "Hide text or files inside PNG images using LSB steganography. Configurable bits per channel (1–4) and channel selection (R/G/B/A). Optional AES-GCM encryption with PBKDF2 password derivation. Includes capacity meter and pixel-difference visualization. All processing runs client-side in the browser.",
+        icon: "🫥",
+        path: "/codecs/steganography",
+        keywords: "steganography, lsb, hide message, hide image, image steganography, png steganography, secret message, covert, hidden text, aes-gcm, pbkdf2, image encryption, secret image, conceal data, hide file in image, stego",
+      },
+      {
         id: "aes",
         name: "AES Encrypt / Decrypt",
         description: "Encrypt and decrypt text using AES-256-CBC, AES-256-CTR, and AES-256-GCM. Supports password-based key derivation (PBKDF2) and raw key/IV input with Base64 and Hex output formats. All operations run client-side in the browser.",
@@ -360,6 +368,15 @@ const rawCategories: Category[] = [
     name: "Generators",
     icon: "⚡",
     tools: [
+      {
+        id: "argon2-scrypt",
+        name: "Argon2 / Scrypt",
+        description: "Hash passwords with modern memory-hard KDFs: Argon2id, Argon2i, Argon2d, and scrypt. Configurable parameters with Light / OWASP 2023 / Strong profiles, salt input (random / utf-8 / hex), encoded / hex / base64 output, timing display, and Argon2 verification of existing $argon2…$ encoded hashes. All computation runs in WebAssembly in your browser.",
+        icon: "🔐",
+        path: "/generators/argon2",
+        keywords: "argon2, argon2id, argon2i, argon2d, scrypt, password hash, kdf, key derivation, memory hard, owasp, password hashing, hash-wasm, secure password, salt, pbkdf, argon2 verify",
+        wasm: true,
+      },
       {
         id: "barcode-generator",
         name: "Barcode",
@@ -531,6 +548,14 @@ const rawCategories: Category[] = [
         api: true,
       },
       {
+        id: "websocket-tester",
+        name: "WebSocket",
+        description: "Connect to any ws:// or wss:// endpoint, send text or binary frames (hex / base64), see live frame log with direction, size, and timing. Includes auto-reconnect, ping/echo latency, subprotocol support, JSON pretty-print, log export, and saved connection presets.",
+        icon: "🔌",
+        path: "/network/websocket",
+        keywords: "websocket, ws, wss, websocket client, websocket tester, ws debugger, websocket browser, real-time, full-duplex, frame, binary, text frame, ping pong, subprotocol, websocket echo, websocket inspector",
+      },
+      {
         id: "webrtc-tool",
         name: "WebRTC",
         description: "Peer-to-peer communication tool for text chat, video calls, and file transfer using WebRTC. Connect devices via link sharing or manual paste, no server required.",
@@ -545,6 +570,14 @@ const rawCategories: Category[] = [
         icon: "🛡️",
         path: "/network/cert-generator",
         keywords: "certificate generator, ssl certificate, tls certificate, ca certificate, intermediate ca, root ca, x509, pem, pkcs12, pfx, san, dns, ip, self-signed, openssl, pki, cert chain",
+      },
+      {
+        id: "http-client",
+        name: "HTTP Client",
+        description: "Postman-style HTTP request client. Send GET / POST / PUT / PATCH / DELETE / HEAD / OPTIONS with custom headers, query params, body (JSON / form / urlencoded / raw / binary), and authentication (Basic, Bearer, API key). View response status, time, size, headers, and JSON-formatted body. Save requests in named collections (IndexedDB), import/export collections as JSON, and round-trip cURL commands.",
+        icon: "📡",
+        path: "/network/http-client",
+        keywords: "http client, rest client, api tester, postman, insomnia, http request, fetch tester, rest api, curl converter, curl import, http debugger, api client, get post put delete, basic auth, bearer token, api key, response headers, request body, indexeddb collections",
       },
       {
         id: "http-status",
@@ -618,6 +651,22 @@ const rawCategories: Category[] = [
         keywords: "dice roller, dice, d20, d6, d4, d8, d10, d12, d100, dnd, dungeons dragons, board game, rpg, tabletop, roll dice, random dice, fate dice, fudge dice",
       },
       {
+        id: "meme-generator",
+        name: "Meme Generator",
+        description: "Create memes with built-in placeholder templates (Drake, Stonks, Two Buttons, Expanding Brain, Thinking, blank canvases) or upload your own image / paste an image URL. Add unlimited draggable text boxes with classic Impact white-on-black-outline styling, custom font, size, fill color, outline color and width, alignment, bold/italic/uppercase. Download as PNG or copy to clipboard. All processing runs in your browser.",
+        icon: "🖼️",
+        path: "/party/meme-generator",
+        keywords: "meme generator, meme maker, image macro, top text bottom text, drake meme, stonks, two buttons, expanding brain, thinking meme, image overlay, caption image, impact font, meme creator, meme editor, custom meme",
+      },
+      {
+        id: "team-splitter",
+        name: "Team Splitter",
+        description: "Split a list of participants into balanced random teams. Supports fixed team count or fixed team size, weight-based balancing, keep-together / keep-apart constraints, lock-and-reshuffle, seed-based reproducibility, team-name generator, and export to text / CSV / JSON",
+        icon: "👥",
+        path: "/party/team-splitter",
+        keywords: "team splitter, random teams, team generator, team picker, group generator, random groups, balanced teams, team maker, split teams, sports teams, classroom groups, project groups, lottery teams, fair teams",
+      },
+      {
         id: "tournament-bracket",
         name: "Tournament Bracket",
         description: "Generate single-elimination and round-robin tournament brackets from a list of participants. Track scores, pick winners, view live standings with W/L/points for round-robin format.",
@@ -639,6 +688,14 @@ const rawCategories: Category[] = [
         icon: "📈",
         path: "/math/graph-plotter",
         keywords: "graph plotter, function plotter, math graph, plot function, graphing calculator, desmos, sine, cosine, parabola, equation plotter, math visualization, coordinate plane, derivative",
+      },
+      {
+        id: "matrix-calculator",
+        name: "Matrix",
+        description: "Matrix calculator with addition, subtraction, multiplication, scalar multiply, transpose, inverse, determinant, trace, rank, RREF (with row-operation steps), LU decomposition, QR decomposition, eigenvalues + eigenvectors, and Ax=b solver. Cell input accepts expressions like 1/3 or sqrt(2). Exports to LaTeX and CSV.",
+        icon: "🧊",
+        path: "/math/matrix",
+        keywords: "matrix calculator, matrix multiplication, matrix inverse, determinant, trace, rank, rref, gauss jordan, lu decomposition, qr decomposition, eigenvalue, eigenvector, linear algebra, ax=b, solve linear system, latex matrix, fraction matrix",
       },
       {
         id: "calculator",

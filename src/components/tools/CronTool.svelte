@@ -18,7 +18,20 @@
   });
 
   // Tab state
-  let activeTab = $state<"parser" | "builder">("parser");
+  let activeTab = $state<"parser" | "builder" | "visualizer">("parser");
+
+  // Visualizer state
+  let visualizerRange = $state<"week" | "month" | "year">("week");
+  let visualizerCompareExpr = $state("");
+  let visualizerShowCompare = $state(false);
+  let visualizerNextCount = $state(20);
+
+  function compareCellState(a: number, b: number): "both" | "a" | "b" | "none" {
+    if (a > 0 && b > 0) return "both";
+    if (a > 0) return "a";
+    if (b > 0) return "b";
+    return "none";
+  }
 
   // Cron expression input
   let cronExpression = $state("");
@@ -584,6 +597,94 @@
     return getPrevRuns(cronExpression, numPrevRuns, referenceTime);
   });
 
+  // ============================================================
+  // Visualizer derivations (must come after parsed)
+  // Pure-JS heatmap: O(days × |hours|) cell accumulation. No WASM
+  // calls in the hot path — prevents freezes on sparse expressions.
+  // ============================================================
+  const emptyGrid = (): number[][] =>
+    Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  function buildHeatmapFromParsed(p: ParsedCron, days: number, start: Date): number[][] {
+    const grid = emptyGrid();
+    const monthsSet = new Set(p.months);
+    const domSet = new Set(p.daysOfMonth);
+    const dowSet = new Set(p.daysOfWeek);
+    const hours = p.hours;
+    const minuteCount = p.minutes.length;
+
+    // Standard Vixie-cron OR rule: if either dom or dow is restricted (not "*"),
+    // a day matches when EITHER matches. If both are "*", every day matches.
+    const domRestricted = p.fields[2] !== "*";
+    const dowRestricted = p.fields[4] !== "*";
+
+    // Iterate at most 365 days × 24 hours = 8760 cells.
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    for (let d = 0; d < days; d++) {
+      const cur = new Date(day);
+      cur.setDate(cur.getDate() + d);
+      const month = cur.getMonth() + 1;
+      if (!monthsSet.has(month)) continue;
+
+      const dom = cur.getDate();
+      const dow = cur.getDay();
+      const domMatch = domSet.has(dom);
+      const dowMatch = dowSet.has(dow);
+      let dayMatches: boolean;
+      if (domRestricted && dowRestricted) dayMatches = domMatch || dowMatch;
+      else if (domRestricted) dayMatches = domMatch;
+      else if (dowRestricted) dayMatches = dowMatch;
+      else dayMatches = true;
+      if (!dayMatches) continue;
+
+      const row = grid[dow];
+      for (let i = 0; i < hours.length; i++) {
+        row[hours[i]] += minuteCount;
+      }
+    }
+    return grid;
+  }
+
+  // Debounce the compare expression to keep typing responsive
+  let visualizerCompareDebounced = $state("");
+  let visualizerCompareTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const v = visualizerCompareExpr;
+    if (visualizerCompareTimer) clearTimeout(visualizerCompareTimer);
+    visualizerCompareTimer = setTimeout(() => {
+      visualizerCompareDebounced = v;
+    }, 250);
+    return () => {
+      if (visualizerCompareTimer) clearTimeout(visualizerCompareTimer);
+    };
+  });
+
+  const visualizerDays = $derived(
+    visualizerRange === "week" ? 7 : visualizerRange === "month" ? 30 : 365,
+  );
+
+  const heatmapA = $derived.by(() => {
+    if (!parsed) return emptyGrid();
+    return buildHeatmapFromParsed(parsed, visualizerDays, referenceTime);
+  });
+
+  const heatmapB = $derived.by(() => {
+    if (!visualizerShowCompare || !visualizerCompareDebounced.trim()) return emptyGrid();
+    const test = parseCron(visualizerCompareDebounced);
+    if (!test) return emptyGrid();
+    return buildHeatmapFromParsed(test, visualizerDays, referenceTime);
+  });
+
+  const heatmapMaxA = $derived(Math.max(1, ...heatmapA.flat()));
+  const heatmapMaxB = $derived(Math.max(1, ...heatmapB.flat()));
+
+  // Next runs uses WASM but is cheap (typically ≤ 200 runs requested).
+  const visualizerNextRuns = $derived.by(() => {
+    if (!parsed || !wasmReady) return [];
+    const count = Math.max(1, Math.min(200, visualizerNextCount || 20));
+    return getNextRuns(cronExpression, count, referenceTime);
+  });
+
   // Handle preset selection
   function handlePreset(value: string) {
     cronExpression = value;
@@ -639,6 +740,14 @@
         : 'border-transparent text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       Builder
+    </button>
+    <button
+      onclick={() => { activeTab = "visualizer"; }}
+      class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'visualizer'
+        ? 'border-(--color-accent) text-(--color-text)'
+        : 'border-transparent text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      Visualizer
     </button>
   </div>
 
@@ -966,6 +1075,155 @@
         {/if}
       </div>
     </div>
+  {:else if activeTab === "visualizer"}
+
+  <!-- ============ VISUALIZER ============ -->
+  <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border)">
+    <div class="flex justify-between items-center mb-3">
+      <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">Cron Expression</h2>
+      <div class="flex gap-3">
+        <button onclick={handleCopyExpression} class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors">
+          {copiedExpression ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+    <input
+      type="text"
+      bind:value={cronExpression}
+      placeholder="* * * * *"
+      class="w-full px-4 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-lg focus:border-(--color-text-light) outline-none"
+    />
+    {#if description}
+      <p class="text-(--color-text) text-sm mt-2">{description}</p>
+    {/if}
+  </div>
+
+  {#if error}
+    <div class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">{error}</div>
+  {/if}
+
+  <!-- Range + compare controls -->
+  <div class="mb-4 p-3 bg-(--color-bg-alt) border border-(--color-border) flex flex-wrap gap-3 items-center">
+    <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Range:</span>
+    <div class="flex gap-1">
+      {#each [["week", "7 days"], ["month", "30 days"], ["year", "1 year"]] as [val, label]}
+        <button
+          onclick={() => { visualizerRange = val as "week" | "month" | "year"; }}
+          class="px-3 py-1 text-xs border transition-colors {visualizerRange === val
+            ? 'bg-(--color-accent) text-(--color-btn-text) border-(--color-accent)'
+            : 'bg-(--color-bg) border-(--color-border) text-(--color-text-muted) hover:text-(--color-text)'}"
+        >
+          {label}
+        </button>
+      {/each}
+    </div>
+    <label class="flex items-center gap-1.5 text-xs text-(--color-text-muted) cursor-pointer ml-2">
+      <input type="checkbox" bind:checked={visualizerShowCompare} class="cursor-pointer" />
+      Compare with
+    </label>
+    {#if visualizerShowCompare}
+      <input
+        type="text"
+        bind:value={visualizerCompareExpr}
+        placeholder="another cron expression"
+        class="flex-1 min-w-[180px] px-2 py-1 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
+      />
+    {/if}
+    <label class="flex items-center gap-1.5 text-xs text-(--color-text-muted) ml-auto">
+      Timeline:
+      <input
+        type="number"
+        min="1"
+        max="200"
+        bind:value={visualizerNextCount}
+        class="w-16 px-2 py-1 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-xs font-mono focus:border-(--color-text-light) outline-none"
+      />
+    </label>
+  </div>
+
+  <!-- Heatmap -->
+  {#if parsed}
+    <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border) overflow-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">Heatmap (day of week × hour)</h2>
+        <span class="text-xs text-(--color-text-muted)">
+          {#if visualizerShowCompare && visualizerCompareExpr.trim()}
+            <span class="inline-block w-3 h-3 align-middle mr-1" style="background: rgba(59,130,246,0.7);"></span> A only
+            <span class="inline-block w-3 h-3 align-middle mx-1" style="background: rgba(244,63,94,0.7);"></span> B only
+            <span class="inline-block w-3 h-3 align-middle mx-1" style="background: rgba(168,85,247,0.85);"></span> Both
+          {:else}
+            Cell darkness = run frequency
+          {/if}
+        </span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="border-collapse">
+          <thead>
+            <tr>
+              <th class="w-12"></th>
+              {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                <th class="text-[10px] font-mono text-(--color-text-muted) px-1 py-0.5 text-center w-7">{h}</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each shortDayNames as dayName, di}
+              <tr>
+                <td class="text-xs font-medium text-(--color-text-muted) pr-2 text-right">{dayName}</td>
+                {#each Array.from({ length: 24 }, (_, i) => i) as h}
+                  {@const a = heatmapA[di][h]}
+                  {@const b = heatmapB[di][h]}
+                  {@const state = compareCellState(a, b)}
+                  {@const intensityA = a > 0 ? 0.25 + 0.75 * Math.min(1, a / heatmapMaxA) : 0}
+                  {@const intensityB = b > 0 ? 0.25 + 0.75 * Math.min(1, b / heatmapMaxB) : 0}
+                  <td
+                    class="border border-(--color-border) p-0"
+                    style="width: 28px; height: 22px;{visualizerShowCompare && visualizerCompareExpr.trim()
+                      ? state === 'both'
+                        ? ` background: rgba(168,85,247,${(intensityA + intensityB) / 2});`
+                        : state === 'a'
+                          ? ` background: rgba(59,130,246,${intensityA});`
+                          : state === 'b'
+                            ? ` background: rgba(244,63,94,${intensityB});`
+                            : ''
+                      : a > 0
+                        ? ` background: rgba(34,197,94,${intensityA});`
+                        : ''}"
+                    title="{dayName} {h}:00 — A: {a}{visualizerShowCompare ? ` · B: ${b}` : ''}"
+                  ></td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Timeline strip -->
+    <div class="flex-1 flex flex-col p-4 bg-(--color-bg-alt) border border-(--color-border) min-h-0">
+      <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">
+        Next {visualizerNextRuns.length} runs
+      </h2>
+      <div class="flex-1 overflow-auto border border-(--color-border)">
+        {#if visualizerNextRuns.length === 0}
+          <div class="p-3 text-sm text-(--color-text-muted)">No upcoming runs found.</div>
+        {:else}
+          <div class="divide-y divide-(--color-border)">
+            {#each visualizerNextRuns as run, i}
+              <div class="flex justify-between items-center px-3 py-1.5 odd:bg-(--color-bg-alt) even:bg-(--color-bg)">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs font-mono text-(--color-text-light) w-8 text-right">#{i + 1}</span>
+                  <span class="text-sm font-mono text-(--color-text)">{formatDate(run, effectiveTimezone)}</span>
+                </div>
+                <span class="text-xs text-(--color-text-muted)">{formatRelative(run, referenceTime)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
   {:else}
 
   <!-- ============ PARSER ============ -->
