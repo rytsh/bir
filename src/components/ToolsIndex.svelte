@@ -1,21 +1,29 @@
 <script lang="ts">
-  import { categories } from "../data/tools";
+  import { categories, type Tool as BaseTool } from "../data/tools";
+  import FavoriteButton from "./FavoriteButton.svelte";
+  import {
+    FAVORITES_CHANGED_EVENT,
+    FAVORITES_STORAGE_KEY,
+    getFavoriteIds,
+  } from "../lib/favorites";
 
-  type Tool = {
-    name: string;
-    description: string;
-    path: string;
-    icon: string;
+  type Tool = BaseTool & {
     category: string;
-    wasm?: boolean;
-    api?: boolean;
   };
+
+  interface ToolGroup {
+    name: string;
+    tools: Tool[];
+  }
+
+  const FAVORITES_CATEGORY = "Favorites";
 
   let searchQuery = $state("");
   let selectedCategory = $state("");
+  let favoriteIds = $state<string[]>([]);
 
   // Get all unique categories
-  const allCategories = categories.map((cat) => cat.name);
+  const allCategories = [FAVORITES_CATEGORY, ...categories.map((cat) => cat.name)];
   const allTools: Tool[] = categories.flatMap((cat) =>
     cat.tools.map((tool) => ({ ...tool, category: cat.name })),
   );
@@ -29,7 +37,9 @@
     let tools = allTools;
 
     // Filter by category if selected
-    if (selectedCategory) {
+    if (selectedCategory === FAVORITES_CATEGORY) {
+      tools = tools.filter((tool) => isFavorite(tool));
+    } else if (selectedCategory) {
       tools = tools.filter((tool) => tool.category === selectedCategory);
     }
 
@@ -48,7 +58,7 @@
     groupedTools = getGroupedTools(tools);
   });
 
-  function getGroupedTools(tools: Tool[]) {
+  function getGroupedTools(tools: Tool[]): ToolGroup[] {
     const groups: Record<string, Tool[]> = {};
 
     tools.forEach((tool: Tool) => {
@@ -58,11 +68,56 @@
       groups[tool.category].push(tool);
     });
 
-    return Object.entries(groups).map(([categoryName, tools]) => ({
+    const categoryGroups = Object.entries(groups).map(([categoryName, tools]) => ({
       name: categoryName,
       tools: tools as Tool[],
     }));
+
+    if (selectedCategory === FAVORITES_CATEGORY) {
+      return tools.length > 0 ? [{ name: FAVORITES_CATEGORY, tools }] : [];
+    }
+
+    if (!selectedCategory) {
+      const favoriteTools = tools.filter((tool) => isFavorite(tool));
+
+      if (favoriteTools.length > 0) {
+        return [{ name: FAVORITES_CATEGORY, tools: favoriteTools }, ...categoryGroups];
+      }
+    }
+
+    return categoryGroups;
   }
+
+  function isFavorite(tool: Tool): boolean {
+    return favoriteIds.includes(tool.id);
+  }
+
+  function loadFavorites(): void {
+    favoriteIds = getFavoriteIds();
+  }
+
+  function handleFavoritesChanged(event: Event): void {
+    const detail = (event as CustomEvent<{ favoriteIds?: string[] }>).detail;
+    favoriteIds = detail?.favoriteIds ?? getFavoriteIds();
+  }
+
+  function handleStorage(event: StorageEvent): void {
+    if (event.key === FAVORITES_STORAGE_KEY) {
+      loadFavorites();
+    }
+  }
+
+  $effect(() => {
+    loadFavorites();
+
+    window.addEventListener(FAVORITES_CHANGED_EVENT, handleFavoritesChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener(FAVORITES_CHANGED_EVENT, handleFavoritesChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  });
 
   const clearFilters = () => {
     searchQuery = "";
@@ -152,8 +207,12 @@
 
     <!-- Results Summary -->
     <div class="mt-3 text-xs text-(--color-text-light)">
-      {#if filteredTools.length === 0}
-        No tools found matching your search.
+      {#if selectedCategory === FAVORITES_CATEGORY && filteredTools.length === 0}
+        {favoriteIds.length === 0
+          ? "No favorite tools yet. Use the star button to pin tools here."
+          : "No favorite tools found matching your filters."}
+      {:else if filteredTools.length === 0}
+        No tools found matching your filters.
       {:else if filteredTools.length === allTools.length}
         Showing all {allTools.length} tools
       {:else}
@@ -174,45 +233,51 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {#each category.tools as tool}
-            <a
-              href={tool.path}
-              class="group block p-3 bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
+            <article
+              class="relative bg-(--color-bg-alt) border border-(--color-border) hover:border-(--color-text-light) active:bg-(--color-border) transition-colors"
             >
-              <div class="flex items-center gap-3">
-                <span class="text-lg">{tool.icon}</span>
-                <div class="flex-1 min-w-0">
-                  <h3
-                    class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors truncate"
-                  >
-                    {tool.name}
-                  </h3>
-                  <p class="text-xs text-(--color-text-light) mt-0.5 truncate">
-                    {tool.description}
-                  </p>
+              <a href={tool.path} class="group block p-3 pr-11">
+                <div class="flex items-center gap-3">
+                  <span class="text-lg">{tool.icon}</span>
+                  <div class="flex-1 min-w-0">
+                    <h3
+                      class="text-sm font-medium text-(--color-text) group-hover:text-(--color-text-muted) transition-colors truncate"
+                    >
+                      {tool.name}
+                    </h3>
+                    <p class="text-xs text-(--color-text-light) mt-0.5 truncate">
+                      {tool.description}
+                    </p>
+                  </div>
+                  {#if tool.wasm}
+                    <span class="inline-block ml-auto" title="WebAssembly powered">
+                      <svg class="w-4 h-4" viewBox="0 0 612 612" fill="currentColor">
+                        <path d="m376 0c0 1.08 0 2.16 0 3.3 0 38.76-31.42 70.17-70.17 70.17-38.76 0-70.17-31.42-70.17-70.17l0 0c0-1.14 0-2.22 0-3.3L0 0l0 612 612 0 0-612z" fill="#654ff0"/>
+                        <path d="m142.16 329.81 40.56 0 27.69 147.47 0.5 0 33.28-147.47 37.94 0 30.06 149.28 0.59 0 31.56-149.28 39.78 0-51.69 216.69-40.25 0-29.81-147.47-0.78 0-31.91 147.47-41 0zm287.69 0 63.94 0 63.5 216.69-41.84 0-13.81-48.22-72.84 0-10.66 48.22-40.75 0zm24.34 53.41-17.69 79.5 55.06 0-20.31-79.5z" fill="#fff"/>
+                      </svg>
+                    </span>
+                  {:else if tool.api}
+                    <span class="inline-block ml-auto" title="Backend API powered">
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="#00ADD8"/>
+                      </svg>
+                    </span>
+                  {/if}
                 </div>
-                {#if tool.wasm}
-                  <span class="inline-block ml-auto" title="WebAssembly powered">
-                    <svg class="w-4 h-4" viewBox="0 0 612 612" fill="currentColor">
-                      <path d="m376 0c0 1.08 0 2.16 0 3.3 0 38.76-31.42 70.17-70.17 70.17-38.76 0-70.17-31.42-70.17-70.17l0 0c0-1.14 0-2.22 0-3.3L0 0l0 612 612 0 0-612z" fill="#654ff0"/>
-                      <path d="m142.16 329.81 40.56 0 27.69 147.47 0.5 0 33.28-147.47 37.94 0 30.06 149.28 0.59 0 31.56-149.28 39.78 0-51.69 216.69-40.25 0-29.81-147.47-0.78 0-31.91 147.47-41 0zm287.69 0 63.94 0 63.5 216.69-41.84 0-13.81-48.22-72.84 0-10.66 48.22-40.75 0zm24.34 53.41-17.69 79.5 55.06 0-20.31-79.5z" fill="#fff"/>
-                    </svg>
-                  </span>
-                {:else if tool.api}
-                  <span class="inline-block ml-auto" title="Backend API powered">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="#00ADD8"/>
-                    </svg>
-                  </span>
-                {/if}
-              </div>
-            </a>
+              </a>
+              <FavoriteButton tool={tool} variant="card" />
+            </article>
           {/each}
         </div>
       </section>
     {/each}
   {:else}
     <div class="text-center py-12 text-(--color-text-light)">
-      <p>No tools available yet.</p>
+      <p>
+        {selectedCategory === FAVORITES_CATEGORY && favoriteIds.length === 0
+          ? "No favorite tools yet."
+          : "No tools found matching your filters."}
+      </p>
     </div>
   {/if}
 </div>
