@@ -137,10 +137,10 @@ const rawCategories: Category[] = [
       {
         id: "subtitle-editor",
         name: "Subtitle Editor",
-        description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
+        description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with synced video preview, visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",
         icon: "🎬",
         path: "/text/subtitle",
-        keywords: "subtitle editor, srt editor, vtt editor, ass editor, subtitle converter, subtitle sync, time shift, subtitle format, caption editor, closed captions, webvtt, subrip",
+        keywords: "subtitle editor, srt editor, vtt editor, ass editor, subtitle converter, subtitle sync, video preview, live subtitles, time shift, subtitle format, caption editor, closed captions, webvtt, subrip",
       },
       {
         id: "code-screenshot",

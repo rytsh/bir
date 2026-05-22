@@ -150,27 +150,7 @@
   const previewStyle = $derived(getPreviewStyle());
 
   const copyAnsiCode = () => {
-    const codes: string[] = [];
-    if (bold) codes.push("1");
-    if (dim) codes.push("2");
-    if (italic) codes.push("3");
-    if (underline) codes.push("4");
-    if (blink) codes.push("5");
-    if (reverse) codes.push("7");
-    if (hidden) codes.push("8");
-    if (strikethrough) codes.push("9");
-    if (fgColor < 8) {
-      codes.push((30 + fgColor).toString());
-    } else {
-      codes.push((90 + (fgColor - 8)).toString());
-    }
-    if (bgColor < 8) {
-      codes.push((40 + bgColor).toString());
-    } else {
-      codes.push((100 + (bgColor - 8)).toString());
-    }
-    const realCode = `\x1b[${codes.join(";")}m${previewText}\x1b[0m`;
-    navigator.clipboard.writeText(realCode);
+    navigator.clipboard.writeText(ansiCode);
     copiedAnsi = true;
     setTimeout(() => {
       copiedAnsi = false;

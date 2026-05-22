@@ -6,7 +6,7 @@ import { getToolByPath } from "../../data/tools";
 const tool = getToolByPath("/ai/translate");
 ---
 
-<Layout title={tool?.name || "Translate"} description={tool?.description || ""}>
+<Layout title={tool?.name || "Translate"} description={tool?.description || ""} currentPath="/ai/translate">
     <h1 slot="navbar-title">Translate</h1>
     <TranslateTool client:only="svelte" />
 </Layout>

@@ -50,6 +50,13 @@
     minGapMs: 100,
   });
 
+  // Video preview state
+  let videoUrl = $state<string | null>(null);
+  let videoName = $state("");
+  let videoElement = $state<HTMLVideoElement | null>(null);
+  let currentTimeMs = $state(0);
+  let videoDurationMs = $state(0);
+
   // Timeline state
   let timelineZoom = $state(0.5);
   let timelineScroll = $state(0);
@@ -59,16 +66,19 @@
   let dragStartX = $state(0);
   let dragStartTime = $state(0);
 
-  // File input ref
+  // File input refs
   let fileInput = $state<HTMLInputElement | null>(null);
+  let videoInput = $state<HTMLInputElement | null>(null);
   
   // Track if initial load from localStorage is done (not reactive)
   let initialLoadDone = false;
 
   // Derived values
-  let totalDuration = $derived(
+  let subtitleDuration = $derived(
     subtitles.length > 0 ? Math.max(...subtitles.map((s) => s.endTime)) : 0
   );
+
+  let totalDuration = $derived(Math.max(subtitleDuration, videoDurationMs));
 
   let overlaps = $derived(findOverlaps());
 
@@ -76,9 +86,15 @@
     subtitles.find((s) => s.id === selectedId) ?? null
   );
 
+  let activeSubtitle = $derived(
+    [...subtitles]
+      .sort((a, b) => a.startTime - b.startTime)
+      .find((s) => currentTimeMs >= s.startTime && currentTimeMs < s.endTime) ?? null
+  );
+
   let stats = $derived({
     count: subtitles.length,
-    duration: totalDuration,
+    duration: subtitleDuration,
     overlaps: overlaps.length,
     warnings: subtitles.filter((s) => {
       const lines = s.text.split("\n");
@@ -123,6 +139,15 @@
         localStorage.setItem("subtitle-editor-data", JSON.stringify(data));
       }
     });
+  });
+
+  // Release local video object URLs when replaced or when the component unmounts.
+  $effect(() => {
+    if (!videoUrl) return;
+
+    return () => {
+      URL.revokeObjectURL(videoUrl);
+    };
   });
 
   // Keyboard shortcuts
@@ -273,6 +298,32 @@
     };
     subtitles = [...subtitles, newSub];
     selectedId = newSub.id;
+  }
+
+  function addSubtitleAtCurrentTime() {
+    const startTime = currentTimeMs;
+    const nextSub = [...subtitles]
+      .sort((a, b) => a.startTime - b.startTime)
+      .find((s) => s.startTime > startTime);
+    let endTime = startTime + 3000;
+
+    if (nextSub) {
+      endTime = Math.min(
+        endTime,
+        Math.max(startTime + 100, nextSub.startTime - settings.minGapMs)
+      );
+    }
+
+    const newSub: Subtitle = {
+      id: nextId(),
+      startTime,
+      endTime,
+      text: "",
+    };
+
+    subtitles = [...subtitles, newSub].sort((a, b) => a.startTime - b.startTime);
+    selectedId = newSub.id;
+    activeTab = "editor";
   }
 
   // Delete subtitle
@@ -780,6 +831,69 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
     localStorage.removeItem("subtitle-editor-data");
   }
 
+  // ==================== VIDEO PREVIEW ====================
+
+  function handleVideoImport(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    videoUrl = URL.createObjectURL(file);
+    videoName = file.name;
+    currentTimeMs = 0;
+    videoDurationMs = 0;
+
+    target.value = "";
+  }
+
+  function clearVideo() {
+    videoUrl = null;
+    videoName = "";
+    currentTimeMs = 0;
+    videoDurationMs = 0;
+  }
+
+  function handleVideoLoadedMetadata() {
+    if (!videoElement || !Number.isFinite(videoElement.duration)) {
+      videoDurationMs = 0;
+      return;
+    }
+
+    videoDurationMs = Math.round(videoElement.duration * 1000);
+  }
+
+  function handleVideoTimeUpdate() {
+    if (!videoElement) return;
+    currentTimeMs = Math.round(videoElement.currentTime * 1000);
+  }
+
+  function seekVideoTo(ms: number) {
+    const nextTime = Math.max(0, ms);
+    currentTimeMs = nextTime;
+
+    if (videoElement) {
+      videoElement.currentTime = nextTime / 1000;
+    }
+  }
+
+  function setSelectedStartToCurrentTime() {
+    if (!selectedSubtitle) return;
+
+    updateSubtitle(selectedSubtitle.id, {
+      startTime: Math.max(0, Math.min(currentTimeMs, selectedSubtitle.endTime - 100)),
+    });
+  }
+
+  function setSelectedEndToCurrentTime() {
+    if (!selectedSubtitle) return;
+
+    updateSubtitle(selectedSubtitle.id, {
+      endTime: Math.max(currentTimeMs, selectedSubtitle.startTime + 100),
+    });
+  }
+
   // ==================== TIMELINE ====================
 
   // Calculate pixel position from time
@@ -864,7 +978,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Edit and convert subtitle files (SRT, WebVTT, ASS) with visual timeline, time sync, and format conversion.
+      Edit and convert subtitle files (SRT, WebVTT, ASS) with a synced video preview, visual timeline, time sync, and format conversion.
     </p>
   </header>
 
@@ -874,6 +988,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
     accept=".srt,.vtt,.ass,.ssa,.sub,text/plain,text/vtt,application/x-subrip"
     onchange={handleFileImport}
     bind:this={fileInput}
+    class="hidden"
+  />
+  <input
+    type="file"
+    accept="video/*"
+    onchange={handleVideoImport}
+    bind:this={videoInput}
     class="hidden"
   />
 
@@ -905,6 +1026,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
       class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
     >
       Import
+    </button>
+
+    <!-- Video preview -->
+    <button
+      onclick={() => videoInput?.click()}
+      class="px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) hover:bg-(--color-border) transition-colors"
+    >
+      {videoUrl ? "Change Video" : "Load Video"}
     </button>
 
     <!-- Export dropdown -->
@@ -987,6 +1116,78 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
     </button>
   </div>
 
+  {#if videoUrl}
+    <section class="mb-4 border border-(--color-border) bg-(--color-bg-alt) p-3 flex flex-col gap-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">
+            Video Preview
+          </div>
+          <div class="text-sm text-(--color-text-muted) truncate" title={videoName}>
+            {videoName}
+          </div>
+        </div>
+        <div class="text-xs font-mono text-(--color-text-muted)">
+          {formatTime(currentTimeMs)}{videoDurationMs > 0 ? ` / ${formatTime(videoDurationMs)}` : ""}
+        </div>
+        {#if activeSubtitle}
+          <button
+            onclick={() => activeSubtitle && (selectedId = activeSubtitle.id)}
+            class="px-2 py-1 text-xs border border-(--color-accent) text-(--color-accent) hover:bg-(--color-accent)/10 transition-colors"
+          >
+            Edit live #{activeSubtitle.id}
+          </button>
+        {/if}
+        <button
+          onclick={addSubtitleAtCurrentTime}
+          class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors"
+        >
+          + Add here
+        </button>
+        <button
+          onclick={setSelectedStartToCurrentTime}
+          disabled={!selectedSubtitle}
+          class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors disabled:opacity-50"
+        >
+          Set start
+        </button>
+        <button
+          onclick={setSelectedEndToCurrentTime}
+          disabled={!selectedSubtitle}
+          class="px-2 py-1 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors disabled:opacity-50"
+        >
+          Set end
+        </button>
+        <button
+          onclick={clearVideo}
+          class="px-2 py-1 text-xs border border-(--color-border) text-red-500 hover:bg-red-500/10 transition-colors"
+        >
+          Remove
+        </button>
+      </div>
+
+      <div class="relative bg-black overflow-hidden">
+        <video
+          bind:this={videoElement}
+          src={videoUrl}
+          controls
+          playsinline
+          onloadedmetadata={handleVideoLoadedMetadata}
+          ontimeupdate={handleVideoTimeUpdate}
+          onseeked={handleVideoTimeUpdate}
+          class="w-full max-h-[45vh] bg-black"
+        ></video>
+        <div class="absolute inset-x-4 bottom-8 flex justify-center pointer-events-none">
+          {#if activeSubtitle}
+            <div class="max-w-[90%] whitespace-pre-wrap text-center text-white text-lg md:text-2xl font-semibold leading-snug px-4 py-2 bg-black/60 rounded-sm" style="text-shadow: 0 2px 6px rgba(0,0,0,0.95);">
+              {activeSubtitle.text || "(empty subtitle)"}
+            </div>
+          {/if}
+        </div>
+      </div>
+    </section>
+  {/if}
+
   <!-- Main Content -->
   <div class="flex-1 flex flex-col min-h-0 gap-4">
     {#if activeTab === "editor"}
@@ -1006,6 +1207,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
               <div class="divide-y divide-(--color-border)">
                 {#each [...subtitles].sort((a, b) => a.startTime - b.startTime) as sub (sub.id)}
                   {@const isOverlap = overlaps.includes(sub.id)}
+                  {@const isLive = activeSubtitle?.id === sub.id}
                   {@const hasWarning = hasCharWarning(sub)}
                   {@const charInfo = getCharInfo(sub)}
                   <div
@@ -1015,7 +1217,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
                     tabindex="0"
                     class="w-full text-left p-3 hover:bg-(--color-bg) transition-colors cursor-pointer {selectedId === sub.id
                       ? 'bg-(--color-bg) ring-2 ring-inset ring-(--color-accent)'
-                      : ''} {isOverlap ? 'border-l-4 border-l-orange-500' : ''}"
+                      : ''} {isLive
+                      ? 'border-l-4 border-l-(--color-accent)'
+                      : isOverlap
+                        ? 'border-l-4 border-l-orange-500'
+                        : ''}"
                   >
                     <div class="flex items-start gap-3">
                       <span class="text-xs font-mono text-(--color-text-muted) w-6 shrink-0">
@@ -1027,6 +1233,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
                           <span class="text-(--color-text-muted)">→</span>
                           <span>{formatTime(sub.endTime)}</span>
                           <span class="text-(--color-text-muted)">({formatDuration(sub.endTime - sub.startTime)})</span>
+                          {#if isLive}
+                            <span class="px-1.5 py-0.5 text-[10px] uppercase tracking-wider border border-(--color-accent) text-(--color-accent)">Live</span>
+                          {/if}
                         </div>
                         <p class="text-sm whitespace-pre-wrap break-words {sub.text ? '' : 'text-(--color-text-muted) italic'}">
                           {sub.text || "(empty)"}
@@ -1134,6 +1343,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
               Duration: {formatDuration(selectedSubtitle.endTime - selectedSubtitle.startTime)}
             </div>
 
+            {#if videoUrl}
+              <div class="grid grid-cols-3 gap-2">
+                <button
+                  onclick={() => seekVideoTo(selectedSubtitle.startTime)}
+                  class="px-2 py-1.5 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors"
+                >
+                  Seek
+                </button>
+                <button
+                  onclick={setSelectedStartToCurrentTime}
+                  class="px-2 py-1.5 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors"
+                >
+                  Start = video
+                </button>
+                <button
+                  onclick={setSelectedEndToCurrentTime}
+                  class="px-2 py-1.5 text-xs border border-(--color-border) text-(--color-text) hover:bg-(--color-border) transition-colors"
+                >
+                  End = video
+                </button>
+              </div>
+            {/if}
+
             <!-- Text input -->
             <div class="flex-1 flex flex-col">
               <div class="flex items-center justify-between mb-1">
@@ -1220,16 +1452,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
                 {/each}
               </div>
 
+              {#if videoUrl}
+                <div
+                  class="absolute top-6 bottom-0 w-px bg-(--color-accent) z-20 pointer-events-none"
+                  style="left: {timeToPixel(currentTimeMs)}px;"
+                >
+                  <span class="absolute top-0 left-1 px-1 py-0.5 text-[10px] font-mono bg-(--color-accent) text-white whitespace-nowrap">
+                    {formatTime(currentTimeMs)}
+                  </span>
+                </div>
+              {/if}
+
               <!-- Subtitle blocks -->
               <div class="absolute top-8 left-0 right-0 bottom-0" style="width: {timelineWidth}px;">
                 {#each subtitles as sub, index (sub.id)}
                   {@const left = timeToPixel(sub.startTime)}
                   {@const width = Math.max(timeToPixel(sub.endTime - sub.startTime), 4)}
                   {@const isOverlap = overlaps.includes(sub.id)}
+                  {@const isLive = activeSubtitle?.id === sub.id}
                   {@const row = index % 3}
                   <div
                     class="absolute h-12 border cursor-move transition-colors {selectedId === sub.id
                       ? 'border-(--color-accent) bg-(--color-accent)/20 z-10'
+                      : isLive
+                        ? 'border-(--color-accent) bg-(--color-accent)/15 z-10'
                       : isOverlap
                         ? 'border-orange-500 bg-orange-500/20'
                         : 'border-(--color-border) bg-(--color-bg) hover:border-(--color-accent)'}"
