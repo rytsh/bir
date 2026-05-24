@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import VideoEditorTool from "../../components/tools/VideoEditorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/video-editor");
+---
+
+<Layout title="Video Editor" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/video-editor">
+  <h1 slot="navbar-title">Video Editor</h1>
+  <VideoEditorTool client:load />
+</Layout>

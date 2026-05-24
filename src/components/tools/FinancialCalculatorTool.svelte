@@ -5,6 +5,29 @@
 
   // -------- Loan / Mortgage --------
   type MortgageType = "annuity" | "linear" | "interest-only";
+
+  interface LoanScheduleRow {
+    month: number;
+    interest: number;
+    principal: number;
+    balance: number;
+    payment: number;
+    yearlyInterest: number;
+  }
+
+  interface LoanScheduleSummary {
+    firstMonthly: number;
+    lastMonthly: number;
+    avgMonthly: number;
+    annuityMonthly: number;
+    totalMonthly: number;
+    totalInterest: number;
+    totalPrincipal: number;
+    payoffMonths: number;
+    payoffYears: number;
+    schedule: LoanScheduleRow[];
+  }
+
   let mortgageType = $state<MortgageType>("annuity");
   let loanAmount = $state(250000);
   let loanRate = $state(6.5); // annual %
@@ -27,7 +50,7 @@
     { label: "🇧🇪 BE 40% bracket", rate: 40 },
   ];
 
-  function loanCalc() {
+  function buildLoanSchedule(extra: number): LoanScheduleSummary | null {
     const r = loanRate / 100 / 12;
     const n = loanYears * 12;
     const P = loanAmount;
@@ -44,13 +67,13 @@
     else if (mortgageType === "linear") firstMonthly = P / n + P * r; // first month, biggest
     else firstMonthly = P * r; // interest-only
 
-    const totalMonthly = firstMonthly + extraPayment;
+    const totalMonthly = firstMonthly + extra;
 
     // Build amortization schedule
     let balance = P;
     let totalInterest = 0;
     let totalPrincipal = 0;
-    const schedule: { month: number; interest: number; principal: number; balance: number; payment: number; yearlyInterest: number }[] = [];
+    const schedule: LoanScheduleRow[] = [];
     let month = 0;
     let yearlyInterestAccum = 0;
     const linearPrincipal = P / n; // fixed principal portion for linear
@@ -62,15 +85,15 @@
       let payment: number;
 
       if (mortgageType === "annuity") {
-        payment = annuityMonthly + extraPayment;
+        payment = annuityMonthly + extra;
         principal = payment - interest;
       } else if (mortgageType === "linear") {
-        principal = linearPrincipal + extraPayment;
+        principal = linearPrincipal + extra;
         payment = principal + interest;
       } else {
         // interest-only: pay only interest; principal at end (balloon)
-        principal = extraPayment;
-        payment = interest + extraPayment;
+        principal = extra;
+        payment = interest + extra;
         // Force final-month balloon if we've reached term
         if (month >= n) {
           principal = balance;
@@ -95,30 +118,8 @@
     const lastMonthly = schedule.length > 0 ? schedule[schedule.length - 1].payment : firstMonthly;
     // Average monthly payment over the life of the loan
     const avgMonthly = schedule.reduce((a, s) => a + s.payment, 0) / Math.max(schedule.length, 1);
-    // Keep `monthly` for backward-compat with rest of UI = first-month / annuity
-    const monthly = firstMonthly;
-
-    // Tax-deduction projections — refund applies to interest paid
-    const dedRate = taxDeductionEnabled ? taxDeductionRate / 100 : 0;
-    const totalRefund = totalInterest * dedRate;
-    const netInterest = totalInterest - totalRefund;
-    const effectiveTotalCost = totalPrincipal + netInterest;
-
-    // Effective monthly interest after refund (averaged across all payments)
-    const avgMonthlyInterest = totalInterest / month;
-    const monthlyRefund = avgMonthlyInterest * dedRate;
-    const effectiveMonthly = avgMonthly - monthlyRefund;
-
-    // Year-1 estimate: refund is biggest in early years (interest is front-loaded)
-    const year1Interest = schedule.slice(0, 12).reduce((acc, s) => acc + s.interest, 0);
-    const year1Refund = year1Interest * dedRate;
-
-    // Effective interest rate (approx) after deduction
-    const effectiveRate = loanRate * (1 - dedRate);
 
     return {
-      mortgageType,
-      monthly, // first-month / annuity headline
       firstMonthly,
       lastMonthly,
       avgMonthly,
@@ -128,8 +129,44 @@
       totalPrincipal,
       payoffMonths: month,
       payoffYears: month / 12,
-      saved: extraPayment > 0 ? annuityMonthly * n - (totalPrincipal + totalInterest) : 0,
       schedule,
+    };
+  }
+
+  function loanCalc() {
+    const current = buildLoanSchedule(extraPayment);
+    if (!current) return null;
+
+    const baseline = buildLoanSchedule(0);
+    const baselineInterest = baseline?.totalInterest ?? current.totalInterest;
+    const saved = extraPayment > 0 ? Math.max(0, baselineInterest - current.totalInterest) : 0;
+    const annuityTotalInterest = current.annuityMonthly * (loanYears * 12) - loanAmount;
+
+    // Tax-deduction projections — refund applies to interest paid
+    const dedRate = taxDeductionEnabled ? taxDeductionRate / 100 : 0;
+    const totalRefund = current.totalInterest * dedRate;
+    const netInterest = current.totalInterest - totalRefund;
+    const effectiveTotalCost = current.totalPrincipal + netInterest;
+
+    // Effective monthly interest after refund (averaged across all payments)
+    const avgMonthlyInterest = current.totalInterest / current.payoffMonths;
+    const monthlyRefund = avgMonthlyInterest * dedRate;
+    const effectiveMonthly = current.avgMonthly - monthlyRefund;
+
+    // Year-1 estimate: refund is biggest in early years (interest is front-loaded)
+    const year1Interest = current.schedule.slice(0, 12).reduce((acc, s) => acc + s.interest, 0);
+    const year1Refund = year1Interest * dedRate;
+
+    // Effective interest rate (approx) after deduction
+    const effectiveRate = loanRate * (1 - dedRate);
+
+    return {
+      mortgageType,
+      monthly: current.firstMonthly, // first-month / annuity headline
+      ...current,
+      baselineInterest,
+      annuityTotalInterest,
+      saved,
       // Tax-related
       taxEnabled: taxDeductionEnabled,
       dedRate,
@@ -166,48 +203,49 @@
   let ciContribution = $state(500);
   let ciContribFreq = $state<"monthly" | "yearly">("monthly");
 
+  function compoundFactor(rate: number, compoundsPerYear: number, years: number): number {
+    if (years <= 0 || rate === 0) return 1;
+    return Math.pow(1 + rate / compoundsPerYear, compoundsPerYear * years);
+  }
+
   function compoundCalc() {
     const P = ciPrincipal;
     const r = ciRate / 100;
     const n = ciFreq;
     const t = ciYears;
-    const PMT = ciContribFreq === "monthly" ? ciContribution * 12 : ciContribution;
+    if (P < 0 || n <= 0 || t <= 0) return null;
 
-    // Future value of principal: P(1 + r/n)^(nt)
-    const fvPrincipal = P * Math.pow(1 + r / n, n * t);
-    // Future value of recurring contributions (deposited at period end, period = year for simplicity)
-    // Use formula FV = PMT * [((1 + r/n)^(nt) - 1) / (r/n)] adjusted to payment frequency
-    let fvContributions = 0;
-    if (PMT > 0 && r > 0) {
-      const periodsPerYear = ciContribFreq === "monthly" ? 12 : 1;
-      const periodicPmt = PMT / periodsPerYear;
-      const periodicRate = r / periodsPerYear;
-      const totalPeriods = t * periodsPerYear;
-      fvContributions = periodicPmt * ((Math.pow(1 + periodicRate, totalPeriods) - 1) / periodicRate);
-    } else if (PMT > 0 && r === 0) {
-      fvContributions = PMT * t;
-    }
+    const contributionPeriodsPerYear = ciContribFreq === "monthly" ? 12 : 1;
 
-    const fv = fvPrincipal + fvContributions;
-    const contributed = P + PMT * t;
-    const interest = fv - contributed;
+    const valueAtYears = (years: number) => {
+      let balance = P * compoundFactor(r, n, years);
+      const contributionPeriods = Math.floor(years * contributionPeriodsPerYear + 1e-9);
+
+      // Contributions are deposited at the end of each contribution period, then compound
+      // using the selected compounding frequency for the remaining time.
+      for (let period = 1; period <= contributionPeriods; period++) {
+        const yearsRemaining = years - period / contributionPeriodsPerYear;
+        balance += ciContribution * compoundFactor(r, n, yearsRemaining);
+      }
+
+      const contributed = P + ciContribution * contributionPeriods;
+      return { balance, contributed, interest: balance - contributed };
+    };
+
+    const final = valueAtYears(t);
 
     // Year-by-year breakdown
     const yearly: { year: number; balance: number; contributed: number; interest: number }[] = [];
-    let balance = P;
-    let totalContrib = P;
-    for (let y = 1; y <= t; y++) {
-      const periodsPerYear = ciContribFreq === "monthly" ? 12 : 1;
-      const periodicPmt = PMT / periodsPerYear;
-      const periodicRate = r / periodsPerYear;
-      for (let p = 0; p < periodsPerYear; p++) {
-        balance = balance * (1 + periodicRate) + periodicPmt;
-        totalContrib += periodicPmt;
-      }
-      yearly.push({ year: y, balance, contributed: totalContrib, interest: balance - totalContrib });
+    for (let y = 1; y <= Math.floor(t); y++) {
+      const snapshot = valueAtYears(y);
+      yearly.push({ year: y, balance: snapshot.balance, contributed: snapshot.contributed, interest: snapshot.interest });
     }
 
-    return { fv, contributed, interest, yearly };
+    if (!Number.isInteger(t)) {
+      yearly.push({ year: t, balance: final.balance, contributed: final.contributed, interest: final.interest });
+    }
+
+    return { fv: final.balance, contributed: final.contributed, interest: final.interest, yearly };
   }
 
   let ciResult = $derived(compoundCalc());
@@ -470,6 +508,7 @@
   }
 
   function removeBracket(i: number) {
+    if (salaryBrackets[i]?.upTo === Infinity) return;
     salaryBrackets = salaryBrackets.filter((_, idx) => idx !== i);
   }
 
@@ -483,6 +522,9 @@
   function calcBracketTax(taxable: number, brackets: TaxBracketDef[]) {
     // Sort by upTo ascending just in case
     const sorted = [...brackets].sort((a, b) => a.upTo - b.upTo);
+    if (!sorted.some((b) => b.upTo === Infinity)) {
+      sorted.push({ upTo: Infinity, rate: sorted[sorted.length - 1]?.rate ?? 0 });
+    }
     const breakdown: { rate: number; amount: number; tax: number }[] = [];
     let total = 0;
     let prevCap = 0;
@@ -623,12 +665,17 @@
     if (!Number.isFinite(n)) return "—";
     return n.toFixed(2) + "%";
   }
+
+  function pctOf(part: number, total: number): number {
+    if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return 0;
+    return Math.max(0, (part / total) * 100);
+  }
 </script>
 
 <div class="flex-1 bg-(--color-bg) text-(--color-text)">
   <div class="border-b border-(--color-border) bg-(--color-bg-alt) flex flex-wrap">
     {#each [
-      { id: "salary", label: "Salary (NL)", icon: "💼" },
+      { id: "salary", label: "Salary", icon: "💼" },
       { id: "loan", label: "Loan / Mortgage", icon: "🏠" },
       { id: "compound", label: "Compound Interest", icon: "📈" },
       { id: "savings", label: "Savings Goal", icon: "🎯" },
@@ -783,8 +830,8 @@
                 <div class="text-(--color-text-light)">Total paid:</div><div class="text-right font-mono">{fmtMoney(loanResult.totalPrincipal + loanResult.totalInterest)}</div>
                 <div class="text-(--color-text-light)">Payoff time:</div><div class="text-right font-mono">{loanResult.payoffMonths} mo ({loanResult.payoffYears.toFixed(1)} yr)</div>
                 {#if loanResult.mortgageType !== "annuity"}
-                  <div class="text-(--color-text-light)">vs annuity total interest:</div>
-                  {@const annuityTotal = loanResult.annuityMonthly * (loanYears * 12) - loanAmount}
+                  <div class="text-(--color-text-light)">vs annuity interest (no extra):</div>
+                  {@const annuityTotal = loanResult.annuityTotalInterest}
                   <div class="text-right font-mono">
                     {fmtMoney(annuityTotal)}
                     {#if loanResult.totalInterest < annuityTotal}
@@ -795,7 +842,7 @@
                   </div>
                 {/if}
                 {#if loanResult.saved > 0}
-                  <div class="text-(--color-text-light)">Saved by extra:</div><div class="text-right font-mono text-green-500">{fmtMoney(loanResult.saved)}</div>
+                  <div class="text-(--color-text-light)">Interest saved by extra:</div><div class="text-right font-mono text-green-500">{fmtMoney(loanResult.saved)}</div>
                 {/if}
               </div>
 
@@ -995,8 +1042,8 @@
             <div class="mt-4">
               <div class="text-xs text-(--color-text-light) mb-1">Breakdown</div>
               <div class="flex h-3 rounded overflow-hidden">
-                <div class="bg-blue-500" style="width: {(ciResult.contributed / ciResult.fv) * 100}%" title="Contributed"></div>
-                <div class="bg-green-500" style="width: {(ciResult.interest / ciResult.fv) * 100}%" title="Interest"></div>
+                <div class="bg-blue-500" style="width: {pctOf(ciResult.contributed, ciResult.fv)}%" title="Contributed"></div>
+                <div class="bg-green-500" style="width: {pctOf(ciResult.interest, ciResult.fv)}%" title="Interest"></div>
               </div>
               <div class="flex justify-between text-xs text-(--color-text-light) mt-1">
                 <span>Contributed</span><span>Interest</span>
@@ -1490,7 +1537,7 @@
                   <td class="px-2 py-1 text-right font-mono text-xs text-red-400">{fmtMoney(usedTax, salaryCurrency)}</td>
                 {/if}
                 <td class="px-2 py-1 text-right">
-                  {#if salaryBrackets.length > 1}
+                  {#if salaryBrackets.length > 1 && b.upTo !== Infinity}
                     <button onclick={() => removeBracket(i)} class="text-red-500 hover:text-red-400 text-xs" title="Remove bracket">✕</button>
                   {/if}
                 </td>

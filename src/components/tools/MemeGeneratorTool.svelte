@@ -54,6 +54,12 @@
     boxes?: Partial<TextBox>[];
   }
 
+  interface CaptionPreset {
+    id: string;
+    name: string;
+    boxes: Partial<TextBox>[];
+  }
+
   const MEMEGEN_BASE = "https://api.memegen.link/images";
 
   // Default helpers — top/bottom text shorthand
@@ -62,8 +68,21 @@
     { text: bottom, x: 0.5, y: 0.92, align: "center" },
   ];
 
+  const STACK3 = (first: string, second: string, third: string): Partial<TextBox>[] => [
+    { text: first, x: 0.5, y: 0.18, align: "center", size: 42 },
+    { text: second, x: 0.5, y: 0.5, align: "center", size: 42 },
+    { text: third, x: 0.5, y: 0.82, align: "center", size: 42 },
+  ];
+
+  const STACK4 = (first: string, second: string, third: string, fourth: string): Partial<TextBox>[] => [
+    { text: first, x: 0.62, y: 0.125, align: "center", size: 36 },
+    { text: second, x: 0.62, y: 0.375, align: "center", size: 36 },
+    { text: third, x: 0.62, y: 0.625, align: "center", size: 36 },
+    { text: fourth, x: 0.62, y: 0.875, align: "center", size: 36 },
+  ];
+
   // Comprehensive catalog of memes available via memegen.link.
-  // Slug list curated from popular templates + georapbox/meme-generator.
+  // Slug list is curated from memegen.link + Imgflip's popular meme feed.
   // memegen.link serves blank PNGs at `images/<slug>.png` with CORS headers,
   // so they double as thumbnails AND the canvas background.
   const ONLINE_TEMPLATES: OnlineTemplate[] = [
@@ -71,153 +90,284 @@
       { text: "OLD WAY", x: 0.72, y: 0.25, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 56 },
       { text: "NEW WAY", x: 0.72, y: 0.75, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 56 },
     ]},
-    { id: "ds", name: "Distracted Boyfriend", boxes: [
+    { id: "ds", name: "Two Buttons (Daily Struggle)", boxes: [
+      { text: "OPTION A", x: 0.26, y: 0.23, align: "center", size: 34 },
+      { text: "OPTION B", x: 0.62, y: 0.23, align: "center", size: 34 },
+      { text: "ME", x: 0.58, y: 0.66, align: "center", size: 34 },
+    ]},
+    { id: "db", name: "Distracted Boyfriend", boxes: [
       { text: "ME", x: 0.32, y: 0.5, align: "center" },
       { text: "NEW THING", x: 0.6, y: 0.45, align: "center" },
       { text: "OLD THING", x: 0.85, y: 0.5, align: "center" },
     ]},
-    { id: "spongebob", name: "Mocking SpongeBob", boxes: TB("WhAt YoU sAiD", "MoCkInG bAcK") },
-    { id: "fry", name: "Futurama Fry (Not Sure If)", boxes: TB("NOT SURE IF…", "OR JUST…") },
-    { id: "yuno", name: "Y U NO", boxes: TB("BIG TASK", "Y U NO DO IT?!") },
-    { id: "buzz", name: "X, X Everywhere", boxes: TB("X,", "X EVERYWHERE") },
-    { id: "success", name: "Success Kid", boxes: TB("TINY VICTORY", "BIG WIN") },
-    { id: "blb", name: "Bad Luck Brian", boxes: TB("TRIES SOMETHING", "EVERYTHING GOES WRONG") },
-    { id: "philosoraptor", name: "Philosoraptor", boxes: TB("IF X…", "THEN WHY Y?") },
-    { id: "rollsafe", name: "Roll Safe", boxes: TB("CAN'T LOSE A FIGHT", "IF YOU NEVER FIGHT") },
-    { id: "doge", name: "Doge", boxes: [
-      { text: "SUCH MEME", x: 0.2, y: 0.15, align: "left", color: "#fde047", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
-      { text: "MUCH WOW", x: 0.7, y: 0.45, align: "left", color: "#86efac", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
-      { text: "VERY CODE", x: 0.1, y: 0.7, align: "left", color: "#f9a8d4", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
+    { id: "exit", name: "Left Exit 12 Off Ramp", boxes: [
+      { text: "ME", x: 0.28, y: 0.72, align: "center", size: 34 },
+      { text: "SENSIBLE ROUTE", x: 0.38, y: 0.33, align: "center", size: 30 },
+      { text: "BAD IDEA", x: 0.77, y: 0.17, align: "center", size: 30 },
     ]},
-    { id: "ll", name: "Leonardo DiCaprio Cheers", boxes: TB("HERE'S TO YOU", "AWESOME PERSON") },
-    { id: "dg", name: "Disaster Girl", boxes: TB("DELETED PROD DB", "NO BACKUPS") },
-    { id: "fwp", name: "First World Problems", boxes: TB("WI-FI A BIT SLOW", "GUESS I'LL DIE") },
-    { id: "mordor", name: "One Does Not Simply (Mordor)", boxes: TB("ONE DOES NOT SIMPLY", "WALK INTO MORDOR") },
-    { id: "aag", name: "Ancient Aliens", boxes: TB("I'M NOT SAYING IT'S X", "BUT IT'S X") },
-    { id: "captain-america", name: "Captain America Elevator", boxes: TB("BEFORE WE START", "DOES ANYONE WANT TO LEAVE?") },
-    { id: "ch", name: "Change My Mind", boxes: [
-      { text: "HOT TAKE GOES HERE", x: 0.55, y: 0.7, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 40 },
+    { id: "balloon", name: "Running Away Balloon", boxes: [
+      { text: "ME", x: 0.2, y: 0.63, align: "center", size: 34 },
+      { text: "MY GOALS", x: 0.48, y: 0.18, align: "center", size: 34 },
+      { text: "DISTRACTION", x: 0.74, y: 0.62, align: "center", size: 34 },
     ]},
-    { id: "kermit", name: "But That's None Of My Business", boxes: TB("THINGS HAPPEN", "BUT THAT'S NONE OF MY BUSINESS") },
-    { id: "ermg", name: "Ermahgerd", boxes: TB("ERMAHGERD", "AMAZING THING") },
-    { id: "joker", name: "Joker (Why So Serious)", boxes: TB("WHY", "SO SERIOUS?") },
-    { id: "wonka", name: "Condescending Wonka", boxes: TB("OH, YOU…", "TELL ME MORE") },
-    { id: "fine", name: "This Is Fine", boxes: TB("EVERYTHING IS ON FIRE", "THIS IS FINE") },
-    { id: "panik", name: "Panik / Kalm / Panik", boxes: [
-      { text: "PANIK", x: 0.5, y: 0.18, align: "center" },
-      { text: "KALM", x: 0.5, y: 0.5, align: "center" },
-      { text: "PANIK", x: 0.5, y: 0.85, align: "center" },
-    ]},
-    { id: "patrick", name: "Crying Patrick", boxes: TB("THE TRUTH HURTS", "REALLY BAD") },
-    { id: "morpheus", name: "Matrix Morpheus", boxes: TB("WHAT IF I TOLD YOU", "THE TRUTH IS X") },
-    { id: "facepalm", name: "Picard Facepalm", boxes: TB("WHEN…", "FACEPALM") },
-    { id: "jw", name: "Sad Keanu", boxes: TB("I JUST WANTED", "ONE THING") },
-    { id: "slap", name: "Batman Slapping Robin", boxes: [
-      { text: "SOMETHING", x: 0.3, y: 0.2, align: "center" },
-      { text: "SLAP!", x: 0.7, y: 0.2, align: "center" },
-    ]},
-    { id: "two", name: "Two Buttons (Daily Struggle)", boxes: [
-      { text: "OPTION A", x: 0.3, y: 0.3, align: "center", size: 36 },
-      { text: "OPTION B", x: 0.7, y: 0.3, align: "center", size: 36 },
-    ]},
-    { id: "harold", name: "Hide The Pain Harold", boxes: TB("WHEN PAIN HAPPENS", "BUT YOU SMILE THROUGH IT") },
-    { id: "pigeon", name: "Is This A Pigeon?", boxes: [
-      { text: "ME", x: 0.2, y: 0.4, align: "center" },
-      { text: "OBVIOUS THING", x: 0.65, y: 0.55, align: "center" },
-      { text: "IS THIS X?", x: 0.5, y: 0.92, align: "center" },
-    ]},
-    { id: "spider", name: "Spiderman Pointing", boxes: TB("YOU", "ME") },
-    { id: "yodawg", name: "Yo Dawg Heard You Like", boxes: TB("YO DAWG I HEARD YOU LIKE X", "SO I PUT X IN YOUR X SO YOU CAN X WHILE YOU X") },
-    { id: "interesting", name: "Most Interesting Man", boxes: TB("I DON'T ALWAYS X", "BUT WHEN I DO, Y") },
-    { id: "saltbae", name: "Salt Bae", boxes: TB("SPRINKLE A LITTLE OF…", "THIS THING") },
-    { id: "stonks", name: "Stonks", boxes: TB("BIG MOVE", "STONKS") },
-    { id: "happening", name: "It's Happening", boxes: TB("WHEN…", "IT'S HAPPENING!") },
-    { id: "vince", name: "Vince McMahon Reaction", boxes: [
-      { text: "REGULAR THING", x: 0.5, y: 0.13, align: "center", size: 36 },
-      { text: "BETTER THING", x: 0.5, y: 0.38, align: "center", size: 36 },
-      { text: "EVEN BETTER", x: 0.5, y: 0.63, align: "center", size: 36 },
-      { text: "MIND BLOWN", x: 0.5, y: 0.88, align: "center", size: 36 },
-    ]},
+    { id: "astronaut", name: "Always Has Been", boxes: TB("WAIT, IT'S ALL X?", "ALWAYS HAS BEEN.") },
     { id: "gru", name: "Gru's Plan", boxes: [
       { text: "STEP 1", x: 0.25, y: 0.5, align: "center", size: 28 },
       { text: "STEP 2", x: 0.5, y: 0.5, align: "center", size: 28 },
       { text: "STEP 3", x: 0.75, y: 0.25, align: "center", size: 28 },
       { text: "STEP 3??", x: 0.75, y: 0.75, align: "center", size: 28 },
     ]},
-    { id: "always", name: "Always Has Been", boxes: TB("WAIT, IT'S ALL X?", "ALWAYS HAS BEEN.") },
+    { id: "handshake", name: "Epic Handshake", boxes: [
+      { text: "GROUP A", x: 0.23, y: 0.18, align: "center", size: 34 },
+      { text: "COMMON GROUND", x: 0.5, y: 0.08, align: "center", size: 34 },
+      { text: "GROUP B", x: 0.78, y: 0.18, align: "center", size: 34 },
+    ]},
+    { id: "disastergirl", name: "Disaster Girl", boxes: TB("DELETED PROD DB", "NO BACKUPS") },
+    { id: "right", name: "Anakin & Padme", boxes: [
+      { text: "I'LL DO X", x: 0.25, y: 0.25, align: "center", size: 28 },
+      { text: "FOR THE GOOD OF Y, RIGHT?", x: 0.75, y: 0.25, align: "center", size: 28 },
+      { text: "(SILENCE)", x: 0.25, y: 0.75, align: "center", size: 28 },
+      { text: "FOR Y, RIGHT?", x: 0.75, y: 0.75, align: "center", size: 28 },
+    ]},
+    { id: "woman-cat", name: "Woman Yelling at Cat", boxes: [
+      { text: "ACCUSATION", x: 0.25, y: 0.12, align: "center", size: 34 },
+      { text: "CONFUSED CAT", x: 0.74, y: 0.12, align: "center", size: 34 },
+    ]},
     { id: "pooh", name: "Tuxedo Winnie The Pooh", boxes: [
       { text: "REGULAR PHRASE", x: 0.6, y: 0.25, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 36 },
       { text: "FANCY PHRASE", x: 0.6, y: 0.75, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 36 },
     ]},
+    { id: "spongebob", name: "Mocking SpongeBob", boxes: TB("WhAt YoU sAiD", "MoCkInG bAcK") },
+    { id: "slap", name: "Will Smith Slap", boxes: [
+      { text: "BAD TAKE", x: 0.3, y: 0.2, align: "center" },
+      { text: "SLAP!", x: 0.7, y: 0.2, align: "center" },
+    ]},
+    { id: "gb", name: "Galaxy Brain", boxes: STACK4("BASIC IDEA", "BETTER IDEA", "ENLIGHTENED", "TRANSCENDENT") },
+    { id: "fine", name: "This Is Fine", boxes: TB("EVERYTHING IS ON FIRE", "THIS IS FINE") },
+    { id: "cmm", name: "Change My Mind", boxes: [
+      { text: "HOT TAKE GOES HERE", x: 0.55, y: 0.7, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 40 },
+    ]},
+    { id: "same", name: "They're The Same Picture", boxes: [
+      { text: "ME", x: 0.52, y: 0.16, align: "center", size: 34 },
+      { text: "THING A", x: 0.28, y: 0.56, align: "center", size: 34 },
+      { text: "THING B", x: 0.75, y: 0.56, align: "center", size: 34 },
+    ]},
+    { id: "pigeon", name: "Is This A Pigeon?", boxes: [
+      { text: "ME", x: 0.2, y: 0.4, align: "center" },
+      { text: "OBVIOUS THING", x: 0.65, y: 0.55, align: "center" },
+      { text: "IS THIS X?", x: 0.5, y: 0.92, align: "center" },
+    ]},
+    { id: "pool", name: "Mother Ignoring Kid Drowning", boxes: [
+      { text: "PRIORITY", x: 0.24, y: 0.35, align: "center", size: 32 },
+      { text: "REAL PROBLEM", x: 0.56, y: 0.5, align: "center", size: 32 },
+      { text: "FORGOTTEN TASK", x: 0.74, y: 0.82, align: "center", size: 32 },
+    ]},
+    { id: "millers", name: "You Guys Are Getting Paid?", boxes: [
+      { text: "YOU GUYS", x: 0.22, y: 0.16, align: "center", size: 28 },
+      { text: "ARE GETTING", x: 0.44, y: 0.16, align: "center", size: 28 },
+      { text: "PAID?", x: 0.67, y: 0.16, align: "center", size: 28 },
+      { text: "ME", x: 0.82, y: 0.56, align: "center", size: 28 },
+    ]},
+    { id: "chair", name: "American Chopper Argument", boxes: [
+      { text: "POINT 1", x: 0.5, y: 0.1, align: "center", size: 28 },
+      { text: "COUNTERPOINT", x: 0.5, y: 0.25, align: "center", size: 28 },
+      { text: "LOUDER POINT", x: 0.5, y: 0.4, align: "center", size: 28 },
+      { text: "LOUDER COUNTER", x: 0.5, y: 0.55, align: "center", size: 28 },
+      { text: "CHAOS", x: 0.5, y: 0.7, align: "center", size: 28 },
+      { text: "WALK AWAY", x: 0.5, y: 0.85, align: "center", size: 28 },
+    ]},
+    { id: "midwit", name: "Bell Curve / Midwit", boxes: [
+      { text: "BEGINNER", x: 0.18, y: 0.14, align: "center", size: 30 },
+      { text: "MIDWIT", x: 0.5, y: 0.14, align: "center", size: 30 },
+      { text: "GENIUS", x: 0.82, y: 0.14, align: "center", size: 30 },
+    ]},
+    { id: "bus", name: "Two Guys on a Bus", boxes: [
+      { text: "NEGATIVE VIEW", x: 0.28, y: 0.13, align: "center", size: 34 },
+      { text: "POSITIVE VIEW", x: 0.73, y: 0.13, align: "center", size: 34 },
+    ]},
+    { id: "3hd", name: "Three-Headed Dragon", boxes: [
+      { text: "SMART", x: 0.21, y: 0.14, align: "center", size: 34 },
+      { text: "SMART", x: 0.5, y: 0.1, align: "center", size: 34 },
+      { text: "SILLY", x: 0.78, y: 0.14, align: "center", size: 34 },
+    ]},
+    { id: "wkh", name: "Who Killed Hannibal?", boxes: [
+      { text: "ME", x: 0.32, y: 0.18, align: "center", size: 32 },
+      { text: "THE PROBLEM", x: 0.7, y: 0.43, align: "center", size: 32 },
+      { text: "WHY WOULD X DO THIS?", x: 0.48, y: 0.86, align: "center", size: 32 },
+    ]},
+    { id: "grave", name: "Grant Gustin Over Grave", boxes: [
+      { text: "ME", x: 0.26, y: 0.33, align: "center", size: 30 },
+      { text: "THE THING", x: 0.72, y: 0.38, align: "center", size: 30 },
+      { text: "THE GRAVE", x: 0.55, y: 0.84, align: "center", size: 30 },
+    ]},
+    { id: "say", name: "Say The Line, Bart!", boxes: TB("SAY THE LINE", "THE LINE") },
+    { id: "dbg", name: "Expectation vs. Reality", boxes: [
+      { text: "EXPECTATION", x: 0.25, y: 0.12, align: "center", size: 34 },
+      { text: "REALITY", x: 0.75, y: 0.12, align: "center", size: 34 },
+    ]},
+    { id: "drowning", name: "Drowning High Five", boxes: [
+      { text: "HELPING", x: 0.27, y: 0.36, align: "center", size: 32 },
+      { text: "THE PROBLEM", x: 0.57, y: 0.47, align: "center", size: 32 },
+      { text: "IGNORED", x: 0.75, y: 0.78, align: "center", size: 32 },
+    ]},
+    { id: "spirit", name: "Fake Spirit Halloween Costume", boxes: [
+      { text: "ADULT SIZE", x: 0.5, y: 0.08, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 26 },
+      { text: "COSTUME NAME", x: 0.5, y: 0.18, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 30 },
+      { text: "INCLUDES", x: 0.28, y: 0.52, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 24 },
+      { text: "PROP 1", x: 0.7, y: 0.58, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 24 },
+      { text: "PROP 2", x: 0.7, y: 0.74, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 24 },
+    ]},
+    { id: "khaby-lame", name: "Khaby Lame", boxes: TB("LIFE HACK COMPLEX", "JUST DO IT NORMAL") },
     { id: "cheems", name: "Cheems", boxes: TB("I CAN HAS", "GREAT THING") },
-    { id: "anakin", name: "Anakin & Padmé", boxes: [
-      { text: "I'LL DO X", x: 0.25, y: 0.25, align: "center", size: 28 },
-      { text: "FOR THE GOOD OF Y, RIGHT?", x: 0.75, y: 0.25, align: "center", size: 28 },
-      { text: "(silence)", x: 0.25, y: 0.75, align: "center", size: 28 },
-      { text: "FOR Y, RIGHT?", x: 0.75, y: 0.75, align: "center", size: 28 },
+    { id: "doge", name: "Doge", boxes: [
+      { text: "SUCH MEME", x: 0.2, y: 0.15, align: "left", color: "#fde047", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
+      { text: "MUCH WOW", x: 0.7, y: 0.45, align: "left", color: "#86efac", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
+      { text: "VERY CODE", x: 0.1, y: 0.7, align: "left", color: "#f9a8d4", outlineColor: "#000", size: 44, font: "Comic Sans MS" },
+    ]},
+    { id: "stonks", name: "Stonks", boxes: TB("BIG MOVE", "STONKS") },
+    { id: "rollsafe", name: "Roll Safe", boxes: TB("CAN'T LOSE A FIGHT", "IF YOU NEVER FIGHT") },
+    { id: "fry", name: "Futurama Fry (Not Sure If)", boxes: TB("NOT SURE IF…", "OR JUST…") },
+    { id: "yuno", name: "Y U NO", boxes: TB("BIG TASK", "Y U NO DO IT?!") },
+    { id: "buzz", name: "X, X Everywhere", boxes: TB("X,", "X EVERYWHERE") },
+    { id: "success", name: "Success Kid", boxes: TB("TINY VICTORY", "BIG WIN") },
+    { id: "blb", name: "Bad Luck Brian", boxes: TB("TRIES SOMETHING", "EVERYTHING GOES WRONG") },
+    { id: "philosoraptor", name: "Philosoraptor", boxes: TB("IF X…", "THEN WHY Y?") },
+    { id: "fwp", name: "First World Problems", boxes: TB("WI-FI A BIT SLOW", "GUESS I'LL DIE") },
+    { id: "mordor", name: "One Does Not Simply (Mordor)", boxes: TB("ONE DOES NOT SIMPLY", "WALK INTO MORDOR") },
+    { id: "aag", name: "Ancient Aliens", boxes: TB("I'M NOT SAYING IT'S X", "BUT IT'S X") },
+    { id: "captain-america", name: "Captain America Elevator", boxes: TB("BEFORE WE START", "DOES ANYONE WANT TO LEAVE?") },
+    { id: "kermit", name: "But That's None Of My Business", boxes: TB("THINGS HAPPEN", "BUT THAT'S NONE OF MY BUSINESS") },
+    { id: "ermg", name: "Ermahgerd", boxes: TB("ERMAHGERD", "AMAZING THING") },
+    { id: "joker", name: "Joker (Why So Serious)", boxes: TB("WHY", "SO SERIOUS?") },
+    { id: "wonka", name: "Condescending Wonka", boxes: TB("OH, YOU…", "TELL ME MORE") },
+    { id: "panik-kalm-panik", name: "Panik / Kalm / Panik", boxes: [
+      { text: "PANIK", x: 0.5, y: 0.18, align: "center" },
+      { text: "KALM", x: 0.5, y: 0.5, align: "center" },
+      { text: "PANIK", x: 0.5, y: 0.85, align: "center" },
+    ]},
+    { id: "patrick", name: "Push It Somewhere Else Patrick", boxes: TB("WE SHOULD TAKE X", "AND PUSH IT SOMEWHERE ELSE") },
+    { id: "morpheus", name: "Matrix Morpheus", boxes: TB("WHAT IF I TOLD YOU", "THE TRUTH IS X") },
+    { id: "facepalm", name: "Picard Facepalm", boxes: TB("WHEN…", "FACEPALM") },
+    { id: "jw", name: "Probably Not A Good Idea", boxes: TB("DOES X", "PROBABLY NOT A GOOD IDEA") },
+    { id: "harold", name: "Hide The Pain Harold", boxes: TB("WHEN PAIN HAPPENS", "BUT YOU SMILE THROUGH IT") },
+    { id: "spiderman", name: "Spiderman Pointing", boxes: TB("YOU", "ME") },
+    { id: "yodawg", name: "Yo Dawg Heard You Like", boxes: TB("YO DAWG I HEARD YOU LIKE X", "SO I PUT X IN YOUR X SO YOU CAN X WHILE YOU X") },
+    { id: "interesting", name: "Most Interesting Man", boxes: TB("I DON'T ALWAYS X", "BUT WHEN I DO, Y") },
+    { id: "saltbae", name: "Salt Bae", boxes: TB("SPRINKLE A LITTLE OF…", "THIS THING") },
+    { id: "happening", name: "It's Happening", boxes: TB("WHEN…", "IT'S HAPPENING!") },
+    { id: "vince", name: "Vince McMahon Reaction", boxes: [
+      { text: "REGULAR THING", x: 0.5, y: 0.17, align: "center", size: 36 },
+      { text: "BETTER THING", x: 0.5, y: 0.5, align: "center", size: 36 },
+      { text: "MIND BLOWN", x: 0.5, y: 0.83, align: "center", size: 36 },
     ]},
     { id: "ackbar", name: "Admiral Ackbar (It's a Trap)", boxes: TB("WAIT…", "IT'S A TRAP!") },
     { id: "bender", name: "Bender", boxes: TB("I'M GONNA BUILD MY OWN X", "WITH BLACKJACK AND HOOKERS") },
     { id: "boat", name: "I Should Buy A Boat", boxes: TB("READS PROFOUND THING", "I SHOULD BUY A BOAT") },
-    { id: "buzz-andy", name: "Afraid To Ask Andy", boxes: TB("I'M AFRAID TO ASK BUT…", "WHAT DOES X MEAN?") },
+    { id: "afraid", name: "Afraid To Ask Andy", boxes: TB("I'M AFRAID TO ASK BUT…", "WHAT DOES X MEAN?") },
     { id: "cb", name: "Confession Bear", boxes: TB("CONFESSION TIME", "DEEP SECRET") },
     { id: "cbg", name: "Comic Book Guy (Worst Ever)", boxes: TB("WORST", "EPISODE EVER") },
     { id: "chosen", name: "You Were The Chosen One", boxes: TB("YOU WERE THE CHOSEN ONE!", "YOU WERE SUPPOSED TO X") },
     { id: "fbf", name: "Foul Bachelor Frog", boxes: TB("RUNS OUT OF CLEAN PLATES", "USES PIZZA BOX") },
-    { id: "fmr", name: "Faster Mr Robot", boxes: TB("FASTER!", "I CAN'T DEBUG ANY FASTER!") },
-    { id: "gandalf", name: "Gandalf (You Shall Not Pass)", boxes: TB("BUG IN PROD", "YOU SHALL NOT PASS") },
+    { id: "fmr", name: "FMR Reaction", boxes: TB("THAT MOMENT", "WHEN EVERYTHING BREAKS") },
+    { id: "gandalf", name: "Confused Gandalf", boxes: TB("WHEN YOU READ X", "AND NOTHING MAKES SENSE") },
     { id: "headaches", name: "Imagine The Headaches", boxes: TB("USE PROD AS DEV?", "IMAGINE THE HEADACHES") },
     { id: "icanhas", name: "I Can Has Cheezburger", boxes: TB("I CAN HAS", "CHEEZBURGER?") },
     { id: "jetpack", name: "Nothing To Do Here", boxes: TB("HUGE PROBLEM", "NOTHING TO DO HERE") },
-    { id: "jd", name: "Conspiracy Keanu", boxes: TB("WHAT IF…", "MIND BLOWN") },
-    { id: "kk", name: "Kim Kardashian Crying", boxes: TB("WHEN…", "TOO MUCH") },
-    { id: "ja", name: "Joseph Ducreux", boxes: TB("PROCURE PROVISIONS", "FROM A MERCHANT") },
-    { id: "wonka-pure", name: "Pure Imagination", boxes: TB("COME WITH ME", "INTO PURE IMAGINATION") },
+    { id: "keanu", name: "Conspiracy Keanu", boxes: TB("WHAT IF…", "MIND BLOWN") },
+    { id: "kk", name: "Karate Kyle", boxes: TB("WHEN SOMEONE SAYS X", "KARATE TIME") },
+    { id: "jd", name: "Joseph Ducreux", boxes: TB("PROCURE PROVISIONS", "FROM A MERCHANT") },
     { id: "yallgot", name: "Y'all Got Any More Of Them", boxes: TB("Y'ALL GOT ANY MORE OF THEM…", "X?") },
     { id: "money", name: "Shut Up And Take My Money", boxes: TB("WHEN A TOOL IS THIS GOOD", "SHUT UP AND TAKE MY MONEY") },
     { id: "noidea", name: "I Have No Idea", boxes: TB("LOOKS AT CODE", "I HAVE NO IDEA WHAT I'M DOING") },
-    { id: "ntp", name: "Nut Button", boxes: TB("ME WHEN…", "X HAPPENS") },
+    { id: "ntot", name: "No Take, Only Throw", boxes: STACK3("I WANT IT", "NO TAKE", "ONLY THROW") },
     { id: "older", name: "Older Generation", boxes: TB("MILLENNIALS:", "WHY ARE THINGS LIKE THIS?") },
     { id: "oprah", name: "Oprah You Get A Car", boxes: TB("YOU GET AN X!", "EVERYBODY GETS AN X!") },
-    { id: "pie", name: "American Beauty", boxes: TB("WHEN PRO TALENT", "ROSE PETALS") },
     { id: "regret", name: "Regret", boxes: TB("INSTANT", "REGRET") },
-    { id: "right", name: "Drake (Right Side Only)", boxes: TB("APPROVE!", "BIG YES!") },
-    { id: "sadcat", name: "Sad Cat", boxes: TB("WHEN YOUR CODE…", "HAS A BUG") },
     { id: "sadfrog", name: "Pepe / Sad Frog", boxes: TB("FEELS BAD MAN", "FEELS BAD") },
-    { id: "sadpablo", name: "Sad Pablo Escobar", boxes: TB("WHEN…", "WAITING ALONE") },
-    { id: "scc", name: "Successful Black Guy", boxes: TB("PARENTS LOCK ME OUT", "I HAVE MY OWN KEY") },
-    { id: "sf", name: "Sudden Clarity Clarence", boxes: TB("WAIT A MINUTE…", "MIND BLOWN") },
-    { id: "soa", name: "Surprised Pikachu", boxes: TB("DOES BAD THING", "SURPRISED IT WENT BAD") },
-    { id: "ti", name: "Toddler In Bed", boxes: TB("MOM SAID NO COOKIES", "EATS COOKIES") },
+    { id: "scc", name: "Sudden Clarity Clarence", boxes: TB("WAIT A MINUTE…", "MIND BLOWN") },
     { id: "tried", name: "At Least You Tried", boxes: TB("ALMOST GOT IT", "AT LEAST YOU TRIED") },
-    { id: "uno", name: "Uno Draw 25 Cards", boxes: [
-      { text: "ADMIT YOU'RE WRONG", x: 0.5, y: 0.3, align: "center", color: "#fff", size: 28 },
-      { text: "DRAW 25", x: 0.5, y: 0.7, align: "center", color: "#dc2626", size: 36 },
-    ]},
-    { id: "wat", name: "What? (Surprised Cat)", boxes: TB("WAIT", "WHAT?!") },
+    { id: "touch", name: "Am I Out Of Touch?", boxes: TB("AM I OUT OF TOUCH?", "NO, IT'S X WHO ARE WRONG") },
     { id: "waygd", name: "What Are You Gonna Do?", boxes: TB("HE GOT A GUN!", "WHAT ARE YOU GONNA DO?") },
-    { id: "ymabt", name: "You May Be A But", boxes: TB("YOU MAY BE A X", "BUT I'M A Y") },
-    { id: "ynj", name: "You're Not John Wick", boxes: TB("LOOK AT YOU", "YOU'RE NOT JOHN WICK") },
+    { id: "whatyear", name: "What Year Is It?", boxes: TB("WAKES UP", "WHAT YEAR IS IT?") },
+    { id: "wddth", name: "We Don't Do That Here", boxes: TB("SUGGESTS X", "WE DON'T DO THAT HERE") },
+    { id: "zero-wing", name: "All Your Base", boxes: TB("ALL YOUR BASE", "ARE BELONG TO US") },
     { id: "puffin", name: "Confession Puffin", boxes: TB("EVERYONE SAYS DON'T…", "I DO IT ANYWAY") },
-    { id: "khaby", name: "Khaby Lame", boxes: TB("LIFE HACK COMPLEX", "JUST DO IT NORMAL") },
-    { id: "scoob", name: "Scooby-Doo Mask Reveal", boxes: TB("LET'S SEE WHO'S BEHIND…", "(YOUR CULPRIT)") },
+    { id: "reveal", name: "Scooby-Doo Mask Reveal", boxes: [
+      { text: "MYSTERY", x: 0.33, y: 0.22, align: "center", size: 30 },
+      { text: "THE GANG", x: 0.7, y: 0.22, align: "center", size: 30 },
+      { text: "MASK OFF", x: 0.33, y: 0.7, align: "center", size: 30 },
+      { text: "REAL CULPRIT", x: 0.7, y: 0.7, align: "center", size: 30 },
+    ]},
     { id: "sad-biden", name: "Sad Biden", boxes: TB("PLAN A:", "PLAN B…") },
     { id: "kombucha", name: "Kombucha Girl", boxes: TB("WHEN YOU SEE X", "BUT THEN…") },
     { id: "snek", name: "Snek", boxes: TB("WHEN A FRIEND…", "BETRAYAL!") },
     { id: "fetch", name: "Stop Trying To Make Fetch Happen", boxes: TB("STOP TRYING TO MAKE", "FETCH HAPPEN") },
-    { id: "afraid", name: "Afraid To Ask Andy (alt)", boxes: TB("I'M AFRAID TO ASK", "WHAT IT MEANS") },
     { id: "ive", name: "I've Seen Enough", boxes: TB("OPENS PR FROM JUNIOR", "I'VE SEEN ENOUGH") },
     { id: "jim", name: "Jim Halpert (Office)", boxes: TB("WHEN MEETING SHOULD HAVE BEEN AN EMAIL", "JIM STARES AT CAMERA") },
     { id: "michael-scott", name: "Michael Scott NO!", boxes: TB("DEPLOY ON FRIDAY?", "NO! GOD! PLEASE NO!") },
-    { id: "snape", name: "Always (Snape)", boxes: TB("ALWAYS?", "ALWAYS.") },
-    { id: "bilbo", name: "Bilbo (Excited)", boxes: TB("I DON'T KNOW HALF OF YOU…", "AS WELL AS I SHOULD LIKE") },
+    { id: "bilbo", name: "Why Shouldn't I Keep It", boxes: TB("I FOUND X", "WHY SHOULDN'T I KEEP IT?") },
+    { id: "agnes", name: "Agnes Harkness Winking", boxes: TB("ME PRETENDING", "I READ THE TERMS") },
+    { id: "bihw", name: "But It's Honest Work", boxes: TB("IT AIN'T MUCH", "BUT IT'S HONEST WORK") },
+    { id: "both", name: "Why Not Both?", boxes: TB("OPTION A?", "WHY NOT BOTH?") },
+    { id: "bongo", name: "Bongo Cat", boxes: TB("TAP TAP TAP", "SHIP IT") },
+    { id: "captain", name: "I'm The Captain Now", boxes: TB("LOOK AT ME", "I'M THE CAPTAIN NOW") },
+    { id: "cbb", name: "Communist Bugs Bunny", boxes: TB("OUR", "FEATURE") },
+    { id: "crazypills", name: "Crazy Pills", boxes: TB("I FEEL LIKE", "I'M TAKING CRAZY PILLS") },
+    { id: "dwight", name: "Schrute Facts", boxes: TB("FACT", "FALSE") },
+    { id: "dodgson", name: "See? Nobody Cares", boxes: TB("BIG ANNOUNCEMENT", "SEE? NOBODY CARES") },
+    { id: "glasses", name: "Peter Parker Glasses", boxes: [
+      { text: "WITHOUT CONTEXT", x: 0.28, y: 0.12, align: "center", size: 32 },
+      { text: "WITH CONTEXT", x: 0.75, y: 0.12, align: "center", size: 32 },
+    ]},
+    { id: "gone", name: "And It's Gone", boxes: TB("MY BUDGET", "AND IT'S GONE") },
+    { id: "grumpycat", name: "Grumpy Cat", boxes: TB("I HAD FUN ONCE", "IT WAS AWFUL") },
+    { id: "hagrid", name: "I Should Not Have Said That", boxes: TB("SHARES SECRET", "I SHOULD NOT HAVE SAID THAT") },
+    { id: "home", name: "We Have Food At Home", boxes: [
+      { text: "CAN WE GET X?", x: 0.5, y: 0.18, align: "center", size: 34 },
+      { text: "WE HAVE X AT HOME", x: 0.5, y: 0.5, align: "center", size: 34 },
+      { text: "X AT HOME", x: 0.5, y: 0.84, align: "center", size: 34 },
+    ]},
+    { id: "officespace", name: "That Would Be Great", boxes: TB("IF YOU COULD X", "THAT WOULD BE GREAT") },
+    { id: "red", name: "Oh, Is That What We're Doing?", boxes: TB("OH, IS THAT WHAT", "WE'RE DOING TODAY?") },
+    { id: "remembers", name: "Pepperidge Farm Remembers", boxes: TB("REMEMBER X?", "PEPPERIDGE FARM REMEMBERS") },
+    { id: "seagull", name: "Inhaling Seagull", boxes: TB("CALM", "PANIC") },
+    { id: "stop-it", name: "Stop It, Get Some Help", boxes: TB("WHEN YOU SEE X", "STOP IT. GET SOME HELP.") },
+    { id: "winter", name: "Winter Is Coming", boxes: TB("BRACE YOURSELVES", "WINTER IS COMING") },
+    { id: "light", name: "Everything The Light Touches", boxes: TB("EVERYTHING THE LIGHT TOUCHES", "IS OUR KINGDOM") },
+    { id: "friends", name: "Are You Two Friends?", boxes: [
+      { text: "THING A", x: 0.23, y: 0.25, align: "center", size: 30 },
+      { text: "THING B", x: 0.72, y: 0.25, align: "center", size: 30 },
+      { text: "ARE YOU TWO FRIENDS?", x: 0.5, y: 0.84, align: "center", size: 30 },
+    ]},
+    { id: "wallet", name: "Patrick Star's Wallet", boxes: [
+      { text: "IS THIS YOUR WALLET?", x: 0.5, y: 0.1, align: "center", size: 26 },
+      { text: "YES", x: 0.5, y: 0.22, align: "center", size: 26 },
+      { text: "AND THIS IS YOUR ID?", x: 0.5, y: 0.34, align: "center", size: 26 },
+      { text: "YES", x: 0.5, y: 0.46, align: "center", size: 26 },
+      { text: "SO THIS IS YOUR WALLET?", x: 0.5, y: 0.58, align: "center", size: 26 },
+      { text: "NOPE", x: 0.5, y: 0.7, align: "center", size: 26 },
+    ]},
+    { id: "nice", name: "So I Got That Goin' For Me", boxes: TB("THING WENT WRONG", "WHICH IS NICE") },
+    { id: "sparta", name: "This Is Sparta!", boxes: TB("THIS", "IS SPARTA!") },
+    { id: "toohigh", name: "The Rent Is Too Damn High", boxes: TB("THE X", "IS TOO DAMN HIGH") },
+  ];
+
+  const TURKISH_CAPTION_PRESETS: CaptionPreset[] = [
+    { id: "abi-bu-is", name: "Abi bu iş", boxes: TB("ABI BU IS BOYLE OLMAZ", "BIR DAKIKA") },
+    { id: "plan-basit", name: "Plan basit", boxes: STACK3("PLAN COK BASIT", "ONCE X", "SONRA Y") },
+    { id: "gormedim", name: "Görmedim sayıyorum", boxes: TB("BEN BUNU GORMEDIM", "SAYIYORUM") },
+    { id: "ortam-gerildi", name: "Ortam gerildi", boxes: TB("ORTAM GERILDI", "SAKIN KAL") },
+    { id: "nereden-cikti", name: "Nereden çıktı?", boxes: TB("BU DA NEREDEN CIKTI?", "KIMSE BILMIYOR") },
+    { id: "uygulanmayacak", name: "Uygulanmayacak", boxes: TB("COK IYI FIKIR", "UYGULANMAYACAK") },
   ];
 
   // Currently selected online template ID
   let selectedOnlineId = $state("");
   let onlineLoading = $state(false);
   let memeSearch = $state("");
-  let memeViewMode = $state<"grid" | "list">("grid");
+  let memeViewMode = $state<"grid" | "large-grid" | "list">("grid");
+  let sourceCollapsed = $state(false);
+  let sourceSummary = $state("Placeholder: Blank (white)");
 
   function memegenThumb(id: string): string {
     // Tiny preview — request a smaller variant by adding a width hint.
@@ -320,6 +470,7 @@
       ];
       textBoxes = proto.map((b) => defaultBox(b));
       selectedBoxId = textBoxes[0]?.id ?? null;
+      sourceSummary = `Online: ${t.name}`;
     } catch (e) {
       urlError = `Failed to load "${t.name}". The host may be unreachable. (${(e as Error).message})`;
     } finally {
@@ -585,6 +736,7 @@
     canvasWidth = t.width;
     canvasHeight = t.height;
     isTainted = false;
+    sourceSummary = `Placeholder: ${t.name}`;
     applyTemplateBoxes(t);
   }
 
@@ -600,6 +752,7 @@
       backgroundImage = img;
       canvasWidth = img.naturalWidth;
       canvasHeight = img.naturalHeight;
+      sourceSummary = `Upload: ${file.name}`;
       if (textBoxes.length === 0) {
         textBoxes = [defaultBox({ text: "TOP TEXT", y: 0.1 }), defaultBox({ text: "BOTTOM TEXT", y: 0.9 })];
         selectedBoxId = textBoxes[0].id;
@@ -627,6 +780,11 @@
       backgroundImage = img;
       canvasWidth = img.naturalWidth;
       canvasHeight = img.naturalHeight;
+      try {
+        sourceSummary = `URL: ${new URL(imageUrl).hostname}`;
+      } catch {
+        sourceSummary = "URL image";
+      }
       if (textBoxes.length === 0) {
         textBoxes = [defaultBox({ text: "TOP TEXT", y: 0.1 }), defaultBox({ text: "BOTTOM TEXT", y: 0.9 })];
         selectedBoxId = textBoxes[0].id;
@@ -651,6 +809,11 @@
 
   function updateBox(id: string, patch: Partial<TextBox>) {
     textBoxes = textBoxes.map((b) => (b.id === id ? { ...b, ...patch } : b));
+  }
+
+  function applyCaptionPreset(preset: CaptionPreset) {
+    textBoxes = preset.boxes.map((b) => defaultBox(b));
+    selectedBoxId = textBoxes[0]?.id ?? null;
   }
 
   // ============================================================
@@ -874,44 +1037,76 @@
   });
 </script>
 
-<div class="h-full w-full max-w-full min-w-0 flex flex-col gap-3 overflow-hidden">
+<div class="min-h-full w-full max-w-full min-w-0 flex flex-col gap-3 overflow-visible">
   <header class="min-w-0">
     <p class="text-sm text-(--color-text-muted)">
       Make a meme: pick a placeholder template, upload an image, or paste a URL. Click text on the canvas to select, drag to reposition, and edit in the panel below.
     </p>
   </header>
 
-  <div class="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 min-w-0 max-w-full">
+  <div class="flex flex-col lg:flex-row gap-3 min-w-0 max-w-full">
     <!-- Left: source + canvas -->
-    <div class="flex-1 flex flex-col gap-3 min-h-0 min-w-0">
+    <div class="flex-1 flex flex-col gap-3 min-w-0">
       <!-- Source controls -->
       <div class="bg-(--color-bg-alt) border border-(--color-border) p-3 flex flex-col gap-2 min-w-0">
-        <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Image source</span>
-        <div class="flex flex-wrap gap-2 items-center">
-          <label class="px-3 py-1.5 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) cursor-pointer transition-colors">
-            Upload image
-            <input type="file" accept="image/*" onchange={onFileChange} class="hidden" />
-          </label>
-          <input
-            type="text"
-            bind:value={imageUrl}
-            placeholder="or paste an image URL"
-            class="flex-1 min-w-[180px] px-2 py-1.5 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-xs focus:border-(--color-text-light) outline-none"
-          />
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0 flex flex-col gap-0.5">
+            <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Image source</span>
+            {#if sourceCollapsed}
+              <span class="text-[10px] text-(--color-text-muted) truncate">{sourceSummary}</span>
+            {/if}
+          </div>
           <button
             type="button"
-            onclick={loadFromUrl}
-            class="px-3 py-1.5 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            onclick={() => (sourceCollapsed = !sourceCollapsed)}
+            class="px-2 py-1 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
           >
-            Load URL
+            {sourceCollapsed ? "Show" : "Collapse"}
           </button>
         </div>
         {#if urlError}
           <span class="text-xs text-(--color-error-text)">{urlError}</span>
         {/if}
 
-        <!-- Popular memes (online) -->
-        <div class="flex flex-col gap-2 min-w-0">
+        {#if !sourceCollapsed}
+          <div class="flex flex-wrap gap-2 items-center">
+            <label class="px-3 py-1.5 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) cursor-pointer transition-colors">
+              Upload image
+              <input type="file" accept="image/*" onchange={onFileChange} class="hidden" />
+            </label>
+            <input
+              type="text"
+              bind:value={imageUrl}
+              placeholder="or paste an image URL"
+              class="flex-1 min-w-[180px] px-2 py-1.5 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-xs focus:border-(--color-text-light) outline-none"
+            />
+            <button
+              type="button"
+              onclick={loadFromUrl}
+              class="px-3 py-1.5 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              Load URL
+            </button>
+          </div>
+          <p class="text-[10px] text-(--color-text-muted)">
+            Turkish movie/TV stills: upload your own permitted image or paste a CORS-friendly URL. Copyrighted film frames are not bundled.
+          </p>
+
+          <div class="flex flex-wrap gap-1.5 items-center">
+            <span class="text-xs text-(--color-text-light) self-center mr-1">TR captions:</span>
+            {#each TURKISH_CAPTION_PRESETS as preset (preset.id)}
+              <button
+                type="button"
+                onclick={() => applyCaptionPreset(preset)}
+                class="px-2 py-1 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+              >
+                {preset.name}
+              </button>
+            {/each}
+          </div>
+
+          <!-- Popular memes (online) -->
+          <div class="flex flex-col gap-2 min-w-0">
           <div class="flex flex-wrap gap-2 items-center">
             <span class="text-xs text-(--color-text-light)">Popular memes ({ONLINE_TEMPLATES.length}):</span>
             <input
@@ -930,6 +1125,16 @@
                 title="Grid view"
               >
                 ▦ Grid
+              </button>
+              <button
+                type="button"
+                onclick={() => (memeViewMode = "large-grid")}
+                class="px-2 py-1 text-xs border transition-colors {memeViewMode === 'large-grid'
+                  ? 'bg-(--color-accent) text-(--color-btn-text) border-(--color-accent)'
+                  : 'bg-(--color-bg) border-(--color-border) text-(--color-text-muted) hover:text-(--color-text)'}"
+                title="Large responsive grid"
+              >
+                ▦ Large
               </button>
               <button
                 type="button"
@@ -958,6 +1163,43 @@
                 <option value={t.id}>{t.name}</option>
               {/each}
             </select>
+          {:else if memeViewMode === "large-grid"}
+            <div
+              class="grid grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2 max-h-96 overflow-y-auto pr-1"
+              style="scrollbar-width: thin;"
+            >
+              {#each filteredOnlineTemplates as t (t.id + t.name)}
+                <button
+                  type="button"
+                  onclick={() => {
+                    selectedOnlineId = t.id;
+                    loadOnlineTemplate(t.id);
+                  }}
+                  class="min-w-0 flex flex-col items-center gap-1.5 p-2 border transition-colors {selectedOnlineId === t.id
+                    ? 'border-(--color-accent) bg-(--color-bg)'
+                    : 'border-(--color-border) bg-(--color-bg) hover:border-(--color-text-light)'}"
+                  title={t.name}
+                >
+                  <img
+                    src={memegenThumb(t.id)}
+                    alt={t.name}
+                    loading="lazy"
+                    draggable="false"
+                    class="w-full h-24 sm:h-28 object-contain bg-white pointer-events-none"
+                    onerror={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
+                    }}
+                  />
+                  <span class="text-[11px] text-(--color-text-muted) line-clamp-2 w-full text-center leading-tight pointer-events-none">
+                    {t.name}
+                  </span>
+                </button>
+              {/each}
+              {#if filteredOnlineTemplates.length === 0}
+                <span class="col-span-3 md:col-span-4 xl:col-span-6 text-xs text-(--color-text-muted) px-3 py-4 text-center">No memes match "{memeSearch}"</span>
+              {/if}
+            </div>
+            <span class="text-[10px] text-(--color-text-muted)">Larger cards, up to 6 per row for faster picking.</span>
           {:else}
             <!-- Thumbnail row wrapper: hard-constrains the width so the inner
                  horizontal-scroll element cannot push the page wider. The
@@ -1005,27 +1247,28 @@
             </div>
             <span class="text-[10px] text-(--color-text-muted)">Drag, scroll, or shift-wheel to browse →</span>
           {/if}
-        </div>
+          </div>
 
-        <!-- Local placeholder templates -->
-        <div class="flex flex-wrap gap-1.5">
-          <span class="text-xs text-(--color-text-light) self-center mr-1">Placeholders:</span>
-          {#each TEMPLATES as t (t.id)}
-            <button
-              type="button"
-              onclick={() => selectTemplate(t)}
-              class="px-2 py-1 text-xs border transition-colors {activeTemplate?.id === t.id
-                ? 'bg-(--color-accent) text-(--color-btn-text) border-(--color-accent)'
-                : 'bg-(--color-bg) border-(--color-border) text-(--color-text-muted) hover:text-(--color-text)'}"
-            >
-              {t.name}
-            </button>
-          {/each}
-        </div>
+          <!-- Local placeholder templates -->
+          <div class="flex flex-wrap gap-1.5">
+            <span class="text-xs text-(--color-text-light) self-center mr-1">Placeholders:</span>
+            {#each TEMPLATES as t (t.id)}
+              <button
+                type="button"
+                onclick={() => selectTemplate(t)}
+                class="px-2 py-1 text-xs border transition-colors {activeTemplate?.id === t.id
+                  ? 'bg-(--color-accent) text-(--color-btn-text) border-(--color-accent)'
+                  : 'bg-(--color-bg) border-(--color-border) text-(--color-text-muted) hover:text-(--color-text)'}"
+              >
+                {t.name}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       <!-- Canvas -->
-      <div class="flex-1 bg-(--color-bg-alt) border border-(--color-border) p-3 flex flex-col items-center justify-center overflow-auto min-h-0">
+      <div class="bg-(--color-bg-alt) border border-(--color-border) p-3 flex flex-col items-center justify-center overflow-auto min-h-[420px] lg:min-h-[520px]">
         <canvas
           bind:this={canvasEl}
           onpointerdown={onPointerDown}
@@ -1060,7 +1303,7 @@
     </div>
 
     <!-- Right: text-box editor -->
-    <aside class="lg:w-80 flex flex-col gap-3 overflow-auto">
+    <aside class="lg:w-80 flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Text boxes ({textBoxes.length})</span>
         <button

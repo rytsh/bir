@@ -145,52 +145,60 @@
 
       <!-- Coin Display -->
       <div class="relative mb-8" style="perspective: 1000px;">
-        <div
-          class="coin-container"
-          style="transform: rotateX({coinRotation}deg);"
+        <button
+          type="button"
+          class="coin-button"
+          onclick={flipCoin}
+          disabled={isFlipping}
+          aria-label={isFlipping ? "Coin is flipping" : "Flip coin"}
         >
-          <!-- Heads Side - Star -->
-          <div class="coin coin-heads">
-            <div class="coin-inner">
-              <svg viewBox="0 0 100 100" class="w-full h-full">
-                <!-- Outer ring -->
-                <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
-                <!-- Inner decorative ring -->
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
-                
-                <!-- 5-pointed star -->
-                <polygon 
-                  points="50,18 56,38 78,38 61,50 67,72 50,58 33,72 39,50 22,38 44,38"
-                  fill="#808080"
-                  stroke="#707070"
-                  stroke-width="1"
-                />
-              </svg>
-              <span class="coin-label">HEADS</span>
+          <div
+            class="coin-container"
+            style="transform: rotateX({coinRotation}deg);"
+          >
+            <!-- Heads Side - Star -->
+            <div class="coin coin-heads">
+              <div class="coin-inner">
+                <svg viewBox="0 0 100 100" class="w-full h-full">
+                  <!-- Outer ring -->
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
+                  <!-- Inner decorative ring -->
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
+                  
+                  <!-- 5-pointed star -->
+                  <polygon 
+                    points="50,18 56,38 78,38 61,50 67,72 50,58 33,72 39,50 22,38 44,38"
+                    fill="#808080"
+                    stroke="#707070"
+                    stroke-width="1"
+                  />
+                </svg>
+                <span class="coin-label">HEADS</span>
+              </div>
+            </div>
+            
+            <!-- Tails Side - Triangle -->
+            <div class="coin coin-tails">
+              <div class="coin-inner">
+                <svg viewBox="0 0 100 100" class="w-full h-full">
+                  <!-- Outer ring -->
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
+                  <!-- Inner decorative ring -->
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
+                  
+                  <!-- Triangle -->
+                  <polygon 
+                    points="50,22 76,68 24,68"
+                    fill="#808080"
+                    stroke="#707070"
+                    stroke-width="1"
+                  />
+                </svg>
+                <span class="coin-label">TAILS</span>
+              </div>
             </div>
           </div>
-          
-          <!-- Tails Side - Triangle -->
-          <div class="coin coin-tails">
-            <div class="coin-inner">
-              <svg viewBox="0 0 100 100" class="w-full h-full">
-                <!-- Outer ring -->
-                <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
-                <!-- Inner decorative ring -->
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
-                
-                <!-- Triangle -->
-                <polygon 
-                  points="50,22 76,68 24,68"
-                  fill="#808080"
-                  stroke="#707070"
-                  stroke-width="1"
-                />
-              </svg>
-              <span class="coin-label">TAILS</span>
-            </div>
-          </div>
-        </div>
+        </button>
       </div>
 
       <!-- Result Display -->
@@ -205,19 +213,10 @@
           </div>
         {:else}
           <div class="text-lg text-(--color-text-muted)">
-            Click the button to flip
+            Click the coin to flip
           </div>
         {/if}
       </div>
-
-      <!-- Flip Button -->
-      <button
-        onclick={flipCoin}
-        disabled={isFlipping}
-        class="px-12 py-4 bg-(--color-accent) text-(--color-btn-text) font-bold text-xl hover:bg-(--color-accent-hover) transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isFlipping ? "Flipping..." : "FLIP"}
-      </button>
     </div>
 
     <!-- Right: Statistics and History -->
@@ -321,44 +320,52 @@
 
         <!-- Large Coin Display -->
         <div class="mb-8" style="perspective: 1000px;">
-          <div
-            class="coin-container-large"
-            style="transform: rotateX({coinRotation}deg);"
+          <button
+            type="button"
+            class="coin-button coin-button-large"
+            onclick={flipCoin}
+            disabled={isFlipping}
+            aria-label={isFlipping ? "Coin is flipping" : "Flip coin"}
           >
-            <!-- Heads Side - Star -->
-            <div class="coin-large coin-heads-large">
-              <div class="coin-inner-large">
-                <svg viewBox="0 0 100 100" class="w-full h-full">
-                  <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
-                  <polygon 
-                    points="50,18 56,38 78,38 61,50 67,72 50,58 33,72 39,50 22,38 44,38"
-                    fill="#808080"
-                    stroke="#707070"
-                    stroke-width="1"
-                  />
-                </svg>
-                <span class="coin-label-large">HEADS</span>
+            <div
+              class="coin-container-large"
+              style="transform: rotateX({coinRotation}deg);"
+            >
+              <!-- Heads Side - Star -->
+              <div class="coin-large coin-heads-large">
+                <div class="coin-inner-large">
+                  <svg viewBox="0 0 100 100" class="w-full h-full">
+                    <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
+                    <polygon 
+                      points="50,18 56,38 78,38 61,50 67,72 50,58 33,72 39,50 22,38 44,38"
+                      fill="#808080"
+                      stroke="#707070"
+                      stroke-width="1"
+                    />
+                  </svg>
+                  <span class="coin-label-large">HEADS</span>
+                </div>
+              </div>
+              
+              <!-- Tails Side - Triangle -->
+              <div class="coin-large coin-tails-large">
+                <div class="coin-inner-large">
+                  <svg viewBox="0 0 100 100" class="w-full h-full">
+                    <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
+                    <polygon 
+                      points="50,22 76,68 24,68"
+                      fill="#808080"
+                      stroke="#707070"
+                      stroke-width="1"
+                    />
+                  </svg>
+                  <span class="coin-label-large">TAILS</span>
+                </div>
               </div>
             </div>
-            
-            <!-- Tails Side - Triangle -->
-            <div class="coin-large coin-tails-large">
-              <div class="coin-inner-large">
-                <svg viewBox="0 0 100 100" class="w-full h-full">
-                  <circle cx="50" cy="50" r="48" fill="none" stroke="#909090" stroke-width="2" />
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#a0a0a0" stroke-width="1" />
-                  <polygon 
-                    points="50,22 76,68 24,68"
-                    fill="#808080"
-                    stroke="#707070"
-                    stroke-width="1"
-                  />
-                </svg>
-                <span class="coin-label-large">TAILS</span>
-              </div>
-            </div>
-          </div>
+          </button>
         </div>
 
         <!-- Result Display -->
@@ -373,19 +380,10 @@
             </div>
           {:else}
             <div class="text-2xl text-white/60">
-              Click FLIP to start
+              Click the coin to start
             </div>
           {/if}
         </div>
-
-        <!-- Flip Button -->
-        <button
-          onclick={flipCoin}
-          disabled={isFlipping}
-          class="px-16 py-5 bg-(--color-accent) text-(--color-btn-text) font-bold text-2xl hover:bg-(--color-accent-hover) transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
-        >
-          {isFlipping ? "Flipping..." : "FLIP"}
-        </button>
 
         <!-- Stats summary -->
         <div class="mt-8 text-white/70 text-lg">
@@ -397,6 +395,25 @@
 </div>
 
 <style>
+  .coin-button {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .coin-button:disabled {
+    cursor: not-allowed;
+  }
+
+  .coin-button:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 6px;
+  }
+
   .coin-container {
     width: 180px;
     height: 180px;

@@ -1,6 +1,21 @@
 <script lang="ts">
+  import {
+    ansiBrightColors,
+    ansiColors,
+    ansiEscapeFormats,
+    allAnsiColors as allColors,
+    formatAnsiEscapes,
+    getAnsiEscapeFormat,
+    getAnsiBgColorHex as getBgColorHex,
+    getAnsiColorHex as getColorHex,
+    getAnsiFgColorHex as getFgColorHex,
+    getAnsiStyleCodes,
+    getAnsiStyleCss,
+    type AnsiEscapeFormat,
+    type AnsiStyleState,
+  } from "../../lib/ansi.js";
+
   type TabMode = "generate" | "preview";
-  type EscapeFormat = "hex" | "octal" | "caret" | "unicode" | "raw";
   
   let activeTab = $state<TabMode>("generate");
 
@@ -17,7 +32,7 @@
   let hidden = $state(false);
   let strikethrough = $state(false);
   let copiedAnsi = $state(false);
-  let escapeFormat = $state<EscapeFormat>("caret");
+  let escapeFormat = $state<AnsiEscapeFormat>("caret");
 
   // Preview state
   let ansiInput = $state("\\x1b[1;31mHello\\x1b[0m \\x1b[32mWorld\\x1b[0m!");
@@ -25,76 +40,24 @@
   let wrapPreview = $state(false);
   let fullscreen = $state(false);
 
-  const escapeFormats = [
-    { id: "hex", name: "Hex (\\x1b)", prefix: "\\x1b[", suffix: "m" },
-    { id: "octal", name: "Octal (\\033)", prefix: "\\033[", suffix: "m" },
-    { id: "caret", name: "Caret (\\e)", prefix: "\\e[", suffix: "m" },
-    { id: "unicode", name: "Unicode (\\u001b)", prefix: "\\u001b[", suffix: "m" },
-    { id: "raw", name: "Raw ($'\\e')", prefix: "$'\\e[", suffix: "m'" },
-  ] as const;
-
   const getEscapePrefix = () => {
-    return escapeFormats.find((f) => f.id === escapeFormat)?.prefix || "\\x1b[";
+    return getAnsiEscapeFormat(escapeFormat).referencePrefix;
   };
 
-  const ansiColors = [
-    { name: "Black", code: 0, hex: "#000000" },
-    { name: "Red", code: 1, hex: "#cc0000" },
-    { name: "Green", code: 2, hex: "#00cc00" },
-    { name: "Yellow", code: 3, hex: "#cccc00" },
-    { name: "Blue", code: 4, hex: "#0000cc" },
-    { name: "Magenta", code: 5, hex: "#cc00cc" },
-    { name: "Cyan", code: 6, hex: "#00cccc" },
-    { name: "White", code: 7, hex: "#cccccc" },
-  ];
-
-  const ansiBrightColors = [
-    { name: "Bright Black", code: 8, hex: "#666666" },
-    { name: "Bright Red", code: 9, hex: "#ff0000" },
-    { name: "Bright Green", code: 10, hex: "#00ff00" },
-    { name: "Bright Yellow", code: 11, hex: "#ffff00" },
-    { name: "Bright Blue", code: 12, hex: "#0000ff" },
-    { name: "Bright Magenta", code: 13, hex: "#ff00ff" },
-    { name: "Bright Cyan", code: 14, hex: "#00ffff" },
-    { name: "Bright White", code: 15, hex: "#ffffff" },
-  ];
-
-  const allColors = [...ansiColors, ...ansiBrightColors];
-
-  const getColorHex = (code: number): string => {
-    return allColors.find((c) => c.code === code)?.hex || "#cccccc";
-  };
-
-  const getFgColorHex = (code: number): string => {
-    if (code >= 30 && code <= 37) {
-      return allColors[code - 30]?.hex || "#cccccc";
-    }
-    if (code >= 90 && code <= 97) {
-      return allColors[code - 90 + 8]?.hex || "#cccccc";
-    }
-    return "#cccccc";
-  };
-
-  const getBgColorHex = (code: number): string => {
-    if (code >= 40 && code <= 47) {
-      return allColors[code - 40]?.hex || "#000000";
-    }
-    if (code >= 100 && code <= 107) {
-      return allColors[code - 100 + 8]?.hex || "#000000";
-    }
-    return "#000000";
-  };
+  const getCurrentStyle = (): AnsiStyleState => ({
+    bold,
+    dim,
+    italic,
+    underline,
+    blink,
+    reverse,
+    hidden,
+    strikethrough,
+  });
 
   const generateAnsiCode = (): string => {
     const codes: string[] = [];
-    if (bold) codes.push("1");
-    if (dim) codes.push("2");
-    if (italic) codes.push("3");
-    if (underline) codes.push("4");
-    if (blink) codes.push("5");
-    if (reverse) codes.push("7");
-    if (hidden) codes.push("8");
-    if (strikethrough) codes.push("9");
+    codes.push(...getAnsiStyleCodes(getCurrentStyle()));
     
     if (fgColor < 8) {
       codes.push((30 + fgColor).toString());
@@ -108,43 +71,13 @@
       codes.push((100 + (bgColor - 8)).toString());
     }
 
-    const format = escapeFormats.find((f) => f.id === escapeFormat);
-    const prefix = format?.prefix || "\\x1b[";
-    const suffix = format?.suffix || "m";
-    
-    if (escapeFormat === "raw") {
-      return `${prefix}${codes.join(";")}${suffix}${previewText}$'\\e[0m'`;
-    }
-    return `${prefix}${codes.join(";")}m${previewText}${prefix}0m`;
+    return formatAnsiEscapes(`\x1b[${codes.join(";")}m${previewText}\x1b[0m`, escapeFormat);
   };
 
   const ansiCode = $derived(generateAnsiCode());
 
   const getPreviewStyle = (): string => {
-    const styles: string[] = [];
-    
-    if (reverse) {
-      styles.push(`background-color: ${getColorHex(fgColor)};`);
-      styles.push(`color: ${getColorHex(bgColor)};`);
-    } else {
-      styles.push(`background-color: ${getColorHex(bgColor)};`);
-      styles.push(`color: ${getColorHex(fgColor)};`);
-    }
-    
-    if (bold) styles.push("font-weight: bold;");
-    if (dim) styles.push("opacity: 0.5;");
-    if (italic) styles.push("font-style: italic;");
-    if (hidden) styles.push("color: transparent;");
-    if (blink) styles.push("animation: blink 1s step-end infinite;");
-    
-    const decorations: string[] = [];
-    if (underline) decorations.push("underline");
-    if (strikethrough) decorations.push("line-through");
-    if (decorations.length > 0) {
-      styles.push(`text-decoration: ${decorations.join(" ")};`);
-    }
-    
-    return styles.join(" ");
+    return getAnsiStyleCss(getCurrentStyle(), getColorHex(fgColor), getColorHex(bgColor));
   };
 
   const previewStyle = $derived(getPreviewStyle());
@@ -158,18 +91,10 @@
   };
 
   // ANSI Parser for Preview tab
-  interface StyledSegment {
+  interface StyledSegment extends AnsiStyleState {
     text: string;
     fg: string;
     bg: string;
-    bold: boolean;
-    dim: boolean;
-    italic: boolean;
-    underline: boolean;
-    blink: boolean;
-    reverse: boolean;
-    hidden: boolean;
-    strikethrough: boolean;
   }
 
   const parseAnsiText = (input: string): StyledSegment[] => {
@@ -301,32 +226,7 @@
   };
 
   const getSegmentStyle = (segment: StyledSegment): string => {
-    const styles: string[] = [];
-    
-    // Handle reverse (swap fg/bg)
-    if (segment.reverse) {
-      styles.push(`color: ${segment.bg};`);
-      styles.push(`background-color: ${segment.fg};`);
-    } else {
-      styles.push(`color: ${segment.fg};`);
-      styles.push(`background-color: ${segment.bg};`);
-    }
-    
-    if (segment.bold) styles.push("font-weight: bold;");
-    if (segment.dim) styles.push("opacity: 0.5;");
-    if (segment.italic) styles.push("font-style: italic;");
-    if (segment.hidden) styles.push("color: transparent;");
-    if (segment.blink) styles.push("animation: blink 1s step-end infinite;");
-    
-    // Handle text-decoration
-    const decorations: string[] = [];
-    if (segment.underline) decorations.push("underline");
-    if (segment.strikethrough) decorations.push("line-through");
-    if (decorations.length > 0) {
-      styles.push(`text-decoration: ${decorations.join(" ")};`);
-    }
-    
-    return styles.join(" ");
+    return getAnsiStyleCss(segment, segment.fg, segment.bg);
   };
 
   const parsedSegments = $derived(parseAnsiText(ansiInput));
@@ -380,22 +280,14 @@
               Escape Format
             </label>
             <span class="text-xs text-(--color-text-muted)">
-              {#if escapeFormat === "hex"}
-                Use in Python, JS, C, etc.
-              {:else if escapeFormat === "octal"}
-                Use in shell with <i>echo -e</i>
-              {:else if escapeFormat === "unicode"}
-                Use in Discord code blocks
-              {:else}
-                Use in bash: <i>echo -e</i>
-              {/if}
+              {getAnsiEscapeFormat(escapeFormat).description}
             </span>
           </div>
           <select
             bind:value={escapeFormat}
             class="w-full px-3 py-2 text-sm border border-(--color-border) bg-(--color-bg-alt) text-(--color-text)"
           >
-            {#each escapeFormats as format}
+            {#each ansiEscapeFormats as format}
               <option value={format.id}>{format.name}</option>
             {/each}
           </select>

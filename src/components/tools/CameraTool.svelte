@@ -3,6 +3,22 @@
 
   type RecState = "idle" | "previewing" | "recording" | "paused" | "stopped";
 
+  interface CameraRangeCapability {
+    min: number;
+    max: number;
+    step?: number;
+  }
+
+  interface CameraTrackCapabilities extends MediaTrackCapabilities {
+    focusMode?: string[];
+    focusDistance?: CameraRangeCapability;
+  }
+
+  interface CameraTrackSettings extends MediaTrackSettings {
+    focusMode?: string;
+    focusDistance?: number;
+  }
+
   let recState = $state<RecState>("idle");
   let videoElement = $state<HTMLVideoElement | null>(null);
   let previewElement: HTMLVideoElement;
@@ -28,11 +44,124 @@
   let mirror = $state(true);
   let facingMode = $state<"user" | "environment">("user"); // For mobile camera switching
   let permissionStatus = $state<"unknown" | "granted" | "denied" | "prompt">("unknown");
+  let focusModes = $state<string[]>([]);
+  let focusMode = $state("auto");
+  let focusDistance = $state(0);
+  let focusDistanceMin = $state(0);
+  let focusDistanceMax = $state(0);
+  let focusDistanceStep = $state(0.01);
+  let manualFocusSupported = $state(false);
+  let focusError = $state("");
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatFocusMode = (mode: string): string => {
+    return mode
+      .split("-")
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+
+  const getVideoTrack = (): MediaStreamTrack | null => {
+    return stream?.getVideoTracks()[0] ?? null;
+  };
+
+  const resetFocusControls = () => {
+    focusModes = [];
+    focusMode = "auto";
+    focusDistance = 0;
+    focusDistanceMin = 0;
+    focusDistanceMax = 0;
+    focusDistanceStep = 0.01;
+    manualFocusSupported = false;
+    focusError = "";
+  };
+
+  const syncFocusControls = () => {
+    const track = getVideoTrack();
+
+    if (!track || typeof track.getCapabilities !== "function") {
+      resetFocusControls();
+      return;
+    }
+
+    const capabilities = track.getCapabilities() as CameraTrackCapabilities;
+    const settings = track.getSettings() as CameraTrackSettings;
+    const distanceCapability = capabilities.focusDistance;
+    const nextFocusModes = capabilities.focusMode ?? [];
+    const hasManualMode = nextFocusModes.includes("manual");
+    const fallbackFocusMode = hasManualMode
+      ? "manual"
+      : nextFocusModes[0] ?? (distanceCapability ? "manual" : "auto");
+
+    focusModes = nextFocusModes;
+    focusMode = settings.focusMode ?? fallbackFocusMode;
+    manualFocusSupported = !!distanceCapability && (nextFocusModes.length === 0 || hasManualMode);
+
+    if (distanceCapability) {
+      focusDistanceMin = distanceCapability.min;
+      focusDistanceMax = distanceCapability.max;
+      focusDistanceStep = distanceCapability.step || Math.max((distanceCapability.max - distanceCapability.min) / 100, 0.01);
+      focusDistance = settings.focusDistance ?? distanceCapability.min;
+    } else {
+      focusDistance = 0;
+      focusDistanceMin = 0;
+      focusDistanceMax = 0;
+      focusDistanceStep = 0.01;
+    }
+  };
+
+  const applyFocusMode = async (nextMode: string) => {
+    const track = getVideoTrack();
+    if (!track) return;
+
+    focusMode = nextMode;
+    focusError = "";
+
+    const advancedConstraints = nextMode === "manual" && manualFocusSupported
+      ? [{ focusMode: nextMode, focusDistance }]
+      : [{ focusMode: nextMode }];
+
+    try {
+      await track.applyConstraints({ advanced: advancedConstraints } as MediaTrackConstraints);
+      syncFocusControls();
+    } catch (e) {
+      focusError = e instanceof Error ? e.message : "Could not change focus mode.";
+    }
+  };
+
+  const handleFocusModeChange = (event: Event) => {
+    const target = event.currentTarget as HTMLSelectElement;
+    void applyFocusMode(target.value);
+  };
+
+  const applyFocusDistance = async () => {
+    const track = getVideoTrack();
+    if (!track || focusMode !== "manual" || !manualFocusSupported) return;
+
+    focusError = "";
+
+    try {
+      const advancedConstraints = focusModes.includes("manual")
+        ? [{ focusMode: "manual", focusDistance }]
+        : [{ focusDistance }];
+
+      await track.applyConstraints({
+        advanced: advancedConstraints,
+      } as MediaTrackConstraints);
+    } catch (e) {
+      focusError = e instanceof Error ? e.message : "Could not set focus distance.";
+    }
+  };
+
+  const handleFocusDistanceInput = (event: Event) => {
+    const target = event.currentTarget as HTMLInputElement;
+    focusDistance = Number(target.value);
+    void applyFocusDistance();
   };
 
   const checkMediaDevicesSupport = () => {
@@ -142,6 +271,7 @@
       videoElement.play();
       stream = pendingStream;
       pendingStream = null;
+      syncFocusControls();
     }
   });
 
@@ -162,6 +292,7 @@
       stream.getTracks().forEach(track => { track.stop(); });
       stream = null;
     }
+    resetFocusControls();
     
     try {
       // Build video constraints
@@ -195,6 +326,7 @@
         videoElement.srcObject = newStream;
         await videoElement.play();
         stream = newStream;
+        syncFocusControls();
       } else {
         // Video element not ready yet, store for $effect to handle
         pendingStream = newStream;
@@ -239,6 +371,7 @@
     if (videoElement) {
       videoElement.srcObject = null;
     }
+    resetFocusControls();
     recState = "idle";
   };
 
@@ -671,6 +804,61 @@
                 />
                 <span class="text-sm text-(--color-text)">Mirror preview</span>
               </label>
+            </div>
+
+            <div class="border-t border-(--color-border) pt-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-xs text-(--color-text-muted)">Focus</div>
+                {#if manualFocusSupported}
+                  <span class="text-[10px] uppercase tracking-wider text-(--color-accent)">Manual Ready</span>
+                {/if}
+              </div>
+
+              {#if focusModes.length > 0}
+                <select
+                  id="focusMode"
+                  value={focusMode}
+                  onchange={handleFocusModeChange}
+                  class="w-full px-3 py-1.5 text-sm border border-(--color-border) bg-(--color-bg) text-(--color-text) focus:outline-none focus:border-(--color-accent)"
+                >
+                  {#each focusModes as mode}
+                    <option value={mode}>{formatFocusMode(mode)}</option>
+                  {/each}
+                </select>
+              {/if}
+
+              {#if manualFocusSupported}
+                <div class="mt-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <label for="focusDistance" class="text-xs text-(--color-text-muted)">Focus distance</label>
+                    <span class="text-xs tabular-nums text-(--color-text)">{focusDistance.toFixed(2)}</span>
+                  </div>
+                  <input
+                    id="focusDistance"
+                    type="range"
+                    min={focusDistanceMin}
+                    max={focusDistanceMax}
+                    step={focusDistanceStep}
+                    value={focusDistance}
+                    disabled={focusModes.length > 0 && focusMode !== "manual"}
+                    oninput={handleFocusDistanceInput}
+                    class="w-full accent-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <p class="mt-1 text-xs text-(--color-text-muted)">
+                    {focusMode === "manual" || focusModes.length === 0
+                      ? "Drag to adjust the lens focus."
+                      : "Switch focus mode to Manual to adjust distance."}
+                  </p>
+                </div>
+              {:else}
+                <p class="text-xs text-(--color-text-muted)">
+                  Manual focus is not exposed by this camera/browser.
+                </p>
+              {/if}
+
+              {#if focusError}
+                <p class="mt-2 text-xs text-(--color-error-text)">{focusError}</p>
+              {/if}
             </div>
           </div>
         </div>

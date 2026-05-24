@@ -4,8 +4,6 @@
   import {
     createDarkModeObserver,
     getInitialDarkMode,
-    createTheme,
-    editorHeightExtension,
     createEditor,
     updateEditorContent,
     getEditorContent,
@@ -24,10 +22,17 @@
   let renderTimer = $state<ReturnType<typeof setTimeout> | undefined>(undefined);
   let darkModeCleanup: DarkModeCleanup | undefined;
   let mermaidLoaded = $state(false);
-  let markedModule: typeof import("marked") | undefined;
   let hljs: typeof import("highlight.js") | undefined;
-  let katexModule: typeof import("katex") | undefined;
   let viewMode = $state<ViewMode>("split");
+  let comarkRender: ((markdown: string) => Promise<string>) | undefined;
+
+  const htmlEscapes: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
 
   const sampleMarkdown = `# Markdown Preview
 
@@ -132,13 +137,6 @@ sequenceDiagram
     }
   }
 
-  async function loadMarked(): Promise<typeof import("marked")> {
-    if (!markedModule) {
-      markedModule = await import("marked");
-    }
-    return markedModule;
-  }
-
   async function loadHljs(): Promise<typeof import("highlight.js")> {
     if (!hljs) {
       const mod = await import("highlight.js");
@@ -147,11 +145,50 @@ sequenceDiagram
     return hljs;
   }
 
-  async function loadKatex(): Promise<typeof import("katex")> {
-    if (!katexModule) {
-      katexModule = await import("katex");
+  async function loadComarkRender(): Promise<(markdown: string) => Promise<string>> {
+    if (!comarkRender) {
+      const [{ createRender }, mathPlugin] = await Promise.all([
+        import("@comark/html"),
+        import("@comark/html/plugins/math"),
+      ]);
+
+      comarkRender = createRender({
+        plugins: [mathPlugin.default()],
+        components: { Math: mathPlugin.Math },
+      });
     }
-    return katexModule;
+
+    return comarkRender;
+  }
+
+  function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
+  }
+
+  async function highlightRenderedCodeBlocks(): Promise<void> {
+    if (!previewContainer) return;
+
+    const codeBlocks = previewContainer.querySelectorAll("pre code");
+    if (codeBlocks.length === 0) return;
+
+    const hljsMod = await loadHljs();
+
+    for (const codeBlock of codeBlocks) {
+      const codeEl = codeBlock as HTMLElement;
+      if (codeEl.classList.contains("language-mermaid") || codeEl.classList.contains("hljs")) continue;
+
+      const languageClass = Array.from(codeEl.classList).find((className) => className.startsWith("language-"));
+      const language = languageClass?.replace("language-", "");
+      const source = codeEl.textContent || "";
+
+      if (language && hljsMod.default.getLanguage(language)) {
+        codeEl.innerHTML = hljsMod.default.highlight(source, { language }).value;
+      } else {
+        codeEl.innerHTML = hljsMod.default.highlightAuto(source).value;
+      }
+
+      codeEl.classList.add("hljs");
+    }
   }
 
   async function renderMermaidBlocks(): Promise<void> {
@@ -194,107 +231,21 @@ sequenceDiagram
     }
   }
 
-  function createKatexExtension(katex: typeof import("katex")) {
-    const inlineRule = /^\$([^\$\n]+?)\$/;
-    const blockRule = /^\$\$\n?([\s\S]+?)\n?\$\$/;
-
-    return {
-      extensions: [
-        {
-          name: "katex-block",
-          level: "block" as const,
-          start(src: string) {
-            return src.indexOf("$$");
-          },
-          tokenizer(src: string) {
-            const match = blockRule.exec(src);
-            if (match) {
-              return {
-                type: "katex-block",
-                raw: match[0],
-                text: match[1].trim(),
-              };
-            }
-            return undefined;
-          },
-          renderer(token: { text: string }) {
-            try {
-              return `<div class="katex-block">${katex.default.renderToString(token.text, { displayMode: true, throwOnError: false })}</div>`;
-            } catch {
-              return `<div class="katex-block katex-error">${token.text}</div>`;
-            }
-          },
-        },
-        {
-          name: "katex-inline",
-          level: "inline" as const,
-          start(src: string) {
-            return src.indexOf("$");
-          },
-          tokenizer(src: string) {
-            const match = inlineRule.exec(src);
-            if (match) {
-              return {
-                type: "katex-inline",
-                raw: match[0],
-                text: match[1].trim(),
-              };
-            }
-            return undefined;
-          },
-          renderer(token: { text: string }) {
-            try {
-              return katex.default.renderToString(token.text, { displayMode: false, throwOnError: false });
-            } catch {
-              return `<span class="katex-error">${token.text}</span>`;
-            }
-          },
-        },
-      ],
-    };
-  }
-
   async function renderMarkdown(input: string): Promise<string> {
-    const [{ marked }, hljsMod, katex] = await Promise.all([
-      loadMarked(),
-      loadHljs(),
-      loadKatex(),
-    ]);
-
-    marked.setOptions({
-      gfm: true,
-      breaks: false,
-    });
-
-    marked.use(createKatexExtension(katex));
-
-    marked.use({
-      renderer: {
-        code({ text, lang }: { text: string; lang?: string }) {
-          if (lang === "mermaid") {
-            return `<pre><code class="language-mermaid">${text}</code></pre>`;
-          }
-          if (lang && hljsMod.default.getLanguage(lang)) {
-            const highlighted = hljsMod.default.highlight(text, { language: lang }).value;
-            return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
-          }
-          const autoHighlighted = hljsMod.default.highlightAuto(text).value;
-          return `<pre><code class="hljs">${autoHighlighted}</code></pre>`;
-        },
-      },
-    });
-
-    const html = await marked.parse(input);
-    return html;
+    const render = await loadComarkRender();
+    return render(input);
   }
 
   async function updatePreview(input: string): Promise<void> {
     try {
       previewHtml = await renderMarkdown(input);
       await new Promise((r) => setTimeout(r, 0));
+      await highlightRenderedCodeBlocks();
       await renderMermaidBlocks();
-    } catch {
-      previewHtml = `<p class="error">Error rendering markdown</p>`;
+    } catch (error) {
+      console.error("Markdown render failed", error);
+      const message = error instanceof Error ? escapeHtml(error.message) : "Unknown error";
+      previewHtml = `<p class="error">Error rendering markdown: ${message}</p>`;
     }
   }
 
@@ -378,14 +329,14 @@ sequenceDiagram
 </script>
 
 <svelte:head>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.33/dist/katex.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" />
 </svelte:head>
 
 <div class="relative h-full min-h-0 overflow-hidden">
   <div class="absolute inset-0 flex flex-col">
   <header class="shrink-0 mb-3">
     <p class="text-sm text-(--color-text-muted)">
-      Live markdown editor with preview. Supports GitHub Flavored Markdown, Mermaid diagrams, syntax-highlighted code blocks, and KaTeX math.
+      Live Comark markdown editor with GitHub Flavored Markdown, Mermaid diagrams, syntax-highlighted code blocks, and KaTeX math.
     </p>
   </header>
 
@@ -693,7 +644,8 @@ sequenceDiagram
   }
 
   /* KaTeX */
-  :global(.markdown-body .katex-block) {
+  :global(.markdown-body .katex-block),
+  :global(.markdown-body .math.block) {
     margin: 1em 0;
     text-align: center;
     overflow-x: auto;
@@ -704,6 +656,10 @@ sequenceDiagram
     color: var(--color-error-text);
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.85em;
+  }
+
+  :global(.markdown-body .error) {
+    color: var(--color-error-text);
   }
 
   /* Dark mode adjustments for links */

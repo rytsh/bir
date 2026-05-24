@@ -1,8 +1,25 @@
 <script lang="ts">
   import figlet from "figlet";
 
+  import {
+    allAnsiColors,
+    ansiEscapeFormats,
+    ansiStyleOptions,
+    createDefaultAnsiStyleState,
+    formatAnsiEscapes,
+    getAnsiBackgroundCode,
+    getAnsiColorHex,
+    getAnsiEscapeFormat,
+    getAnsiForegroundCode,
+    getAnsiStyleCodes,
+    getAnsiStyleCss,
+    type AnsiEscapeFormat,
+    type AnsiStyleKey,
+    type AnsiStyleState,
+  } from "../../lib/ansi.js";
+
   // Tab state
-  type Tab = "generator" | "editor";
+  type Tab = "generator" | "editor" | "paint";
   let activeTab = $state<Tab>("generator");
 
   // ASCII block characters for the editor
@@ -29,6 +46,70 @@
   let editorTextarea: HTMLTextAreaElement | null = $state(null);
   let cursorLine = $state(1);
   let cursorColumn = $state(1);
+
+  type ImageAsciiCharset = "standard" | "detailed" | "blocks" | "custom" | "braille";
+
+  const imageAsciiCharsets: { value: ImageAsciiCharset; label: string; chars?: string }[] = [
+    { value: "standard", label: "Standard", chars: "@%#*+=-:. " },
+    { value: "detailed", label: "Detailed", chars: "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. " },
+    { value: "blocks", label: "Block shades", chars: "█▓▒░ " },
+    { value: "custom", label: "Custom" },
+    { value: "braille", label: "Braille dots" },
+  ];
+
+  const imageAsciiBackgrounds = [
+    { value: " ", label: "Space" },
+    { value: ".", label: "Dot" },
+    { value: "·", label: "Middle dot" },
+    { value: "░", label: "Light shade" },
+    { value: "custom", label: "Custom" },
+  ];
+
+  let imageAsciiFile: File | null = $state(null);
+  let imageAsciiFileName = $state("");
+  let imageAsciiWidth = $state(90);
+  let imageAsciiCharset = $state<ImageAsciiCharset>("standard");
+  let imageAsciiCustomChars = $state("@%#*+=-:. ");
+  let imageAsciiDetail = $state(100);
+  let imageAsciiThreshold = $state(128);
+  let imageAsciiBackground = $state(" ");
+  let imageAsciiCustomBackground = $state("·");
+  let imageAsciiInvert = $state(false);
+  let imageAsciiLoading = $state(false);
+  let imageAsciiError = $state("");
+
+  type PaintMode = "fg" | "bg" | "both" | "style" | "full" | "erase";
+
+  interface PaintCell extends AnsiStyleState {
+    char: string;
+    fg: string;
+    bg: string;
+  }
+
+  const paintPalette = allAnsiColors;
+  const defaultPaintFg = getAnsiColorHex(7);
+  const defaultPaintBg = getAnsiColorHex(0);
+
+  const paintModes: { value: PaintMode; label: string }[] = [
+    { value: "fg", label: "Text" },
+    { value: "bg", label: "Background" },
+    { value: "both", label: "Colors" },
+    { value: "style", label: "Style" },
+    { value: "full", label: "Full" },
+    { value: "erase", label: "Reset" },
+  ];
+
+  let paintGrid = $state<PaintCell[][]>([]);
+  let paintFg = $state(defaultPaintFg);
+  let paintBg = $state(defaultPaintBg);
+  let paintStyles = $state<AnsiStyleState>(createDefaultAnsiStyleState());
+  let paintMode = $state<PaintMode>("fg");
+  let isPainting = $state(false);
+  let paintCopyFormat = $state<AnsiEscapeFormat>("terminal");
+  let paintCopied = $state<AnsiEscapeFormat | "plain" | null>(null);
+  let paintBlinkOn = $state(true);
+  let viewZoom = $state(100);
+  const viewZoomScale = $derived(viewZoom / 100);
   
   // Editor mode: 'text' for textarea, 'grid' for canvas
   type EditorMode = "text" | "grid";
@@ -121,6 +202,17 @@
       }
     }
   });
+
+  $effect(() => {
+    const updatePaintBlink = () => {
+      paintBlinkOn = Math.floor(Date.now() / 500) % 2 === 0;
+    };
+
+    updatePaintBlink();
+    const interval = window.setInterval(updatePaintBlink, 125);
+
+    return () => window.clearInterval(interval);
+  });
   
   // Try to load custom font from Google Fonts when user types
   function tryLoadCustomFont() {
@@ -135,6 +227,10 @@
       ? `'${customFontName.trim()}', monospace`
       : `'${selectedFontName}', monospace`
   );
+
+  function scaledPx(value: number): number {
+    return Math.max(1, Math.round(value * viewZoomScale));
+  }
   
   // Grid/Canvas state
   let gridRows = $state(20);
@@ -142,12 +238,10 @@
   let selectedBrush = $state("█");
   let isDrawing = $state(false);
   let gridData = $state<string[][]>([]);
-  let gridZoom = $state(100); // Zoom percentage (50-200%)
   
-  // Computed cell size based on zoom. Use the natural monospace aspect
-  // ratio (~0.6 width : 1.2 height for each glyph) so grid cells render
-  // characters at the same proportions as the plain text editor.
-  const gridFontSize = $derived(Math.round(14 * (gridZoom / 100))); // Base font 14px
+  // Computed cell size based on the global view zoom. Use the natural
+  // monospace aspect ratio (~0.6 width : 1.2 height for each glyph).
+  const gridFontSize = $derived(scaledPx(14));
   const gridCellWidth = $derived(Math.max(1, Math.round(gridFontSize * 0.6)));
   const gridCellHeight = $derived(Math.max(1, Math.round(gridFontSize * 1.2)));
   // Kept for backward-compat where a single "cell size" is referenced
@@ -317,6 +411,309 @@
     editorContent = "";
     cursorLine = 1;
     cursorColumn = 1;
+  }
+
+  function getImageAsciiChars(): string[] {
+    const charset = imageAsciiCharset === "custom"
+      ? imageAsciiCustomChars
+      : imageAsciiCharsets.find((item) => item.value === imageAsciiCharset)?.chars ?? "@%#*+=-:. ";
+    const chars = Array.from(charset);
+    return imageAsciiInvert ? chars.reverse() : chars;
+  }
+
+  function applyImageDetail(luminance: number): number {
+    const normalized = luminance / 255;
+    const detail = Math.max(25, Math.min(250, imageAsciiDetail)) / 100;
+    return Math.max(0, Math.min(1, (normalized - 0.5) * detail + 0.5)) * 255;
+  }
+
+  function formatImageAsciiLine(line: string): string {
+    return getImageAsciiBackground() === " " ? line.trimEnd() : line;
+  }
+
+  function getImageAsciiBackground(): string {
+    const value = imageAsciiBackground === "custom" ? imageAsciiCustomBackground : imageAsciiBackground;
+    return Array.from(value)[0] ?? " ";
+  }
+
+  function applyImageAscii(ascii: string) {
+    editorContent = ascii;
+    textToGrid(ascii);
+    cursorLine = 1;
+    cursorColumn = 1;
+  }
+
+  async function loadImage(file: File): Promise<HTMLImageElement> {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+
+    try {
+      await img.decode();
+      return img;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function imageDataLuminance(data: Uint8ClampedArray, width: number, x: number, y: number): { alpha: number; luminance: number } {
+    const i = (y * width + x) * 4;
+    const luminance = applyImageDetail(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]);
+    return { alpha: data[i + 3], luminance };
+  }
+
+  function convertImageDataToCharacterAscii(data: Uint8ClampedArray, width: number, height: number): string {
+    const chars = getImageAsciiChars();
+    const background = getImageAsciiBackground();
+    const lines: string[] = [];
+
+    if (chars.length < 2) {
+      throw new Error("Character set needs at least 2 characters.");
+    }
+
+    for (let y = 0; y < height; y++) {
+      let line = "";
+      for (let x = 0; x < width; x++) {
+        const { alpha, luminance } = imageDataLuminance(data, width, x, y);
+        if (alpha < 32) {
+          line += background;
+          continue;
+        }
+
+        const charIndex = Math.round((luminance / 255) * (chars.length - 1));
+        const char = chars[charIndex];
+        line += char === " " ? background : char;
+      }
+      lines.push(formatImageAsciiLine(line));
+    }
+
+    return lines.join("\n").trimEnd();
+  }
+
+  function convertImageDataToBrailleAscii(data: Uint8ClampedArray, width: number, height: number): string {
+    const background = getImageAsciiBackground();
+    const threshold = Math.max(0, Math.min(255, imageAsciiThreshold));
+    const dotBits = [
+      [0, 3],
+      [1, 4],
+      [2, 5],
+      [6, 7],
+    ];
+    const lines: string[] = [];
+
+    for (let y = 0; y < height; y += 4) {
+      let line = "";
+      for (let x = 0; x < width; x += 2) {
+        let pattern = 0;
+
+        for (let dy = 0; dy < 4; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            if (px >= width || py >= height) continue;
+
+            const { alpha, luminance } = imageDataLuminance(data, width, px, py);
+            if (alpha < 32) continue;
+
+            const dotOn = imageAsciiInvert ? luminance > threshold : luminance < threshold;
+            if (dotOn) pattern |= 1 << dotBits[dy][dx];
+          }
+        }
+
+        line += pattern === 0 && background !== " " ? background : String.fromCharCode(0x2800 + pattern);
+      }
+      lines.push(formatImageAsciiLine(line));
+    }
+
+    return lines.join("\n").trimEnd();
+  }
+
+  async function convertSelectedImageToAscii() {
+    if (!imageAsciiFile) {
+      imageAsciiError = "Choose an image first.";
+      return;
+    }
+
+    imageAsciiLoading = true;
+    imageAsciiError = "";
+
+    try {
+      const img = await loadImage(imageAsciiFile);
+      const targetWidth = Math.max(20, Math.min(220, Math.round(imageAsciiWidth)));
+      const isBraille = imageAsciiCharset === "braille";
+      const canvasWidth = isBraille ? targetWidth * 2 : targetWidth;
+      const targetHeight = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * targetWidth * (isBraille ? 0.5 : 0.48)));
+      const canvasHeight = isBraille ? targetHeight * 4 : targetHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not create canvas context.");
+
+      ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+      const { data } = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+      const ascii = isBraille
+        ? convertImageDataToBrailleAscii(data, canvasWidth, canvasHeight)
+        : convertImageDataToCharacterAscii(data, canvasWidth, canvasHeight);
+
+      applyImageAscii(ascii);
+    } catch (e) {
+      imageAsciiError = e instanceof Error ? e.message : "Failed to convert image.";
+    } finally {
+      imageAsciiLoading = false;
+    }
+  }
+
+  async function onImageAsciiFileChange(e: Event) {
+    const file = (e.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    imageAsciiFile = file;
+    imageAsciiFileName = file.name;
+    await convertSelectedImageToAscii();
+  }
+
+  function getCurrentEditorText(): string {
+    return editorMode === "grid" ? gridToText() : editorContent;
+  }
+
+  function createPaintCell(char: string): PaintCell {
+    return {
+      char,
+      fg: paintFg,
+      bg: paintBg,
+      ...paintStyles,
+    };
+  }
+
+  function createResetPaintCell(char: string): PaintCell {
+    return {
+      char,
+      fg: defaultPaintFg,
+      bg: defaultPaintBg,
+      ...createDefaultAnsiStyleState(),
+    };
+  }
+
+  function setPaintStyle(key: AnsiStyleKey, checked: boolean) {
+    paintStyles = { ...paintStyles, [key]: checked };
+  }
+
+  function getPaintCellStyle(cell: PaintCell): string {
+    return getAnsiStyleCss({ ...cell, blink: false }, cell.fg, cell.bg);
+  }
+
+  function getStylePreviewStyle(key: AnsiStyleKey): string {
+    return getAnsiStyleCss(
+      { ...createDefaultAnsiStyleState(), [key]: true },
+      defaultPaintFg,
+      defaultPaintBg,
+    );
+  }
+
+  function syncPaintFromEditor() {
+    const text = getCurrentEditorText();
+    if (editorMode === "grid") {
+      editorContent = text;
+    }
+
+    const lines = text ? text.split("\n") : [""];
+    paintGrid = lines.map((line, rowIndex) =>
+      Array.from(line || " ").map((char, colIndex) => {
+        const existing = paintGrid[rowIndex]?.[colIndex];
+        if (existing?.char === char) return existing;
+        return createPaintCell(char);
+      })
+    );
+  }
+
+  function setActiveTab(tab: Tab) {
+    if (tab === "paint") {
+      syncPaintFromEditor();
+    }
+    activeTab = tab;
+  }
+
+  function paintPlainText(): string {
+    return paintGrid.map((row) => row.map((cell) => cell.char).join("").trimEnd()).join("\n").trimEnd();
+  }
+
+  function paintCellAnsiCodes(cell: PaintCell): string {
+    return [
+      ...getAnsiStyleCodes(cell),
+      getAnsiForegroundCode(cell.fg),
+      getAnsiBackgroundCode(cell.bg),
+    ].join(";");
+  }
+
+  function paintAnsiText(): string {
+    return paintGrid.map((row) => {
+      let line = "";
+      let currentCodes = "";
+      let currentText = "";
+
+      const flushRun = () => {
+        if (!currentText) return;
+        line += `\x1b[0;${currentCodes}m${currentText}`;
+        currentText = "";
+      };
+
+      for (const cell of row) {
+        const codes = paintCellAnsiCodes(cell);
+        if (codes !== currentCodes) {
+          flushRun();
+          currentCodes = codes;
+        }
+        currentText += cell.char;
+      }
+
+      flushRun();
+      return `${line}\x1b[0m`;
+    }).join("\n");
+  }
+
+  function applyPaintCell(row: number, col: number, erase = false) {
+    if (!paintGrid[row]?.[col]) return;
+    const next = paintGrid.map((line, rowIndex) =>
+      rowIndex === row
+        ? line.map((cell, colIndex) => {
+            if (colIndex !== col) return cell;
+            if (erase || paintMode === "erase") return createResetPaintCell(cell.char);
+            if (paintMode === "fg") return { ...cell, fg: paintFg };
+            if (paintMode === "bg") return { ...cell, bg: paintBg };
+            if (paintMode === "both") return { ...cell, fg: paintFg, bg: paintBg };
+            if (paintMode === "style") return { ...cell, ...paintStyles };
+            return { ...cell, fg: paintFg, bg: paintBg, ...paintStyles };
+          })
+        : line
+    );
+    paintGrid = next;
+  }
+
+  function handlePaintMouseDown(row: number, col: number, e: MouseEvent) {
+    isPainting = true;
+    applyPaintCell(row, col, e.button === 2 || e.ctrlKey || e.metaKey);
+  }
+
+  function handlePaintMouseEnter(row: number, col: number, e: MouseEvent) {
+    if (!isPainting) return;
+    applyPaintCell(row, col, e.ctrlKey || e.metaKey);
+  }
+
+  function handlePaintMouseUp() {
+    isPainting = false;
+  }
+
+  async function copyPaintOutput(kind: "ansi" | "plain") {
+    const text = kind === "ansi"
+      ? formatAnsiEscapes(paintAnsiText(), paintCopyFormat)
+      : paintPlainText();
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    paintCopied = kind === "ansi" ? paintCopyFormat : "plain";
+    setTimeout(() => {
+      paintCopied = null;
+    }, 2000);
   }
 
   // Curated list of popular fonts - loaded on demand
@@ -538,24 +935,51 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate ASCII art text using various stylized fonts, or create your own using block characters.
+      Generate ASCII art text, convert images into ASCII/Braille, edit characters, and paint colored ANSI output.
     </p>
   </header>
 
   <!-- Tabs -->
   <div class="flex border-b border-(--color-border) mb-4">
     <button
-      onclick={() => activeTab = "generator"}
+      onclick={() => setActiveTab("generator")}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'generator' ? 'text-(--color-text) border-b-2 border-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       Generator
     </button>
     <button
-      onclick={() => activeTab = "editor"}
+      onclick={() => setActiveTab("editor")}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'editor' ? 'text-(--color-text) border-b-2 border-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text)'}"
     >
       Editor
     </button>
+    <button
+      onclick={() => setActiveTab("paint")}
+      class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'paint' ? 'text-(--color-text) border-b-2 border-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+    >
+      Paint
+    </button>
+  </div>
+
+  <div class="mb-4 flex flex-wrap items-center gap-3 border border-(--color-border) bg-(--color-bg-alt) px-3 py-2">
+    <label class="flex items-center gap-2 text-xs tracking-wider text-(--color-text-light) font-medium">
+      View Zoom: {viewZoom}%
+      <input
+        type="range"
+        min="50"
+        max="250"
+        step="10"
+        bind:value={viewZoom}
+        class="w-36 h-1.5 accent-(--color-accent)"
+      />
+    </label>
+    <button
+      onclick={() => (viewZoom = 100)}
+      class="px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+    >
+      Reset
+    </button>
+    <span class="text-xs text-(--color-text-muted)">Display only; font settings and copied output stay unchanged.</span>
   </div>
 
   {#if activeTab === "generator"}
@@ -722,16 +1146,16 @@
       {:else}
         <pre
           class="text-white m-0 p-3 whitespace-pre w-fit"
-          style="font-family: 'Courier New', Courier, monospace; font-size: {fontSize}px; line-height: 1;"
+          style="font-family: 'Courier New', Courier, monospace; font-size: {scaledPx(fontSize)}px; line-height: 1;"
         >{output || "ASCII art will appear here..."}</pre>
       {/if}
     </div>
   </div>
-  {:else}
+  {:else if activeTab === "editor"}
   <!-- Editor Tab - Left sidebar with controls, Right side with canvas -->
   <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
     <!-- Left Sidebar: Mode, Settings, Brushes -->
-    <div class="w-64 shrink-0 flex flex-col gap-4 overflow-hidden">
+    <div class="w-64 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
       <!-- Mode Toggle -->
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Mode</span>
@@ -848,28 +1272,6 @@
           </div>
         </div>
         
-        <!-- Zoom Control -->
-        <div class="flex flex-col gap-2">
-          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Zoom: {gridZoom}%</span>
-          <div class="flex items-center gap-2">
-            <input
-              type="range"
-              min="50"
-              max="200"
-              step="10"
-              bind:value={gridZoom}
-              class="flex-1 h-1.5 accent-(--color-accent)"
-            />
-            <button
-              onclick={() => gridZoom = 100}
-              class="px-2 py-0.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text) hover:bg-(--color-bg-hover)"
-              title="Reset zoom to 100%"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-        
         <!-- Current Brush -->
         <div class="flex flex-col gap-2">
           <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Current Brush</span>
@@ -881,6 +1283,124 @@
           </div>
         </div>
       {/if}
+
+      <!-- Image to ASCII -->
+      <div class="flex flex-col gap-2 border border-(--color-border) bg-(--color-bg-alt) p-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Image to ASCII</span>
+        <label class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) cursor-pointer transition-colors text-center">
+          Choose image
+          <input type="file" accept="image/*" onchange={onImageAsciiFileChange} class="hidden" />
+        </label>
+        {#if imageAsciiFileName}
+          <span class="text-[10px] text-(--color-text-muted) truncate" title={imageAsciiFileName}>{imageAsciiFileName}</span>
+        {/if}
+
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Width: {imageAsciiWidth} chars
+          <input
+            type="range"
+            min="20"
+            max="220"
+            step="5"
+            bind:value={imageAsciiWidth}
+            class="w-full h-1.5 accent-(--color-accent)"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Character set
+          <select
+            bind:value={imageAsciiCharset}
+            class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text)"
+          >
+            {#each imageAsciiCharsets as charset (charset.value)}
+              <option value={charset.value}>{charset.label}</option>
+            {/each}
+          </select>
+        </label>
+
+        {#if imageAsciiCharset === "custom"}
+          <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+            Custom chars (dark to light)
+            <input
+              type="text"
+              bind:value={imageAsciiCustomChars}
+              placeholder="@%#*+=-:. "
+              class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text) font-mono placeholder:text-(--color-text-muted)"
+            />
+          </label>
+        {/if}
+
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Detail: {imageAsciiDetail}%
+          <input
+            type="range"
+            min="25"
+            max="250"
+            step="5"
+            bind:value={imageAsciiDetail}
+            class="w-full h-1.5 accent-(--color-accent)"
+          />
+        </label>
+
+        {#if imageAsciiCharset === "braille"}
+          <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+            Braille threshold: {imageAsciiThreshold}
+            <input
+              type="range"
+              min="0"
+              max="255"
+              step="1"
+              bind:value={imageAsciiThreshold}
+              class="w-full h-1.5 accent-(--color-accent)"
+            />
+          </label>
+        {/if}
+
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Background
+          <select
+            bind:value={imageAsciiBackground}
+            class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text)"
+          >
+            {#each imageAsciiBackgrounds as background (background.value)}
+              <option value={background.value}>{background.label}</option>
+            {/each}
+          </select>
+        </label>
+
+        {#if imageAsciiBackground === "custom"}
+          <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+            Custom background
+            <input
+              type="text"
+              maxlength="2"
+              bind:value={imageAsciiCustomBackground}
+              placeholder="·"
+              class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text) font-mono placeholder:text-(--color-text-muted)"
+            />
+          </label>
+        {/if}
+
+        <label class="flex items-center gap-2 text-xs text-(--color-text)">
+          <input type="checkbox" bind:checked={imageAsciiInvert} class="accent-(--color-accent)" />
+          Invert brightness
+        </label>
+
+        <button
+          onclick={convertSelectedImageToAscii}
+          disabled={!imageAsciiFile || imageAsciiLoading}
+          class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {imageAsciiLoading ? "Converting..." : "Convert into editor"}
+        </button>
+
+        {#if imageAsciiError}
+          <span class="text-[10px] text-(--color-error-text)">{imageAsciiError}</span>
+        {:else}
+          <span class="text-[10px] text-(--color-text-muted)">Local only. The image is sampled in your browser.</span>
+        {/if}
+      </div>
 
       <!-- Block Characters Reference -->
       <div class="flex flex-col gap-2 flex-1 min-h-0">
@@ -947,10 +1467,10 @@
           <!-- Line Numbers -->
           <div 
             class="py-3 px-2 bg-[#252525] border-r border-(--color-border) text-right select-none shrink-0 overflow-y-auto overflow-x-hidden" 
-            style="font-family: {editorFontFamily}; font-size: {editorFontSize}px; line-height: 1.2;"
+            style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2;"
           >
             {#each editorLines as _, i}
-              <div class="text-gray-500" style="height: {editorFontSize * 1.2}px; line-height: {editorFontSize * 1.2}px;">{i + 1}</div>
+              <div class="text-gray-500" style="height: {scaledPx(editorFontSize * 1.2)}px; line-height: {scaledPx(editorFontSize * 1.2)}px;">{i + 1}</div>
             {/each}
           </div>
           <!-- Textarea Container -->
@@ -963,7 +1483,7 @@
               onkeyup={updateCursorPosition}
               placeholder="Create your ASCII art here...&#10;Click characters to insert them, or type directly.&#10;Use Enter for new lines."
               class="absolute inset-0 w-full h-full p-3 text-white bg-transparent resize-none outline-none placeholder:text-gray-500"
-              style="font-family: {editorFontFamily}; font-size: {editorFontSize}px; line-height: 1.2;"
+              style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2;"
             ></textarea>
           </div>
         </div>
@@ -1019,5 +1539,176 @@
       {/if}
     </div>
   </div>
+  {:else if activeTab === "paint"}
+  <!-- Paint Tab - colorize the current editor output -->
+  <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
+    <!-- Paint controls -->
+    <div class="w-64 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Source</span>
+        <button
+          onclick={syncPaintFromEditor}
+          class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+        >
+          Sync from editor
+        </button>
+        <span class="text-xs text-(--color-text-muted)">
+          Edit characters in Editor, then return here to preserve matching colors and paint new cells.
+        </span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Paint mode</span>
+        <div class="grid grid-cols-2 gap-1">
+          {#each paintModes as mode (mode.value)}
+            <button
+              onclick={() => (paintMode = mode.value)}
+              class="px-2 py-1 text-xs border transition-colors {paintMode === mode.value
+                ? 'bg-(--color-accent) text-white border-(--color-accent)'
+                : 'bg-(--color-bg) text-(--color-text-muted) border-(--color-border) hover:text-(--color-text)'}"
+            >
+              {mode.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Text color
+          <input type="color" bind:value={paintFg} class="w-full h-8 border border-(--color-border) bg-(--color-bg) cursor-pointer" />
+        </label>
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          Background
+          <input type="color" bind:value={paintBg} class="w-full h-8 border border-(--color-border) bg-(--color-bg) cursor-pointer" />
+        </label>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">ANSI palette</span>
+        <div class="grid grid-cols-6 gap-1">
+          {#each paintPalette as color (color.code)}
+            <button
+              onclick={() => {
+                if (paintMode === "bg") paintBg = color.hex;
+                else paintFg = color.hex;
+              }}
+              class="w-7 h-7 border transition-colors {(paintMode === 'bg' ? paintBg : paintFg) === color.hex
+                ? 'border-(--color-accent) ring-1 ring-(--color-accent)'
+                : 'border-(--color-border) hover:border-(--color-accent)'}"
+              style="background-color: {color.hex};"
+              title={`${color.name} (${color.code})`}
+            ></button>
+          {/each}
+        </div>
+        <span class="text-xs text-(--color-text-muted)">Uses the same 16 ANSI colors as ANSI Colors. Palette sets text color, or background color in Background mode.</span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">ANSI styles</span>
+          <button
+            onclick={() => (paintStyles = createDefaultAnsiStyleState())}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-1">
+          {#each ansiStyleOptions as style (style.key)}
+            <label class="flex items-center gap-2 px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) cursor-pointer hover:text-(--color-text) transition-colors">
+              <input
+                type="checkbox"
+                checked={paintStyles[style.key]}
+                onchange={(e) => setPaintStyle(style.key, (e.currentTarget as HTMLInputElement).checked)}
+                class="accent-(--color-accent)"
+              />
+              <span style={style.key === "hidden" ? "" : getStylePreviewStyle(style.key)}>{style.label}</span>
+            </label>
+          {/each}
+        </div>
+        <span class="text-xs text-(--color-text-muted)">Use Style mode to paint only style flags, or Full mode to paint colors and styles together.</span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Copy</span>
+        <label class="flex flex-col gap-1 text-xs text-(--color-text-muted)">
+          ANSI format
+          <select
+            bind:value={paintCopyFormat}
+            class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text)"
+          >
+            {#each ansiEscapeFormats as format (format.id)}
+              <option value={format.id}>{format.name}</option>
+            {/each}
+          </select>
+        </label>
+        <span class="text-xs text-(--color-text-muted)">{getAnsiEscapeFormat(paintCopyFormat).description}</span>
+        <div class="flex gap-2">
+          <button
+            onclick={() => copyPaintOutput("ansi")}
+            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          >
+            {paintCopied === paintCopyFormat ? "Copied" : getAnsiEscapeFormat(paintCopyFormat).shortLabel}
+          </button>
+          <button
+            onclick={() => copyPaintOutput("plain")}
+            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          >
+            {paintCopied === "plain" ? "Copied" : "Plain"}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paint canvas -->
+    <div class="flex-1 flex flex-col min-h-0 min-w-0">
+      <div class="flex justify-between items-center mb-2 shrink-0">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Color Paint</span>
+        <span class="text-xs text-(--color-text-muted)">
+          {paintGrid.length} lines{paintGrid[0]?.length ? `, ${paintGrid[0].length} cols` : ""} | Drag to paint, Ctrl+Click resets
+        </span>
+      </div>
+
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a] overflow-auto p-3 {paintBlinkOn ? 'paint-blink-on' : 'paint-blink-off'}"
+        onmouseup={handlePaintMouseUp}
+        onmouseleave={handlePaintMouseUp}
+      >
+        {#if paintGrid.length === 0 || !paintPlainText()}
+          <div class="text-sm text-gray-500">
+            Add or generate ASCII in the Editor tab, then open Paint or click Sync from editor.
+          </div>
+        {:else}
+          <div class="inline-block min-w-full select-none">
+            {#each paintGrid as row, r}
+              <div class="flex">
+                {#each row as cell, c}
+                  <button
+                    type="button"
+                    class="flex items-center justify-center shrink-0 cursor-crosshair border-0 p-0 m-0 {cell.blink ? 'paint-blink' : ''}"
+                    style="width: {Math.max(8, scaledPx(editorFontSize * 0.65))}px; height: {Math.max(12, scaledPx(editorFontSize * 1.2))}px; font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1; {getPaintCellStyle(cell)}"
+                    onmousedown={(e) => handlePaintMouseDown(r, c, e)}
+                    onmouseenter={(e) => handlePaintMouseEnter(r, c, e)}
+                    oncontextmenu={(e) => { e.preventDefault(); applyPaintCell(r, c, true); }}
+                    title="Click/drag to paint. Ctrl+Click or right-click resets this cell."
+                  >
+                    {cell.char === " " ? "\u00A0" : cell.char}
+                  </button>
+                {/each}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
   {/if}
 </div>
+
+<style>
+  .paint-blink-off .paint-blink {
+    visibility: hidden;
+  }
+</style>

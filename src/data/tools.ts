@@ -41,10 +41,10 @@ const rawCategories: Category[] = [
       {
         id: "text-diff",
         name: "Diff",
-        description: "Compare two texts side-by-side and highlight differences line-by-line using LCS algorithm with inline and split view modes, color-coded additions and deletions",
+        description: "Compare two texts or normalized JSON documents side-by-side and highlight differences line-by-line using LCS algorithm with inline and split view modes, color-coded additions and deletions",
         icon: "🔍",
         path: "/text/diff",
-        keywords: "text diff, text comparison, diff tool, compare text, text difference, file diff, text comparison tool",
+        keywords: "text diff, text comparison, diff tool, compare text, text difference, file diff, text comparison tool, json diff, json comparison, compare json, normalized json diff, json sort keys",
       },
       {
         id: "emoji-picker",
@@ -65,10 +65,10 @@ const rawCategories: Category[] = [
       {
         id: "font-glyphs",
         name: "Font Glyphs",
-        description: "Upload and inspect font files (TTF, OTF, WOFF) to view all available glyphs with Unicode codepoints, copy individual characters, and explore font character sets",
+        description: "Upload and inspect font files (TTF, OTF, TTC, WOFF, WOFF2) with Unicode block filters, Private Use icon glyph support, preview text, adjustable glyph size, and copy formats for characters, U+ codes, HTML entities, and CSS escapes",
         icon: "🔤",
         path: "/text/glyphs",
-        keywords: "font glyphs, font viewer, glyph viewer, font characters, unicode glyphs, font inspection, character map",
+        keywords: "font glyphs, font viewer, glyph viewer, font characters, unicode glyphs, unicode blocks, private use area, icon font viewer, character map, ttf viewer, otf viewer, woff viewer, woff2 viewer, ttc viewer, html entity, css escape",
       },
       {
         id: "lorem-ipsum",
@@ -113,18 +113,18 @@ const rawCategories: Category[] = [
       {
         id: "ascii-art",
         name: "ASCII Art",
-        description: "Generate ASCII art text banners using FIGlet fonts including Banner, Doom, Graffiti, Standard, and many more stylized text effects for terminals and comments",
+        description: "Generate ASCII art text banners using FIGlet fonts, convert uploaded images into ASCII or Braille-dot art with custom character sets/detail controls, edit with text/grid tools, zoom previews, and paint ANSI-colored/styled output with multiple escape copy formats",
         icon: "🪧",
         path: "/text/ascii-art",
-        keywords: "ascii art, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text",
+        keywords: "ascii art, image to ascii, ascii image converter, braille ascii, braille art, custom charset, ascii detail, ascii zoom, ansi color, ansi styles, ansi escape formats, colored ascii, ascii painter, bold ascii, blink ascii, strikethrough ascii, text art, figlet, banner text, ascii font, text to ascii, ascii generator, text banner, ascii text, block letters, fancy text, ascii editor",
       },
       {
         id: "markdown-preview",
         name: "Markdown Preview",
-        description: "Live markdown editor with preview supporting GitHub Flavored Markdown, Mermaid diagrams, syntax-highlighted code blocks, and KaTeX math rendering",
+        description: "Live Comark markdown editor with GitHub Flavored Markdown, Mermaid diagrams, syntax-highlighted code blocks, and KaTeX math rendering",
         icon: "📖",
         path: "/text/markdown-preview",
-        keywords: "markdown, preview, editor, mermaid, gfm, github, gitlab, katex, math, latex, diagram, live, render, markdown preview, markdown editor",
+        keywords: "markdown, preview, editor, comark, mermaid, gfm, github, gitlab, katex, math, latex, diagram, live, render, markdown preview, markdown editor",
       },
       {
         id: "docx-viewer",
@@ -653,10 +653,10 @@ const rawCategories: Category[] = [
       {
         id: "meme-generator",
         name: "Meme Generator",
-        description: "Create memes with built-in placeholder templates (Drake, Stonks, Two Buttons, Expanding Brain, Thinking, blank canvases) or upload your own image / paste an image URL. Add unlimited draggable text boxes with classic Impact white-on-black-outline styling, custom font, size, fill color, outline color and width, alignment, bold/italic/uppercase. Download as PNG or copy to clipboard. All processing runs in your browser.",
+        description: "Create memes with 100+ online viral templates (Drake, Distracted Boyfriend, Woman Yelling at Cat, Off Ramp, Always Has Been, Galaxy Brain, and more), built-in placeholder canvases, image upload, or pasted image URLs. Add unlimited draggable text boxes with classic Impact white-on-black-outline styling, custom font, size, fill color, outline color and width, alignment, bold/italic/uppercase. Download as PNG or copy to clipboard. All processing runs in your browser.",
         icon: "🖼️",
         path: "/party/meme-generator",
-        keywords: "meme generator, meme maker, image macro, top text bottom text, drake meme, stonks, two buttons, expanding brain, thinking meme, image overlay, caption image, impact font, meme creator, meme editor, custom meme",
+        keywords: "meme generator, meme maker, viral meme templates, image macro, top text bottom text, drake meme, distracted boyfriend, woman yelling at cat, off ramp meme, always has been, galaxy brain, stonks, two buttons, expanding brain, thinking meme, image overlay, caption image, impact font, meme creator, meme editor, custom meme",
       },
       {
         id: "team-splitter",
@@ -867,6 +867,15 @@ const rawCategories: Category[] = [
         icon: "🎬",
         path: "/graphics/media-viewer",
         keywords: "media player, video player, audio player, image viewer, subtitles, srt, vtt, speed control, picture in picture, pip, chromecast, airplay, fullscreen, zoom, pan, waveform, keyboard shortcuts",
+      },
+      {
+        id: "video-editor",
+        name: "Video Editor",
+        description: "Edit multiple videos and audio in the browser with scrollable multi-row timelines, draggable/reorderable clips, gap-preserving trims, basic video effects, detachable split/mute audio, waveform previews, transparent text, rotatable SVG/image overlays, motion keyframes, social output sizes, color bars, and local FFmpeg export",
+        icon: "🎞️",
+        path: "/graphics/video-editor",
+        keywords: "video editor, edit video, trim video, crop video, cut video, copy video segment, draggable clips, reorder clips, timeline gaps, gap preserving trim, video effects, brightness, contrast, saturation, grayscale, blur, color bars, test pattern, youtube shorts size, instagram reels size, instagram square, output presets, timeline editor, multi track timeline, audio track, split audio, mute audio, audio waveform, detach audio, audio volume, text overlay, transparent text, rotate overlay, image overlay, svg overlay, layer order, motion keyframes, captions, ffmpeg, wasm, browser video editor, capcut alternative",
+        wasm: true,
       },
       {
         id: "css-pattern-generator",

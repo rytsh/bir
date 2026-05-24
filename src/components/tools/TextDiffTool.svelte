@@ -16,12 +16,21 @@
   }
 
   let inlineMode = $state(false);
+  let jsonMode = $state(false);
+  let sortJsonKeys = $state(true);
   let isDark = $state(getInitialDarkMode());
 
   let oldValue = $state("");
   let newValue = $state("");
+  let oldJsonError = $state("");
+  let newJsonError = $state("");
 
   let diffLines = $state<DiffLine[]>([]);
+
+  interface JsonFormatResult {
+    text: string;
+    error: string;
+  }
 
   const computeDiff = (oldText: string, newText: string): DiffLine[] => {
     const oldLines = oldText.split("\n");
@@ -83,8 +92,63 @@
     return result;
   };
 
+  const sortJsonValue = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(sortJsonValue);
+    }
+
+    if (value && typeof value === "object") {
+      const source = value as Record<string, unknown>;
+      const sorted: Record<string, unknown> = {};
+      for (const key of Object.keys(source).sort()) {
+        sorted[key] = sortJsonValue(source[key]);
+      }
+      return sorted;
+    }
+
+    return value;
+  };
+
+  const formatJsonForDiff = (value: string): JsonFormatResult => {
+    if (!value.trim()) return { text: "", error: "" };
+
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      const normalized = sortJsonKeys ? sortJsonValue(parsed) : parsed;
+      return { text: JSON.stringify(normalized, null, 2), error: "" };
+    } catch (error) {
+      return {
+        text: "",
+        error: error instanceof Error ? error.message : "Invalid JSON",
+      };
+    }
+  };
+
   const updateDiff = () => {
-    diffLines = computeDiff(oldValue, newValue);
+    oldJsonError = "";
+    newJsonError = "";
+
+    if (!oldValue && !newValue) {
+      diffLines = [];
+      return;
+    }
+
+    if (!jsonMode) {
+      diffLines = computeDiff(oldValue, newValue);
+      return;
+    }
+
+    const oldJson = formatJsonForDiff(oldValue);
+    const newJson = formatJsonForDiff(newValue);
+    oldJsonError = oldJson.error;
+    newJsonError = newJson.error;
+
+    if (oldJsonError || newJsonError) {
+      diffLines = [];
+      return;
+    }
+
+    diffLines = computeDiff(oldJson.text, newJson.text);
   };
 
   // Extensions for input editors
@@ -108,6 +172,8 @@
   $effect(() => {
     oldValue;
     newValue;
+    jsonMode;
+    sortJsonKeys;
     updateDiff();
   });
 
@@ -134,17 +200,18 @@
   let hasDiff = $derived(diffLines.some((line) => line.type !== "unchanged"));
   let addedCount = $derived(diffLines.filter((line) => line.type === "added").length);
   let removedCount = $derived(diffLines.filter((line) => line.type === "removed").length);
+  let hasJsonError = $derived(jsonMode && Boolean(oldJsonError || newJsonError));
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Compare two texts and see the differences highlighted.
+      Compare two texts or normalized JSON documents and see the differences highlighted.
     </p>
   </header>
 
   <!-- Config Toggle -->
-  <div class="mb-4 flex items-center gap-6">
+  <div class="mb-4 flex flex-wrap items-center gap-6">
     <label class="flex items-center gap-2 cursor-pointer">
       <span class="text-sm text-(--color-text-muted)">Inline Mode</span>
       <button
@@ -160,6 +227,44 @@
         <span class="w-4 h-4 bg-(--color-bg-alt)"></span>
       </button>
     </label>
+
+    <label class="flex items-center gap-2 cursor-pointer">
+      <span class="text-sm text-(--color-text-muted)">JSON Mode</span>
+      <button
+        title="on/off"
+        type="button"
+        role="switch"
+        aria-checked={jsonMode}
+        class="flex items-center w-10 h-5 p-0.5 transition-colors {jsonMode
+          ? 'bg-(--color-text) justify-end'
+          : 'bg-(--color-border) justify-start'}"
+        onclick={() => (jsonMode = !jsonMode)}
+      >
+        <span class="w-4 h-4 bg-(--color-bg-alt)"></span>
+      </button>
+    </label>
+
+    {#if jsonMode}
+      <label class="flex items-center gap-2 cursor-pointer">
+        <span class="text-sm text-(--color-text-muted)">Sort Object Keys</span>
+        <button
+          title="on/off"
+          type="button"
+          role="switch"
+          aria-checked={sortJsonKeys}
+          class="flex items-center w-10 h-5 p-0.5 transition-colors {sortJsonKeys
+            ? 'bg-(--color-text) justify-end'
+            : 'bg-(--color-border) justify-start'}"
+          onclick={() => (sortJsonKeys = !sortJsonKeys)}
+        >
+          <span class="w-4 h-4 bg-(--color-bg-alt)"></span>
+        </button>
+      </label>
+
+      <span class="text-xs text-(--color-text-muted)">
+        JSON mode ignores whitespace and compares pretty-printed structure.
+      </span>
+    {/if}
   </div>
 
   <!-- Editors - Side by Side -->
@@ -168,7 +273,7 @@
     <div class="flex-1 flex flex-col min-h-[150px] min-w-0">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
-          Old Text
+          Old {jsonMode ? "JSON" : "Text"}
         </span>
         <div class="flex gap-3">
           <button
@@ -188,17 +293,20 @@
       <div class="flex-1 min-h-0 border border-(--color-border) overflow-hidden">
         <CodeMirror
           bind:value={oldValue}
-          placeholder="Enter original text..."
+          placeholder={jsonMode ? "Enter original JSON..." : "Enter original text..."}
           extensions={editorExtensions}
         />
       </div>
+      {#if jsonMode && oldJsonError}
+        <p class="mt-1 text-xs text-(--color-error-text)">Old JSON error: {oldJsonError}</p>
+      {/if}
     </div>
 
     <!-- New Text Editor -->
     <div class="flex-1 flex flex-col min-h-[150px] min-w-0">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
-          New Text
+          New {jsonMode ? "JSON" : "Text"}
         </span>
         <div class="flex gap-3">
           <button
@@ -218,10 +326,13 @@
       <div class="flex-1 min-h-0 border border-(--color-border) overflow-hidden">
         <CodeMirror
           bind:value={newValue}
-          placeholder="Enter new text..."
+          placeholder={jsonMode ? "Enter new JSON..." : "Enter new text..."}
           extensions={editorExtensions}
         />
       </div>
+      {#if jsonMode && newJsonError}
+        <p class="mt-1 text-xs text-(--color-error-text)">New JSON error: {newJsonError}</p>
+      {/if}
     </div>
   </div>
 
@@ -239,9 +350,13 @@
       {/if}
     </div>
     <div class="flex-1 min-h-0 border border-(--color-border) overflow-auto bg-(--color-bg-alt) font-mono text-sm">
-      {#if !hasDiff && diffLines.length === 0}
+      {#if hasJsonError}
+        <div class="p-4 text-(--color-error-text) italic">
+          Fix invalid JSON before viewing the normalized diff.
+        </div>
+      {:else if !hasDiff && diffLines.length === 0}
         <div class="p-4 text-(--color-text-light) italic">
-          Enter text in both editors to see differences...
+          Enter {jsonMode ? "JSON" : "text"} in both editors to see differences...
         </div>
       {:else if !hasDiff}
         <div class="p-4 text-(--color-text-light) italic">

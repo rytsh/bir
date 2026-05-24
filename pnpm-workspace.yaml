@@ -1,0 +1,9 @@
+allowBuilds:
+  core-js: false
+  esbuild: false
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
+  tesseract.js: false
+  tree-sitter: false
+  tree-sitter-bash: false
