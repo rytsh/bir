@@ -901,6 +901,14 @@ const rawCategories: Category[] = [
         path: "/graphics/og-preview",
         keywords: "open graph, og preview, social media preview, twitter card, facebook share, linkedin preview, discord embed, slack unfurl, meta tags, og:title, og:description, og:image, social share, link preview",
       },
+      {
+        id: "svg-viewer",
+        name: "SVG Viewer",
+        description: "View, edit, transform, and optimize SVG images with live preview. Rotate, flip, change dimensions, prettify, optimize with SVGO, and export to PNG, JPG, Data URI, and React Native components. All processing runs client-side.",
+        icon: "🧩",
+        path: "/graphics/svg-viewer",
+        keywords: "svg viewer, svg editor, svg optimizer, svgo, svg to png, svg to jpg, svg to react native, react native svg, svg data uri, svg base64, svg prettify, svg minify, svg compress, svg rotate, svg flip, svg resize, svgviewer, svg preview, vector graphics",
+      },
     ],
   },
   {

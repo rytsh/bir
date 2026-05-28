@@ -76,6 +76,7 @@
     "sortablejs": "^1.15.6",
     "svelte": "^5.46.1",
     "svelte-codemirror-editor": "^2.1.0",
+    "svgo": "^4.0.1",
     "tailwindcss": "^4.1.18",
     "tesseract.js": "^7.0.0",
     "turndown": "^7.2.2",

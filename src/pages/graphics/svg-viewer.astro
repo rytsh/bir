@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import SvgViewerTool from "../../components/tools/SvgViewerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/graphics/svg-viewer");
+---
+
+<Layout title="SVG Viewer" description={tool?.description} keywords={tool?.keywords} currentPath="/graphics/svg-viewer">
+  <h1 slot="navbar-title">SVG Viewer</h1>
+  <SvgViewerTool client:load />
+</Layout>
