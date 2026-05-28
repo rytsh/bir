@@ -1,0 +1,9 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import NotepadTool from "../../components/tools/NotepadTool.svelte";
+---
+
+<Layout title="Notepad" currentPath="/text/notepad" fullBleed>
+  <h1 slot="navbar-title">Notepad</h1>
+  <NotepadTool client:load />
+</Layout>

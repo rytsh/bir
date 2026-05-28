@@ -11,9 +11,10 @@ interface Props {
   description?: string;
   keywords?: string;
   currentPath?: string;
+  fullBleed?: boolean;
 }
 
-const { title, description, keywords, currentPath } = Astro.props;
+const { title, description, keywords, currentPath, fullBleed } = Astro.props;
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
 const siteName = "1.tools - Collection of Useful Tools";
@@ -226,7 +227,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
           </div>
         </header>
         <!-- Main Content -->
-        <main class="flex-1 p-4 pt-1 w-full mx-auto lg:overflow-auto lg:grid">
+        <main class:list={["flex-1 w-full mx-auto lg:overflow-auto lg:grid", fullBleed ? "" : "p-4 pt-1"]}>
           <slot />
         </main>
       </div>

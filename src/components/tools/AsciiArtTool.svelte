@@ -47,6 +47,21 @@
   let cursorLine = $state(1);
   let cursorColumn = $state(1);
 
+  // Whitespace visualization (display-only overlay; never copied)
+  let showWhitespace = $state(false);
+  let textareaScrollTop = $state(0);
+  let textareaScrollLeft = $state(0);
+  const whitespaceOverlayText = $derived(
+    showWhitespace
+      ? Array.from(editorContent).map((ch) => {
+          if (ch === " ") return "·";
+          if (ch === "\t") return "\t";
+          if (ch === "\n") return "\n";
+          return " ";
+        }).join("")
+      : ""
+  );
+
   type ImageAsciiCharset = "standard" | "detailed" | "blocks" | "custom" | "braille";
 
   const imageAsciiCharsets: { value: ImageAsciiCharset; label: string; chars?: string }[] = [
@@ -78,12 +93,12 @@
   let imageAsciiLoading = $state(false);
   let imageAsciiError = $state("");
 
-  type PaintMode = "fg" | "bg" | "both" | "style" | "full" | "erase";
+  type PaintMode = "fg" | "bg" | "both" | "style" | "full" | "empty" | "clearFg" | "clearBg" | "erase";
 
   interface PaintCell extends AnsiStyleState {
     char: string;
-    fg: string;
-    bg: string;
+    fg: string | null;
+    bg: string | null;
   }
 
   const paintPalette = allAnsiColors;
@@ -94,8 +109,11 @@
     { value: "fg", label: "Text" },
     { value: "bg", label: "Background" },
     { value: "both", label: "Colors" },
+    { value: "clearFg", label: "Clear text" },
+    { value: "clearBg", label: "Clear bg" },
     { value: "style", label: "Style" },
     { value: "full", label: "Full" },
+    { value: "empty", label: "Empty" },
     { value: "erase", label: "Reset" },
   ];
 
@@ -105,9 +123,95 @@
   let paintStyles = $state<AnsiStyleState>(createDefaultAnsiStyleState());
   let paintMode = $state<PaintMode>("fg");
   let isPainting = $state(false);
-  let paintCopyFormat = $state<AnsiEscapeFormat>("terminal");
+  let paintCopyFormat = $state<AnsiEscapeFormat>("octal");
   let paintCopied = $state<AnsiEscapeFormat | "plain" | null>(null);
   let paintBlinkOn = $state(true);
+
+  // Paint history for undo/redo
+  const MAX_PAINT_HISTORY = 50;
+  let paintHistory = $state<PaintCell[][][]>([]);
+  let paintHistoryIndex = $state(-1);
+  let paintStrokeStartGrid: PaintCell[][] | null = null;
+  const canPaintUndo = $derived(paintHistoryIndex > 0);
+  const canPaintRedo = $derived(paintHistoryIndex >= 0 && paintHistoryIndex < paintHistory.length - 1);
+
+  // Terminal preview
+  type TerminalBgPreset = "dark" | "black" | "light" | "custom";
+  const terminalBgPresets: { value: TerminalBgPreset; label: string; color: string }[] = [
+    { value: "dark", label: "Dark", color: "#1a1a1a" },
+    { value: "black", label: "Black", color: "#000000" },
+    { value: "light", label: "Light", color: "#f5f5f5" },
+    { value: "custom", label: "Custom", color: "" },
+  ];
+
+  interface TerminalFontOption {
+    name: string;
+    value: string;
+    group: "web" | "nerd" | "system";
+    googleFont?: boolean;
+  }
+  const terminalFonts: TerminalFontOption[] = [
+    // Web fonts (auto-loaded from Google Fonts)
+    { name: "JetBrains Mono", value: "JetBrains Mono", group: "web", googleFont: true },
+    { name: "Fira Code", value: "Fira Code", group: "web", googleFont: true },
+    { name: "Source Code Pro", value: "Source Code Pro", group: "web", googleFont: true },
+    { name: "IBM Plex Mono", value: "IBM Plex Mono", group: "web", googleFont: true },
+    { name: "Ubuntu Mono", value: "Ubuntu Mono", group: "web", googleFont: true },
+    { name: "Inconsolata", value: "Inconsolata", group: "web", googleFont: true },
+    // Nerd Fonts (require local install for full icon coverage)
+    { name: "JetBrainsMono Nerd Font", value: "JetBrainsMono Nerd Font", group: "nerd" },
+    { name: "FiraCode Nerd Font", value: "FiraCode Nerd Font", group: "nerd" },
+    { name: "Hack Nerd Font", value: "Hack Nerd Font", group: "nerd" },
+    { name: "MesloLGS NF", value: "MesloLGS NF", group: "nerd" },
+    { name: "SauceCodePro Nerd Font", value: "SauceCodePro Nerd Font", group: "nerd" },
+    { name: "DejaVuSansMono Nerd Font", value: "DejaVuSansMono Nerd Font", group: "nerd" },
+    { name: "CaskaydiaCove Nerd Font", value: "CaskaydiaCove Nerd Font", group: "nerd" },
+    { name: "Iosevka Nerd Font", value: "Iosevka Nerd Font", group: "nerd" },
+    { name: "UbuntuMono Nerd Font", value: "UbuntuMono Nerd Font", group: "nerd" },
+    // System monospace
+    { name: "Monaco", value: "Monaco", group: "system" },
+    { name: "Menlo", value: "Menlo", group: "system" },
+    { name: "Consolas", value: "Consolas", group: "system" },
+    { name: "Courier New", value: "Courier New", group: "system" },
+  ];
+
+  let terminalBgPreset = $state<TerminalBgPreset>("dark");
+  let terminalCustomBg = $state("#1a1a1a");
+  let terminalFontName = $state("Courier New");
+  let terminalCustomFontName = $state("");
+  let useTerminalCustomFont = $state(false);
+  // Cell line-height multiplier — defaults to a slightly relaxed terminal feel
+  let paintLineHeight = $state(1.1);
+
+  const terminalBgColor = $derived(
+    terminalBgPreset === "custom"
+      ? terminalCustomBg
+      : (terminalBgPresets.find((p) => p.value === terminalBgPreset)?.color ?? "#1a1a1a")
+  );
+
+  const terminalFontFamily = $derived(
+    useTerminalCustomFont && terminalCustomFontName.trim()
+      ? `'${terminalCustomFontName.trim()}', 'JetBrainsMono Nerd Font', 'JetBrains Mono', ui-monospace, monospace`
+      : `'${terminalFontName}', 'JetBrainsMono Nerd Font', 'JetBrains Mono', ui-monospace, monospace`
+  );
+
+  // Paste-with-colors (terminal HTML/RTF import)
+  let pasteVisible = $state(false);
+  let pasteRef: HTMLDivElement | null = $state(null);
+  let pasteError = $state("");
+
+  // Pick a contrasting default text color for the canvas so unpainted (transparent)
+  // chars stay readable on whatever background the user picked.
+  const terminalDefaultFg = $derived.by(() => {
+    const hex = terminalBgColor.replace("#", "");
+    if (hex.length !== 6) return "#cccccc";
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    return luminance > 140 ? "#1f1f1f" : "#dcdcdc";
+  });
+
   let viewZoom = $state(100);
   const viewZoomScale = $derived(viewZoom / 100);
   
@@ -212,6 +316,54 @@
     const interval = window.setInterval(updatePaintBlink, 125);
 
     return () => window.clearInterval(interval);
+  });
+
+  // Auto-focus the paste-catcher contenteditable when it opens
+  $effect(() => {
+    if (pasteVisible && pasteRef) {
+      pasteRef.innerHTML = "";
+      pasteRef.focus();
+    }
+  });
+
+  // Auto-load Google Font for paint canvas when applicable
+  $effect(() => {
+    if (activeTab !== "paint") return;
+    if (useTerminalCustomFont) {
+      const custom = terminalCustomFontName.trim();
+      if (custom) loadGoogleFont(custom);
+      return;
+    }
+    const def = terminalFonts.find((f) => f.value === terminalFontName);
+    if (def?.googleFont) {
+      loadGoogleFont(terminalFontName);
+    }
+  });
+
+  // Keyboard shortcuts for paint undo/redo (only while paint tab is active)
+  $effect(() => {
+    if (activeTab !== "paint") return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) paintRedo();
+        else paintUndo();
+      } else if (key === "y") {
+        e.preventDefault();
+        paintRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   });
   
   // Try to load custom font from Google Fonts when user types
@@ -361,6 +513,20 @@
     cursorLine = lines.length;
     cursorColumn = lines[lines.length - 1].length + 1;
   }
+
+  function onTextareaScroll() {
+    if (!editorTextarea) return;
+    textareaScrollTop = editorTextarea.scrollTop;
+    textareaScrollLeft = editorTextarea.scrollLeft;
+  }
+
+  // Sync overlay scroll when whitespace is toggled on or textarea ref appears
+  $effect(() => {
+    if (showWhitespace && editorTextarea) {
+      textareaScrollTop = editorTextarea.scrollTop;
+      textareaScrollLeft = editorTextarea.scrollLeft;
+    }
+  });
 
   // Derived: line numbers for display
   const editorLines = $derived(editorContent.split("\n"));
@@ -577,22 +743,247 @@
     return editorMode === "grid" ? gridToText() : editorContent;
   }
 
+  // Cells start transparent (no fg/bg) so the terminal's native colors show
+  // through wherever the user hasn't explicitly painted.
   function createPaintCell(char: string): PaintCell {
     return {
       char,
-      fg: paintFg,
-      bg: paintBg,
-      ...paintStyles,
+      fg: null,
+      bg: null,
+      ...createDefaultAnsiStyleState(),
     };
   }
 
   function createResetPaintCell(char: string): PaintCell {
     return {
       char,
-      fg: defaultPaintFg,
-      bg: defaultPaintBg,
+      fg: null,
+      bg: null,
       ...createDefaultAnsiStyleState(),
     };
+  }
+
+  function createEmptyCell(): PaintCell {
+    return {
+      char: " ",
+      fg: null,
+      bg: null,
+      ...createDefaultAnsiStyleState(),
+    };
+  }
+
+  // ---- Paste-with-colors -------------------------------------------------
+
+  interface PasteStyle {
+    fg: string | null;
+    bg: string | null;
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    strikethrough: boolean;
+  }
+
+  function parseHtmlElementToPaintGrid(root: HTMLElement): PaintCell[][] {
+    const rows: PaintCell[][] = [[]];
+    const colorCache = new Map<string, string | null>();
+    const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "META", "LINK", "TITLE", "HEAD"]);
+    const BLOCK_TAGS = new Set(["DIV", "P", "PRE", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "TR", "ARTICLE", "SECTION", "BLOCKQUOTE"]);
+
+    const cssColorToHex = (val: string | null | undefined): string | null => {
+      if (!val) return null;
+      const key = val.trim();
+      if (!key || key === "transparent" || key === "inherit" || key === "currentcolor") return null;
+      if (colorCache.has(key)) return colorCache.get(key)!;
+      const probe = document.createElement("div");
+      probe.style.color = key;
+      document.body.appendChild(probe);
+      const computed = getComputedStyle(probe).color;
+      document.body.removeChild(probe);
+      const m = computed.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?\)/);
+      if (!m) {
+        colorCache.set(key, null);
+        return null;
+      }
+      const a = m[4] ? parseFloat(m[4]) : 1;
+      if (a === 0) {
+        colorCache.set(key, null);
+        return null;
+      }
+      const r = parseInt(m[1], 10).toString(16).padStart(2, "0");
+      const g = parseInt(m[2], 10).toString(16).padStart(2, "0");
+      const b = parseInt(m[3], 10).toString(16).padStart(2, "0");
+      const hex = `#${r}${g}${b}`;
+      colorCache.set(key, hex);
+      return hex;
+    };
+
+    const pushChar = (ch: string, style: PasteStyle) => {
+      if (ch === "\n") {
+        rows.push([]);
+        return;
+      }
+      if (ch === "\r") return;
+      rows[rows.length - 1].push({
+        char: ch,
+        fg: style.fg,
+        bg: style.bg,
+        ...createDefaultAnsiStyleState(),
+        bold: style.bold,
+        italic: style.italic,
+        underline: style.underline,
+        strikethrough: style.strikethrough,
+      });
+    };
+
+    const walk = (node: Node, style: PasteStyle, preserveWhitespace: boolean) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent ?? "";
+        // In non-preserving contexts, ignore HTML indentation whitespace between
+        // tags: text nodes whose whole content is whitespace AND contain a newline.
+        // (Plain " " or " - " text nodes inline between spans are kept.)
+        if (!preserveWhitespace && /^\s*[\n\r]\s*$/.test(text)) return;
+        for (const ch of text) pushChar(ch, style);
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const el = node as HTMLElement;
+      if (SKIP_TAGS.has(el.tagName)) return;
+      if (el.tagName === "BR") {
+        rows.push([]);
+        return;
+      }
+
+      const next: PasteStyle = { ...style };
+      const fg = cssColorToHex(el.style.color);
+      if (fg) next.fg = fg;
+      const bg = cssColorToHex(el.style.backgroundColor);
+      if (bg) next.bg = bg;
+
+      const fw = el.style.fontWeight;
+      if (fw === "bold" || /^[7-9]00$/.test(fw)) next.bold = true;
+      if (el.style.fontStyle === "italic") next.italic = true;
+
+      const td = `${el.style.textDecoration} ${el.style.textDecorationLine}`;
+      if (td.includes("underline")) next.underline = true;
+      if (td.includes("line-through")) next.strikethrough = true;
+
+      if (el.tagName === "B" || el.tagName === "STRONG") next.bold = true;
+      if (el.tagName === "I" || el.tagName === "EM") next.italic = true;
+      if (el.tagName === "U") next.underline = true;
+      if (el.tagName === "S" || el.tagName === "STRIKE" || el.tagName === "DEL") next.strikethrough = true;
+
+      const ws = el.style.whiteSpace || "";
+      const childPreserves =
+        preserveWhitespace ||
+        el.tagName === "PRE" ||
+        ws === "pre" ||
+        ws === "pre-wrap" ||
+        ws === "pre-line" ||
+        ws === "break-spaces";
+
+      for (const child of el.childNodes) walk(child, next, childPreserves);
+
+      // Only treat a block element's end as a line break when we're NOT in a
+      // whitespace-preserving context. Inside <pre> (or white-space: pre*),
+      // the literal "\n" characters already break lines — counting both would
+      // double every newline.
+      if (BLOCK_TAGS.has(el.tagName) && !childPreserves && rows[rows.length - 1].length > 0) {
+        rows.push([]);
+      }
+    };
+
+    walk(
+      root,
+      { fg: null, bg: null, bold: false, italic: false, underline: false, strikethrough: false },
+      false,
+    );
+
+    while (rows.length > 1 && rows[0].length === 0) rows.shift();
+    while (rows.length > 1 && rows[rows.length - 1].length === 0) rows.pop();
+
+    return rows;
+  }
+
+  function openPasteCatcher() {
+    pasteVisible = true;
+    pasteError = "";
+  }
+
+  function closePasteCatcher() {
+    pasteVisible = false;
+    pasteError = "";
+    if (pasteRef) pasteRef.innerHTML = "";
+  }
+
+  function plainTextToPaintGrid(text: string): PaintCell[][] {
+    const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    return lines.map((line) => Array.from(line).map((ch) => createPaintCell(ch)));
+  }
+
+  function applyPastedGrid(grid: PaintCell[][]) {
+    paintGrid = grid;
+
+    // Reflect the pasted chars back into the editor so both views agree.
+    const text = grid.map((row) => row.map((c) => c.char).join("")).join("\n");
+    editorContent = text;
+    if (editorMode === "grid") {
+      const lines = text.split("\n");
+      const newRows = Math.max(1, lines.length);
+      const newCols = Math.max(1, lines.reduce((max, line) => Math.max(max, Array.from(line).length), 0));
+      gridData = lines.map((line) => {
+        const cells = Array.from(line);
+        while (cells.length < newCols) cells.push(" ");
+        return cells;
+      });
+      while (gridData.length < newRows) {
+        gridData.push(Array.from({ length: newCols }, () => " "));
+      }
+      gridRows = newRows;
+      gridCols = newCols;
+    }
+
+    pushPaintHistory(paintGrid);
+  }
+
+  function onPasteInCatcher(e: ClipboardEvent) {
+    // Read the terminal's own clipboard payload directly instead of letting the
+    // browser mangle it inside the contenteditable (which doubled newlines).
+    e.preventDefault();
+    const cd = e.clipboardData;
+    if (!cd) {
+      pasteError = "Clipboard not available in this browser.";
+      return;
+    }
+
+    const html = cd.getData("text/html");
+    const plain = cd.getData("text/plain");
+
+    try {
+      let grid: PaintCell[][];
+      if (html && html.trim()) {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        grid = parseHtmlElementToPaintGrid(doc.body);
+        // If HTML parsing produced nothing usable, fall back to plain text.
+        if (grid.length === 0 || grid.every((r) => r.length === 0)) {
+          grid = plain ? plainTextToPaintGrid(plain) : grid;
+        }
+      } else if (plain) {
+        grid = plainTextToPaintGrid(plain);
+      } else {
+        pasteError = "Clipboard is empty.";
+        return;
+      }
+
+      if (grid.length === 0 || grid.every((r) => r.length === 0)) {
+        pasteError = "No paintable content found in clipboard.";
+        return;
+      }
+
+      applyPastedGrid(grid);
+      closePasteCatcher();
+    } catch (err) {
+      pasteError = err instanceof Error ? err.message : String(err);
+    }
   }
 
   function setPaintStyle(key: AnsiStyleKey, checked: boolean) {
@@ -600,7 +991,12 @@
   }
 
   function getPaintCellStyle(cell: PaintCell): string {
-    return getAnsiStyleCss({ ...cell, blink: false }, cell.fg, cell.bg);
+    // null fg/bg → inherit / transparent so the canvas's own colors show through
+    return getAnsiStyleCss(
+      { ...cell, blink: false },
+      cell.fg ?? "inherit",
+      cell.bg ?? "transparent",
+    );
   }
 
   function getStylePreviewStyle(key: AnsiStyleKey): string {
@@ -625,6 +1021,29 @@
         return createPaintCell(char);
       })
     );
+    pushPaintHistory(paintGrid);
+  }
+
+  function pushPaintHistory(snapshot: PaintCell[][]) {
+    const trimmed = paintHistory.slice(0, paintHistoryIndex + 1);
+    trimmed.push(snapshot);
+    while (trimmed.length > MAX_PAINT_HISTORY) {
+      trimmed.shift();
+    }
+    paintHistory = trimmed;
+    paintHistoryIndex = trimmed.length - 1;
+  }
+
+  function paintUndo() {
+    if (paintHistoryIndex <= 0) return;
+    paintHistoryIndex -= 1;
+    paintGrid = paintHistory[paintHistoryIndex];
+  }
+
+  function paintRedo() {
+    if (paintHistoryIndex < 0 || paintHistoryIndex >= paintHistory.length - 1) return;
+    paintHistoryIndex += 1;
+    paintGrid = paintHistory[paintHistoryIndex];
   }
 
   function setActiveTab(tab: Tab) {
@@ -639,22 +1058,28 @@
   }
 
   function paintCellAnsiCodes(cell: PaintCell): string {
-    return [
-      ...getAnsiStyleCodes(cell),
-      getAnsiForegroundCode(cell.fg),
-      getAnsiBackgroundCode(cell.bg),
-    ].join(";");
+    const codes: string[] = [...getAnsiStyleCodes(cell)];
+    if (cell.fg !== null) codes.push(getAnsiForegroundCode(cell.fg));
+    if (cell.bg !== null) codes.push(getAnsiBackgroundCode(cell.bg));
+    return codes.join(";");
   }
 
   function paintAnsiText(): string {
     return paintGrid.map((row) => {
       let line = "";
+      // currentCodes "" = transparent run (no ANSI; terminal native fg/bg)
+      // otherwise it's the ANSI parameter string for the current colored run
       let currentCodes = "";
       let currentText = "";
 
       const flushRun = () => {
         if (!currentText) return;
-        line += `\x1b[0;${currentCodes}m${currentText}`;
+        if (currentCodes === "") {
+          // Reset before raw text so previous coloring doesn't bleed onto it
+          line += `\x1b[0m${currentText}`;
+        } else {
+          line += `\x1b[0;${currentCodes}m${currentText}`;
+        }
         currentText = "";
       };
 
@@ -679,6 +1104,9 @@
         ? line.map((cell, colIndex) => {
             if (colIndex !== col) return cell;
             if (erase || paintMode === "erase") return createResetPaintCell(cell.char);
+            if (paintMode === "empty") return createEmptyCell();
+            if (paintMode === "clearFg") return { ...cell, fg: null };
+            if (paintMode === "clearBg") return { ...cell, bg: null };
             if (paintMode === "fg") return { ...cell, fg: paintFg };
             if (paintMode === "bg") return { ...cell, bg: paintBg };
             if (paintMode === "both") return { ...cell, fg: paintFg, bg: paintBg };
@@ -692,6 +1120,7 @@
 
   function handlePaintMouseDown(row: number, col: number, e: MouseEvent) {
     isPainting = true;
+    paintStrokeStartGrid = paintGrid;
     applyPaintCell(row, col, e.button === 2 || e.ctrlKey || e.metaKey);
   }
 
@@ -701,7 +1130,11 @@
   }
 
   function handlePaintMouseUp() {
+    if (isPainting && paintStrokeStartGrid && paintGrid !== paintStrokeStartGrid) {
+      pushPaintHistory(paintGrid);
+    }
     isPainting = false;
+    paintStrokeStartGrid = null;
   }
 
   async function copyPaintOutput(kind: "ansi" | "plain") {
@@ -932,15 +1365,15 @@
   };
 </script>
 
-<div class="h-full flex flex-col">
-  <header class="mb-4">
+<div class="h-full min-h-0 flex flex-col">
+  <header class="mb-4 shrink-0">
     <p class="text-sm text-(--color-text-muted)">
       Generate ASCII art text, convert images into ASCII/Braille, edit characters, and paint colored ANSI output.
     </p>
   </header>
 
   <!-- Tabs -->
-  <div class="flex border-b border-(--color-border) mb-4">
+  <div class="flex border-b border-(--color-border) mb-4 shrink-0">
     <button
       onclick={() => setActiveTab("generator")}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'generator' ? 'text-(--color-text) border-b-2 border-(--color-accent)' : 'text-(--color-text-muted) hover:text-(--color-text)'}"
@@ -961,7 +1394,7 @@
     </button>
   </div>
 
-  <div class="mb-4 flex flex-wrap items-center gap-3 border border-(--color-border) bg-(--color-bg-alt) px-3 py-2">
+  <div class="mb-4 shrink-0 flex flex-wrap items-center gap-3 border border-(--color-border) bg-(--color-bg-alt) px-3 py-2">
     <label class="flex items-center gap-2 text-xs tracking-wider text-(--color-text-light) font-medium">
       View Zoom: {viewZoom}%
       <input
@@ -1155,7 +1588,7 @@
   <!-- Editor Tab - Left sidebar with controls, Right side with canvas -->
   <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
     <!-- Left Sidebar: Mode, Settings, Brushes -->
-    <div class="w-64 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
+    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1">
       <!-- Mode Toggle -->
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Mode</span>
@@ -1403,30 +1836,28 @@
       </div>
 
       <!-- Block Characters Reference -->
-      <div class="flex flex-col gap-2 flex-1 min-h-0">
-        <span class="text-xs tracking-wider text-(--color-text-light) font-medium shrink-0">
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
           {editorMode === "grid" ? "Brushes" : "Characters"}
         </span>
-        <div class="flex-1 overflow-auto">
-          <div class="flex flex-col gap-2">
-            {#each blockCharacters as group}
-              <div class="flex flex-col gap-1">
-                <span class="text-xs text-(--color-text-muted)">{group.category}</span>
-                <div class="flex flex-wrap gap-0.5">
-                  {#each group.chars as char}
-                    <button
-                      onclick={() => insertChar(char)}
-                      oncontextmenu={(e) => { e.preventDefault(); copyChar(char); }}
-                      class="w-6 h-6 flex items-center justify-center text-sm border border-(--color-border) bg-(--color-bg) hover:bg-(--color-bg-hover) hover:border-(--color-accent) transition-colors cursor-pointer {charCopied === char ? 'bg-(--color-accent) text-white' : selectedBrush === char && editorMode === 'grid' ? 'border-(--color-accent) border-2 bg-(--color-accent)/20' : 'text-(--color-text)'}"
-                      title="{editorMode === 'grid' ? 'Click to select brush' : 'Click to insert'}, right-click to copy"
-                    >
-                      {char}
-                    </button>
-                  {/each}
-                </div>
+        <div class="flex flex-col gap-2">
+          {#each blockCharacters as group}
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-(--color-text-muted)">{group.category}</span>
+              <div class="flex flex-wrap gap-0.5">
+                {#each group.chars as char}
+                  <button
+                    onclick={() => insertChar(char)}
+                    oncontextmenu={(e) => { e.preventDefault(); copyChar(char); }}
+                    class="w-6 h-6 flex items-center justify-center text-sm border border-(--color-border) bg-(--color-bg) hover:bg-(--color-bg-hover) hover:border-(--color-accent) transition-colors cursor-pointer {charCopied === char ? 'bg-(--color-accent) text-white' : selectedBrush === char && editorMode === 'grid' ? 'border-(--color-accent) border-2 bg-(--color-accent)/20' : 'text-(--color-text)'}"
+                    title="{editorMode === 'grid' ? 'Click to select brush' : 'Click to insert'}, right-click to copy"
+                  >
+                    {char}
+                  </button>
+                {/each}
               </div>
-            {/each}
-          </div>
+            </div>
+          {/each}
         </div>
       </div>
     </div>
@@ -1441,6 +1872,13 @@
             <span class="text-xs text-(--color-text-muted)">
               Ln {cursorLine}, Col {cursorColumn} | {lineCount} lines, {editorContent.length} chars
             </span>
+            <button
+              onclick={() => (showWhitespace = !showWhitespace)}
+              class="text-xs {showWhitespace ? 'text-(--color-text)' : 'text-(--color-text-muted)'} hover:text-(--color-text) transition-colors"
+              title="Toggle whitespace markers (display only — never copied)"
+            >
+              {showWhitespace ? "Hide ws" : "Show ws"}
+            </button>
           {:else}
             <span class="text-xs text-(--color-text-muted)">
               {gridRows}×{gridCols} | Click to draw, Ctrl+Click to erase
@@ -1475,12 +1913,24 @@
           </div>
           <!-- Textarea Container -->
           <div class="flex-1 min-w-0 relative">
+            {#if showWhitespace}
+              <div
+                class="absolute inset-0 overflow-hidden pointer-events-none select-none"
+                aria-hidden="true"
+              >
+                <div
+                  class="p-3"
+                  style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2; white-space: pre-wrap; word-break: break-word; color: rgba(180,180,180,0.45); transform: translate({-textareaScrollLeft}px, {-textareaScrollTop}px); will-change: transform;"
+                >{whitespaceOverlayText}</div>
+              </div>
+            {/if}
             <textarea
               bind:this={editorTextarea}
               bind:value={editorContent}
               oninput={updateCursorPosition}
               onclick={updateCursorPosition}
               onkeyup={updateCursorPosition}
+              onscroll={onTextareaScroll}
               placeholder="Create your ASCII art here...&#10;Click characters to insert them, or type directly.&#10;Use Enter for new lines."
               class="absolute inset-0 w-full h-full p-3 text-white bg-transparent resize-none outline-none placeholder:text-gray-500"
               style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2;"
@@ -1543,7 +1993,32 @@
   <!-- Paint Tab - colorize the current editor output -->
   <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
     <!-- Paint controls -->
-    <div class="w-64 shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
+    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1">
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">History</span>
+        <div class="flex gap-2">
+          <button
+            onclick={paintUndo}
+            disabled={!canPaintUndo}
+            title="Undo (Ctrl+Z)"
+            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Undo
+          </button>
+          <button
+            onclick={paintRedo}
+            disabled={!canPaintRedo}
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Redo
+          </button>
+        </div>
+        <span class="text-xs text-(--color-text-muted)">
+          {paintHistoryIndex >= 0 ? `Step ${paintHistoryIndex + 1} / ${paintHistory.length}` : "Nothing to undo"} — Ctrl+Z / Ctrl+Shift+Z
+        </span>
+      </div>
+
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Source</span>
         <button
@@ -1552,8 +2027,131 @@
         >
           Sync from editor
         </button>
+        <button
+          onclick={openPasteCatcher}
+          class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+        >
+          Paste from terminal
+        </button>
+        {#if pasteVisible}
+          <div
+            bind:this={pasteRef}
+            contenteditable="true"
+            class="border border-(--color-accent) bg-(--color-bg) p-2 text-xs outline-none min-h-12 max-h-32 overflow-auto"
+            style="white-space: pre; font-family: {terminalFontFamily};"
+            onpaste={onPasteInCatcher}
+          ></div>
+          <div class="flex justify-between items-center gap-2">
+            <span class="text-xs text-(--color-text-muted)">Focus the box and press {navigator.platform.includes("Mac") ? "⌘V" : "Ctrl+V"}.</span>
+            <button
+              onclick={closePasteCatcher}
+              class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          {#if pasteError}
+            <span class="text-xs text-(--color-error-text)">{pasteError}</span>
+          {/if}
+        {/if}
         <span class="text-xs text-(--color-text-muted)">
-          Edit characters in Editor, then return here to preserve matching colors and paint new cells.
+          Sync replaces the canvas with the editor text. Paste imports colored output from Ghostty / Kitty / iTerm (Copy as HTML / Copy with Styles).
+        </span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Appearance</span>
+
+        <div class="flex flex-col gap-1">
+          <span class="text-xs text-(--color-text-muted)">Background</span>
+          <div class="flex items-center gap-1 flex-wrap">
+            {#each terminalBgPresets as preset (preset.value)}
+              <button
+                onclick={() => (terminalBgPreset = preset.value)}
+                class="w-7 h-7 border text-[10px] flex items-center justify-center transition-colors {terminalBgPreset === preset.value
+                  ? 'border-(--color-accent) ring-1 ring-(--color-accent)'
+                  : 'border-(--color-border) hover:border-(--color-accent)'}"
+                style={preset.value === "custom" ? "" : `background-color: ${preset.color}; color: ${preset.value === "light" ? "#333" : "#aaa"};`}
+                title={preset.label}
+              >
+                {preset.value === "custom" ? "+" : ""}
+              </button>
+            {/each}
+            {#if terminalBgPreset === "custom"}
+              <input
+                type="color"
+                bind:value={terminalCustomBg}
+                class="w-7 h-7 border border-(--color-border) cursor-pointer"
+                title="Pick background color"
+              />
+            {/if}
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <span class="text-xs text-(--color-text-muted)">Font</span>
+          {#if useTerminalCustomFont}
+            <input
+              type="text"
+              bind:value={terminalCustomFontName}
+              placeholder="Locally installed font name"
+              class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text)"
+            />
+          {:else}
+            <select
+              bind:value={terminalFontName}
+              class="w-full px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text)"
+            >
+              <optgroup label="Web (auto-load)">
+                {#each terminalFonts.filter((f) => f.group === "web") as font (font.value)}
+                  <option value={font.value}>{font.name}</option>
+                {/each}
+              </optgroup>
+              <optgroup label="Nerd Fonts (install locally)">
+                {#each terminalFonts.filter((f) => f.group === "nerd") as font (font.value)}
+                  <option value={font.value}>{font.name}</option>
+                {/each}
+              </optgroup>
+              <optgroup label="System">
+                {#each terminalFonts.filter((f) => f.group === "system") as font (font.value)}
+                  <option value={font.value}>{font.name}</option>
+                {/each}
+              </optgroup>
+            </select>
+          {/if}
+          <button
+            onclick={() => (useTerminalCustomFont = !useTerminalCustomFont)}
+            class="px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            title="Toggle custom font name input"
+          >
+            {useTerminalCustomFont ? "Use list" : "Use custom"}
+          </button>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-(--color-text-muted)">Line height</span>
+            <span class="text-xs text-(--color-text-muted)">{paintLineHeight.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min="0.85"
+            max="1.6"
+            step="0.05"
+            bind:value={paintLineHeight}
+            class="w-full accent-(--color-accent)"
+          />
+          <button
+            onclick={() => (paintLineHeight = 1.1)}
+            class="px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            title="Reset to default (1.10)"
+          >
+            Reset to 1.10
+          </button>
+        </div>
+
+        <span class="text-xs text-(--color-text-muted)">
+          Default Courier New @ 1.10. Nerd Fonts need local install. Unpainted cells are transparent — they emit no ANSI codes, so the terminal's own colors show through (good for half-blocks like ▀ where only the top should be colored). Use <b>Empty</b> to wipe a cell back to transparent.
         </span>
       </div>
 
@@ -1647,9 +2245,10 @@
         <div class="flex gap-2">
           <button
             onclick={() => copyPaintOutput("ansi")}
-            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+            title={getAnsiEscapeFormat(paintCopyFormat).shortLabel}
+            class="flex-1 min-w-0 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors whitespace-nowrap overflow-hidden text-ellipsis"
           >
-            {paintCopied === paintCopyFormat ? "Copied" : getAnsiEscapeFormat(paintCopyFormat).shortLabel}
+            {paintCopied === paintCopyFormat ? "Copied" : "Copy ANSI"}
           </button>
           <button
             onclick={() => copyPaintOutput("plain")}
@@ -1663,16 +2262,17 @@
 
     <!-- Paint canvas -->
     <div class="flex-1 flex flex-col min-h-0 min-w-0">
-      <div class="flex justify-between items-center mb-2 shrink-0">
+      <div class="flex justify-between items-center mb-2 shrink-0 gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Color Paint</span>
-        <span class="text-xs text-(--color-text-muted)">
+        <span class="text-xs text-(--color-text-muted) truncate">
           {paintGrid.length} lines{paintGrid[0]?.length ? `, ${paintGrid[0].length} cols` : ""} | Drag to paint, Ctrl+Click resets
         </span>
       </div>
 
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a] overflow-auto p-3 {paintBlinkOn ? 'paint-blink-on' : 'paint-blink-off'}"
+        class="flex-1 min-h-0 border border-(--color-border) overflow-auto p-3 {paintBlinkOn ? 'paint-blink-on' : 'paint-blink-off'}"
+        style="background-color: {terminalBgColor}; color: {terminalDefaultFg};"
         onmouseup={handlePaintMouseUp}
         onmouseleave={handlePaintMouseUp}
       >
@@ -1688,14 +2288,12 @@
                   <button
                     type="button"
                     class="flex items-center justify-center shrink-0 cursor-crosshair border-0 p-0 m-0 {cell.blink ? 'paint-blink' : ''}"
-                    style="width: {Math.max(8, scaledPx(editorFontSize * 0.65))}px; height: {Math.max(12, scaledPx(editorFontSize * 1.2))}px; font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1; {getPaintCellStyle(cell)}"
+                    style="width: {Math.max(8, scaledPx(editorFontSize * 0.6))}px; height: {Math.max(8, scaledPx(editorFontSize * paintLineHeight))}px; font-family: {terminalFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: {paintLineHeight}; white-space: pre; {getPaintCellStyle(cell)}"
                     onmousedown={(e) => handlePaintMouseDown(r, c, e)}
                     onmouseenter={(e) => handlePaintMouseEnter(r, c, e)}
                     oncontextmenu={(e) => { e.preventDefault(); applyPaintCell(r, c, true); }}
                     title="Click/drag to paint. Ctrl+Click or right-click resets this cell."
-                  >
-                    {cell.char === " " ? "\u00A0" : cell.char}
-                  </button>
+                  >{cell.char}</button>
                 {/each}
               </div>
             {/each}
@@ -1703,6 +2301,7 @@
         {/if}
       </div>
     </div>
+
   </div>
   {/if}
 </div>

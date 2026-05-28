@@ -127,6 +127,14 @@ const rawCategories: Category[] = [
         keywords: "markdown, preview, editor, comark, mermaid, gfm, github, gitlab, katex, math, latex, diagram, live, render, markdown preview, markdown editor",
       },
       {
+        id: "notepad",
+        name: "Notepad",
+        description: "Markdown notes organized in nested folders with live preview, drag-and-drop, and auto-save to your browser via IndexedDB. Import and export .md files",
+        icon: "📓",
+        path: "/text/notepad",
+        keywords: "notepad, notes, markdown notes, note taking, notebook, folders, file tree, auto save, indexeddb, offline notes, markdown editor, local notes",
+      },
+      {
         id: "docx-viewer",
         name: "DOCX Viewer",
         description: "View Microsoft Word (.docx) documents directly in the browser with full formatting, headers, footers, and page breaks. Export to HTML or Markdown.",

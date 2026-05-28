@@ -71,6 +71,9 @@ importers:
       '@imagemagick/magick-wasm':
         specifier: ^0.0.38
         version: 0.0.38
+      '@lucide/svelte':
+        specifier: ^1.16.0
+        version: 1.16.0(svelte@5.46.1)
       '@paralleldrive/cuid2':
         specifier: ^3.0.6
         version: 3.0.6
@@ -1418,6 +1421,11 @@ packages:
 
   '@lezer/yaml@1.0.3':
     resolution: {integrity: sha512-GuBLekbw9jDBDhGur82nuwkxKQ+a3W5H0GfaAthDXcAu+XdpS43VlnxA9E9hllkpSP5ellRDKjLLj7Lu9Wr6xA==}
+
+  '@lucide/svelte@1.16.0':
+    resolution: {integrity: sha512-AvvPJnaWxeiNkAljI5MsSEc84yHPLMaWQIAJOcbX7k9au/f9ITS7cxTTQiautDiOFKVOXiYdZ+d6mtl88J+Kbg==}
+    peerDependencies:
+      svelte: ^5
 
   '@marijn/find-cluster-break@1.0.2':
     resolution: {integrity: sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g==}
@@ -6419,6 +6427,10 @@ snapshots:
       '@lezer/common': 1.5.0
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.5
+
+  '@lucide/svelte@1.16.0(svelte@5.46.1)':
+    dependencies:
+      svelte: 5.46.1
 
   '@marijn/find-cluster-break@1.0.2': {}
 

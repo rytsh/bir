@@ -87,12 +87,24 @@ export const editorHeightExtension = EditorView.theme({
   ".cm-content": { wordBreak: "break-all" },
 });
 
+export interface SelectionInfo {
+  /** 1-based line number of the cursor (selection head). */
+  line: number;
+  /** 1-based column of the cursor (selection head). */
+  column: number;
+  /** Number of selected characters (0 when there is no selection). */
+  selectionLength: number;
+  /** Number of lines spanned by the selection (0 when there is no selection). */
+  selectedLines: number;
+}
+
 export interface EditorConfig {
   dark: boolean;
   placeholderText?: string;
   readOnly?: boolean;
   language?: Extension;
   onUpdate?: (content: string) => void;
+  onSelectionChange?: (info: SelectionInfo) => void;
 }
 
 /**
@@ -124,6 +136,25 @@ export const createBaseExtensions = (config: EditorConfig): Extension[] => {
         if (update.docChanged) {
           config.onUpdate!(update.state.doc.toString());
         }
+      })
+    );
+  }
+
+  if (config.onSelectionChange) {
+    extensions.push(
+      EditorView.updateListener.of((update) => {
+        if (!update.selectionSet && !update.docChanged) return;
+        const { state } = update;
+        const range = state.selection.main;
+        const headLine = state.doc.lineAt(range.head);
+        const fromLine = state.doc.lineAt(range.from);
+        const toLine = state.doc.lineAt(range.to);
+        config.onSelectionChange!({
+          line: headLine.number,
+          column: range.head - headLine.from + 1,
+          selectionLength: range.to - range.from,
+          selectedLines: range.empty ? 0 : toLine.number - fromLine.number + 1,
+        });
       })
     );
   }
