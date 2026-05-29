@@ -54,12 +54,6 @@
     boxes?: Partial<TextBox>[];
   }
 
-  interface CaptionPreset {
-    id: string;
-    name: string;
-    boxes: Partial<TextBox>[];
-  }
-
   const MEMEGEN_BASE = "https://api.memegen.link/images";
 
   // Default helpers — top/bottom text shorthand
@@ -350,15 +344,41 @@
     { id: "nice", name: "So I Got That Goin' For Me", boxes: TB("THING WENT WRONG", "WHICH IS NICE") },
     { id: "sparta", name: "This Is Sparta!", boxes: TB("THIS", "IS SPARTA!") },
     { id: "toohigh", name: "The Rent Is Too Damn High", boxes: TB("THE X", "IS TOO DAMN HIGH") },
-  ];
-
-  const TURKISH_CAPTION_PRESETS: CaptionPreset[] = [
-    { id: "abi-bu-is", name: "Abi bu iş", boxes: TB("ABI BU IS BOYLE OLMAZ", "BIR DAKIKA") },
-    { id: "plan-basit", name: "Plan basit", boxes: STACK3("PLAN COK BASIT", "ONCE X", "SONRA Y") },
-    { id: "gormedim", name: "Görmedim sayıyorum", boxes: TB("BEN BUNU GORMEDIM", "SAYIYORUM") },
-    { id: "ortam-gerildi", name: "Ortam gerildi", boxes: TB("ORTAM GERILDI", "SAKIN KAL") },
-    { id: "nereden-cikti", name: "Nereden çıktı?", boxes: TB("BU DA NEREDEN CIKTI?", "KIMSE BILMIYOR") },
-    { id: "uygulanmayacak", name: "Uygulanmayacak", boxes: TB("COK IYI FIKIR", "UYGULANMAYACAK") },
+    { id: "sk", name: "Skeptical Third World Kid", boxes: TB("YOU MEAN TO TELL ME", "X?") },
+    { id: "leo", name: "Leo Strutting", boxes: TB("WHEN YOU FINALLY", "SHIP THE FEATURE") },
+    { id: "oag", name: "Overly Attached Girlfriend", boxes: TB("I SAW YOUR STATUS", "SO I MADE PLANS") },
+    { id: "ss", name: "Scumbag Steve", boxes: TB("BORROWS YOUR X", "NEVER RETURNS IT") },
+    { id: "ggg", name: "Good Guy Greg", boxes: TB("SEES YOU NEED HELP", "HELPS WITHOUT ASKING") },
+    { id: "awkward", name: "Socially Awkward Penguin", boxes: TB("TRIES TO SAY HI", "FORGETS HOW WORDS WORK") },
+    { id: "dg", name: "Distracted Girlfriend", boxes: [
+      { text: "ME", x: 0.3, y: 0.48, align: "center" },
+      { text: "NEW THING", x: 0.58, y: 0.43, align: "center" },
+      { text: "OLD THING", x: 0.84, y: 0.5, align: "center" },
+    ]},
+    { id: "noah", name: "What the Hell is This?", boxes: [
+      { text: "OPENS THE THING", x: 0.5, y: 0.12, align: "center", size: 30 },
+      { text: "SEES THE PROBLEM", x: 0.5, y: 0.36, align: "center", size: 30 },
+      { text: "WHAT THE HELL", x: 0.5, y: 0.62, align: "center", size: 30 },
+      { text: "IS THIS?", x: 0.5, y: 0.87, align: "center", size: 30 },
+    ]},
+    { id: "stop", name: "Stop It Patrick You're Scaring Him", boxes: [
+      { text: "STOP IT", x: 0.5, y: 0.08, align: "center", size: 24 },
+      { text: "PATRICK", x: 0.5, y: 0.23, align: "center", size: 24 },
+      { text: "YOU'RE", x: 0.5, y: 0.38, align: "center", size: 24 },
+      { text: "SCARING", x: 0.5, y: 0.53, align: "center", size: 24 },
+      { text: "HIM", x: 0.5, y: 0.68, align: "center", size: 24 },
+      { text: "WITH X", x: 0.5, y: 0.84, align: "center", size: 24 },
+    ]},
+    { id: "ptj", name: "Phoebe Teaching Joey", boxes: [
+      { text: "STEP 1", x: 0.28, y: 0.13, align: "center", size: 22 },
+      { text: "STEP 2", x: 0.72, y: 0.13, align: "center", size: 22 },
+      { text: "STEP 3", x: 0.28, y: 0.36, align: "center", size: 22 },
+      { text: "STEP 4", x: 0.72, y: 0.36, align: "center", size: 22 },
+      { text: "STEP 5", x: 0.28, y: 0.61, align: "center", size: 22 },
+      { text: "STEP 6", x: 0.72, y: 0.61, align: "center", size: 22 },
+      { text: "STEP 7", x: 0.28, y: 0.85, align: "center", size: 22 },
+      { text: "RESULT", x: 0.72, y: 0.85, align: "center", size: 22 },
+    ]},
   ];
 
   // Currently selected online template ID
@@ -811,11 +831,6 @@
     textBoxes = textBoxes.map((b) => (b.id === id ? { ...b, ...patch } : b));
   }
 
-  function applyCaptionPreset(preset: CaptionPreset) {
-    textBoxes = preset.boxes.map((b) => defaultBox(b));
-    selectedBoxId = textBoxes[0]?.id ?? null;
-  }
-
   // ============================================================
   // Rendering
   // ============================================================
@@ -1088,23 +1103,6 @@
               Load URL
             </button>
           </div>
-          <p class="text-[10px] text-(--color-text-muted)">
-            Turkish movie/TV stills: upload your own permitted image or paste a CORS-friendly URL. Copyrighted film frames are not bundled.
-          </p>
-
-          <div class="flex flex-wrap gap-1.5 items-center">
-            <span class="text-xs text-(--color-text-light) self-center mr-1">TR captions:</span>
-            {#each TURKISH_CAPTION_PRESETS as preset (preset.id)}
-              <button
-                type="button"
-                onclick={() => applyCaptionPreset(preset)}
-                class="px-2 py-1 text-xs bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-              >
-                {preset.name}
-              </button>
-            {/each}
-          </div>
-
           <!-- Popular memes (online) -->
           <div class="flex flex-col gap-2 min-w-0">
           <div class="flex flex-wrap gap-2 items-center">

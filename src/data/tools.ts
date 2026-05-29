@@ -661,10 +661,10 @@ const rawCategories: Category[] = [
       {
         id: "meme-generator",
         name: "Meme Generator",
-        description: "Create memes with 100+ online viral templates (Drake, Distracted Boyfriend, Woman Yelling at Cat, Off Ramp, Always Has Been, Galaxy Brain, and more), built-in placeholder canvases, image upload, or pasted image URLs. Add unlimited draggable text boxes with classic Impact white-on-black-outline styling, custom font, size, fill color, outline color and width, alignment, bold/italic/uppercase. Download as PNG or copy to clipboard. All processing runs in your browser.",
+        description: "Create memes with 130+ online viral templates (Drake, Distracted Boyfriend, Woman Yelling at Cat, Off Ramp, Always Has Been, Galaxy Brain, Skeptical Kid, Leo Strutting, and more), built-in placeholder canvases, image upload, or pasted image URLs. Add unlimited draggable text boxes with classic Impact white-on-black-outline styling, custom font, size, fill color, outline color and width, alignment, bold/italic/uppercase. Download as PNG or copy to clipboard. All processing runs in your browser.",
         icon: "🖼️",
         path: "/party/meme-generator",
-        keywords: "meme generator, meme maker, viral meme templates, image macro, top text bottom text, drake meme, distracted boyfriend, woman yelling at cat, off ramp meme, always has been, galaxy brain, stonks, two buttons, expanding brain, thinking meme, image overlay, caption image, impact font, meme creator, meme editor, custom meme",
+        keywords: "meme generator, meme maker, viral meme templates, image macro, top text bottom text, drake meme, distracted boyfriend, distracted girlfriend, woman yelling at cat, off ramp meme, always has been, galaxy brain, skeptical kid, leo strutting, overly attached girlfriend, scumbag steve, good guy greg, socially awkward penguin, stonks, two buttons, expanding brain, thinking meme, image overlay, caption image, impact font, meme creator, meme editor, custom meme",
       },
       {
         id: "team-splitter",
