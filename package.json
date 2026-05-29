@@ -28,7 +28,7 @@
     "@faker-js/faker": "^10.2.0",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "^4.2.0",
     "@imagemagick/magick-wasm": "^0.0.38",
     "@lucide/svelte": "^1.16.0",
     "@paralleldrive/cuid2": "^3.0.6",

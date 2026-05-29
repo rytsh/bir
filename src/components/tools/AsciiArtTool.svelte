@@ -180,8 +180,8 @@
   let terminalFontName = $state("Courier New");
   let terminalCustomFontName = $state("");
   let useTerminalCustomFont = $state(false);
-  // Cell line-height multiplier — defaults to a slightly relaxed terminal feel
-  let paintLineHeight = $state(1.1);
+  // Cell line-height multiplier — keep the default tight for terminal block art.
+  let paintLineHeight = $state(1.0);
 
   const terminalBgColor = $derived(
     terminalBgPreset === "custom"
@@ -783,9 +783,117 @@
     strikethrough: boolean;
   }
 
+  interface RtfPasteState extends PasteStyle {
+    skip: boolean;
+    uc: number;
+  }
+
+  const defaultPasteStyle: PasteStyle = {
+    fg: null,
+    bg: null,
+    bold: false,
+    italic: false,
+    underline: false,
+    strikethrough: false,
+  };
+
+  function isPartialPastedBlock(char: string): boolean {
+    if (char === "█" || char === "▓" || char === "▒" || char === "░") return false;
+    return /^[\u2580-\u259f]$/.test(char);
+  }
+
+  function samePasteColor(a: string | null, b: string | null): boolean {
+    return a !== null && b !== null && a.toLowerCase() === b.toLowerCase();
+  }
+
+  function isPastedSpace(char: string): boolean {
+    return char === " " || char === "\u00a0";
+  }
+
+  function findDefaultPastedBg(grid: PaintCell[][]): string | null {
+    const counts = new Map<string, number>();
+    const countCellBg = (cell: PaintCell) => {
+      if (isPastedSpace(cell.char) && cell.bg !== null) {
+        const bg = cell.bg.toLowerCase();
+        counts.set(bg, (counts.get(bg) ?? 0) + 1);
+      }
+    };
+
+    for (const row of grid) {
+      let left = 0;
+      while (left < row.length && isPastedSpace(row[left].char)) {
+        countCellBg(row[left]);
+        left += 1;
+      }
+
+      let right = row.length - 1;
+      while (right >= left && isPastedSpace(row[right].char)) {
+        countCellBg(row[right]);
+        right -= 1;
+      }
+    }
+
+    let bg: string | null = null;
+    let max = 0;
+    for (const [color, count] of counts) {
+      if (count > max) {
+        bg = color;
+        max = count;
+      }
+    }
+    return bg;
+  }
+
+  function normalizePastedGridBackgrounds(grid: PaintCell[][]): PaintCell[][] {
+    const defaultBg = findDefaultPastedBg(grid);
+    return grid.map((row) => row.map((cell) => {
+      const isDefaultBg = samePasteColor(cell.bg, defaultBg);
+      if (
+        isDefaultBg ||
+        (isPastedSpace(cell.char) && !cell.bg) ||
+        (isPartialPastedBlock(cell.char) && (!cell.bg || samePasteColor(cell.bg, cell.fg)))
+      ) {
+        return { ...cell, bg: null };
+      }
+
+      return cell;
+    }));
+  }
+
+  function createPasteCell(char: string, style: PasteStyle): PaintCell {
+    return {
+      char,
+      fg: style.fg,
+      bg: style.bg,
+      ...createDefaultAnsiStyleState(),
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      strikethrough: style.strikethrough,
+    };
+  }
+
+  function trimPastedRows(rows: PaintCell[][]): PaintCell[][] {
+    while (rows.length > 1 && rows[0].length === 0) rows.shift();
+    while (rows.length > 1 && rows[rows.length - 1].length === 0) rows.pop();
+    return rows;
+  }
+
+  function paintGridHasFormatting(grid: PaintCell[][]): boolean {
+    return grid.some((row) => row.some((cell) =>
+      cell.fg !== null ||
+      cell.bg !== null ||
+      cell.bold ||
+      cell.italic ||
+      cell.underline ||
+      cell.strikethrough
+    ));
+  }
+
   function parseHtmlElementToPaintGrid(root: HTMLElement): PaintCell[][] {
     const rows: PaintCell[][] = [[]];
     const colorCache = new Map<string, string | null>();
+    const computedStyleCache = new WeakMap<HTMLElement, CSSStyleDeclaration>();
     const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "META", "LINK", "TITLE", "HEAD"]);
     const BLOCK_TAGS = new Set(["DIV", "P", "PRE", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "TR", "ARTICLE", "SECTION", "BLOCKQUOTE"]);
 
@@ -817,22 +925,37 @@
       return hex;
     };
 
+    const getElementStyle = (el: HTMLElement): CSSStyleDeclaration | null => {
+      if (computedStyleCache.has(el)) return computedStyleCache.get(el)!;
+      if (!el.isConnected) return null;
+      const style = getComputedStyle(el);
+      computedStyleCache.set(el, style);
+      return style;
+    };
+
+    const computedColorFromParentDiff = (el: HTMLElement): string | null => {
+      if (el === root) return null;
+      const computed = getElementStyle(el);
+      if (!computed) return null;
+      const color = cssColorToHex(computed.color);
+      if (!color) return null;
+      const parent = el.parentElement ? getElementStyle(el.parentElement) : null;
+      const parentColor = parent ? cssColorToHex(parent.color) : null;
+      return color !== parentColor ? color : null;
+    };
+
+    const computedBackground = (el: HTMLElement): string | null => {
+      const computed = getElementStyle(el);
+      return computed ? cssColorToHex(computed.backgroundColor) : null;
+    };
+
     const pushChar = (ch: string, style: PasteStyle) => {
       if (ch === "\n") {
         rows.push([]);
         return;
       }
       if (ch === "\r") return;
-      rows[rows.length - 1].push({
-        char: ch,
-        fg: style.fg,
-        bg: style.bg,
-        ...createDefaultAnsiStyleState(),
-        bold: style.bold,
-        italic: style.italic,
-        underline: style.underline,
-        strikethrough: style.strikethrough,
-      });
+      rows[rows.length - 1].push(createPasteCell(ch, style));
     };
 
     const walk = (node: Node, style: PasteStyle, preserveWhitespace: boolean) => {
@@ -854,9 +977,9 @@
       }
 
       const next: PasteStyle = { ...style };
-      const fg = cssColorToHex(el.style.color);
+      const fg = cssColorToHex(el.style.color) ?? computedColorFromParentDiff(el);
       if (fg) next.fg = fg;
-      const bg = cssColorToHex(el.style.backgroundColor);
+      const bg = cssColorToHex(el.style.backgroundColor) ?? computedBackground(el);
       if (bg) next.bg = bg;
 
       const fw = el.style.fontWeight;
@@ -894,14 +1017,221 @@
 
     walk(
       root,
-      { fg: null, bg: null, bold: false, italic: false, underline: false, strikethrough: false },
+      defaultPasteStyle,
       false,
     );
 
-    while (rows.length > 1 && rows[0].length === 0) rows.shift();
-    while (rows.length > 1 && rows[rows.length - 1].length === 0) rows.pop();
+    return normalizePastedGridBackgrounds(trimPastedRows(rows));
+  }
 
-    return rows;
+  function parseHtmlToPaintGrid(html: string): PaintCell[][] {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const host = document.createElement("div");
+    host.style.cssText = "position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; pointer-events: none;";
+    const shadow = host.attachShadow({ mode: "open" });
+    const root = document.createElement("div");
+    shadow.appendChild(root);
+
+    for (const style of doc.head.querySelectorAll("style")) {
+      root.appendChild(document.importNode(style, true));
+    }
+    for (const node of Array.from(doc.body.childNodes)) {
+      root.appendChild(document.importNode(node, true));
+    }
+
+    document.body.appendChild(host);
+    try {
+      return parseHtmlElementToPaintGrid(root);
+    } finally {
+      document.body.removeChild(host);
+    }
+  }
+
+  function extractRtfGroup(rtf: string, start: number): string {
+    let depth = 0;
+    for (let i = start; i < rtf.length; i++) {
+      const ch = rtf[i];
+      if (ch === "\\") {
+        i += rtf[i + 1] === "'" ? 3 : 1;
+        continue;
+      }
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) return rtf.slice(start + 1, i);
+      }
+    }
+    return "";
+  }
+
+  function parseRtfColorTable(rtf: string): (string | null)[] {
+    const start = rtf.indexOf("{\\colortbl");
+    if (start === -1) return [];
+    const group = extractRtfGroup(rtf, start).replace(/^\\colortbl\s*/, "");
+    return group.split(";").map((entry) => {
+      const red = entry.match(/\\red(\d+)/)?.[1];
+      const green = entry.match(/\\green(\d+)/)?.[1];
+      const blue = entry.match(/\\blue(\d+)/)?.[1];
+      if (red === undefined || green === undefined || blue === undefined) return null;
+      const toHex = (value: string) => Math.max(0, Math.min(255, Number.parseInt(value, 10)))
+        .toString(16)
+        .padStart(2, "0");
+      return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
+    });
+  }
+
+  function isRtfDestinationGroup(rtf: string, start: number): boolean {
+    const rest = rtf.slice(start + 1).trimStart();
+    return /^\\\*/.test(rest) || /^\\(?:fonttbl|colortbl|stylesheet|info|pict|object|generator|datastore|themedata|filetbl|listtable|listoverridetable|revtbl|rsidtbl)\b/.test(rest);
+  }
+
+  function rtfUnicodeChar(value: number): string {
+    const code = value < 0 ? value + 65536 : value;
+    return String.fromCharCode(code);
+  }
+
+  function skipRtfFallback(rtf: string, start: number, count: number): number {
+    let index = start;
+    for (let skipped = 0; skipped < count && index < rtf.length; skipped += 1) {
+      if (rtf[index] === "{") break;
+      if (rtf[index] === "}") break;
+      if (rtf[index] === "\\") {
+        if (rtf[index + 1] === "'") {
+          index += 4;
+          continue;
+        }
+        const control = rtf.slice(index + 1).match(/^([a-zA-Z]+)(-?\d+)? ?/);
+        if (control) {
+          index += 1 + control[0].length;
+          continue;
+        }
+        index += 2;
+        continue;
+      }
+      index += 1;
+    }
+    return index;
+  }
+
+  function parseRtfToPaintGrid(rtf: string): PaintCell[][] {
+    const rows: PaintCell[][] = [[]];
+    const colors = parseRtfColorTable(rtf);
+    const stack: RtfPasteState[] = [];
+    let state: RtfPasteState = { ...defaultPasteStyle, skip: false, uc: 1 };
+
+    const pushChar = (ch: string) => {
+      if (state.skip) return;
+      if (ch === "\n") {
+        rows.push([]);
+        return;
+      }
+      if (ch === "\r") return;
+      rows[rows.length - 1].push(createPasteCell(ch, state));
+    };
+
+    const setStyleFlag = (key: "bold" | "italic" | "underline" | "strikethrough", value: string | undefined) => {
+      state = { ...state, [key]: value === undefined || value !== "0" };
+    };
+
+    const resetTextStyle = () => {
+      state = { ...defaultPasteStyle, skip: state.skip, uc: state.uc };
+    };
+
+    const applyControl = (word: string, value: string | undefined, indexAfterControl: number): number => {
+      if (state.skip) return indexAfterControl;
+
+      if (word === "par" || word === "line") pushChar("\n");
+      else if (word === "tab") pushChar("\t");
+      else if (word === "emdash") pushChar("—");
+      else if (word === "endash") pushChar("–");
+      else if (word === "bullet") pushChar("•");
+      else if (word === "lquote") pushChar("‘");
+      else if (word === "rquote") pushChar("’");
+      else if (word === "ldblquote") pushChar("“");
+      else if (word === "rdblquote") pushChar("”");
+      else if (word === "b") setStyleFlag("bold", value);
+      else if (word === "i") setStyleFlag("italic", value);
+      else if (word === "ul") setStyleFlag("underline", value);
+      else if (word === "ulnone") state = { ...state, underline: false };
+      else if (word === "strike" || word === "striked") setStyleFlag("strikethrough", value);
+      else if (word === "cf") state = { ...state, fg: value && value !== "0" ? (colors[Number.parseInt(value, 10)] ?? null) : null };
+      else if (word === "highlight" || word === "cb" || word === "cbpat" || word === "chcbpat") state = { ...state, bg: value && value !== "0" ? (colors[Number.parseInt(value, 10)] ?? null) : null };
+      else if (word === "plain") resetTextStyle();
+      else if (word === "uc" && value !== undefined) state = { ...state, uc: Math.max(0, Number.parseInt(value, 10)) };
+      else if (word === "u" && value !== undefined) {
+        pushChar(rtfUnicodeChar(Number.parseInt(value, 10)));
+        return skipRtfFallback(rtf, indexAfterControl, state.uc);
+      }
+
+      return indexAfterControl;
+    };
+
+    for (let i = 0; i < rtf.length;) {
+      const ch = rtf[i];
+
+      if (ch === "{") {
+        stack.push({ ...state });
+        state = { ...state, skip: state.skip || isRtfDestinationGroup(rtf, i) };
+        i += 1;
+        continue;
+      }
+
+      if (ch === "}") {
+        state = stack.pop() ?? { ...defaultPasteStyle, skip: false, uc: 1 };
+        i += 1;
+        continue;
+      }
+
+      if (ch === "\r" || ch === "\n") {
+        i += 1;
+        continue;
+      }
+
+      if (ch !== "\\") {
+        pushChar(ch);
+        i += 1;
+        continue;
+      }
+
+      const next = rtf[i + 1];
+      if (next === "\\" || next === "{" || next === "}") {
+        pushChar(next);
+        i += 2;
+        continue;
+      }
+      if (next === "~") {
+        pushChar(" ");
+        i += 2;
+        continue;
+      }
+      if (next === "-") {
+        i += 2;
+        continue;
+      }
+      if (next === "_") {
+        pushChar("-");
+        i += 2;
+        continue;
+      }
+      if (next === "'") {
+        if (!state.skip) {
+          const code = Number.parseInt(rtf.slice(i + 2, i + 4), 16);
+          if (!Number.isNaN(code)) pushChar(String.fromCharCode(code));
+        }
+        i += 4;
+        continue;
+      }
+
+      const control = rtf.slice(i + 1).match(/^([a-zA-Z]+)(-?\d+)? ?/);
+      if (control) {
+        i = applyControl(control[1], control[2], i + 1 + control[0].length);
+        continue;
+      }
+
+      i += 2;
+    }
+
+    return normalizePastedGridBackgrounds(trimPastedRows(rows));
   }
 
   function openPasteCatcher() {
@@ -956,14 +1286,24 @@
     }
 
     const html = cd.getData("text/html");
+    const rtf = cd.getData("text/rtf") || cd.getData("application/rtf");
     const plain = cd.getData("text/plain");
 
     try {
       let grid: PaintCell[][];
       if (html && html.trim()) {
-        const doc = new DOMParser().parseFromString(html, "text/html");
-        grid = parseHtmlElementToPaintGrid(doc.body);
-        // If HTML parsing produced nothing usable, fall back to plain text.
+        grid = parseHtmlToPaintGrid(html);
+        if ((!paintGridHasFormatting(grid) || grid.length === 0 || grid.every((r) => r.length === 0)) && rtf) {
+          const rtfGrid = parseRtfToPaintGrid(rtf);
+          if (paintGridHasFormatting(rtfGrid) || grid.length === 0 || grid.every((r) => r.length === 0)) {
+            grid = rtfGrid;
+          }
+        }
+        if (grid.length === 0 || grid.every((r) => r.length === 0)) {
+          grid = plain ? plainTextToPaintGrid(plain) : grid;
+        }
+      } else if (rtf) {
+        grid = parseRtfToPaintGrid(rtf);
         if (grid.length === 0 || grid.every((r) => r.length === 0)) {
           grid = plain ? plainTextToPaintGrid(plain) : grid;
         }
@@ -997,6 +1337,15 @@
       cell.fg ?? "inherit",
       cell.bg ?? "transparent",
     );
+  }
+
+  function getPaintBlockClass(char: string): string {
+    if (char === "█") return "paint-block-full";
+    if (char === "▀") return "paint-block-top";
+    if (char === "▄") return "paint-block-bottom";
+    if (char === "▌") return "paint-block-left";
+    if (char === "▐") return "paint-block-right";
+    return "";
   }
 
   function getStylePreviewStyle(key: AnsiStyleKey): string {
@@ -2021,18 +2370,20 @@
 
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Source</span>
-        <button
-          onclick={syncPaintFromEditor}
-          class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-        >
-          Sync from editor
-        </button>
-        <button
-          onclick={openPasteCatcher}
-          class="px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-        >
-          Paste from terminal
-        </button>
+        <div class="flex items-center gap-1">
+          <button
+            onclick={openPasteCatcher}
+            class="flex-1 px-2 py-1.5 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
+          >
+            Paste from terminal
+          </button>
+          <span
+            title="Windows Terminal: enable Settings > Interaction > Copy formatting (HTML/RTF/all) before copying, otherwise colors may paste as plain text."
+            class="w-6 h-6 inline-flex items-center justify-center border border-(--color-border) bg-(--color-bg) text-[10px] text-(--color-text-muted) cursor-help select-none"
+          >
+            ?
+          </span>
+        </div>
         {#if pasteVisible}
           <div
             bind:this={pasteRef}
@@ -2055,7 +2406,7 @@
           {/if}
         {/if}
         <span class="text-xs text-(--color-text-muted)">
-          Sync replaces the canvas with the editor text. Paste imports colored output from Ghostty / Kitty / iTerm (Copy as HTML / Copy with Styles).
+          Paint auto-syncs when opened. Paste imports colored output from Windows Terminal / Ghostty / Kitty / iTerm. Windows Terminal needs Copy formatting enabled.
         </span>
       </div>
 
@@ -2142,11 +2493,11 @@
             class="w-full accent-(--color-accent)"
           />
           <button
-            onclick={() => (paintLineHeight = 1.1)}
+            onclick={() => (paintLineHeight = 1.0)}
             class="px-2 py-1 text-xs border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-            title="Reset to default (1.10)"
+            title="Reset to default (1.00)"
           >
-            Reset to 1.10
+            Reset to 1.00
           </button>
         </div>
 
@@ -2278,7 +2629,7 @@
       >
         {#if paintGrid.length === 0 || !paintPlainText()}
           <div class="text-sm text-gray-500">
-            Add or generate ASCII in the Editor tab, then open Paint or click Sync from editor.
+            Add or generate ASCII in the Editor tab, then open Paint.
           </div>
         {:else}
           <div class="inline-block min-w-full select-none">
@@ -2287,13 +2638,13 @@
                 {#each row as cell, c}
                   <button
                     type="button"
-                    class="flex items-center justify-center shrink-0 cursor-crosshair border-0 p-0 m-0 {cell.blink ? 'paint-blink' : ''}"
-                    style="width: {Math.max(8, scaledPx(editorFontSize * 0.6))}px; height: {Math.max(8, scaledPx(editorFontSize * paintLineHeight))}px; font-family: {terminalFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: {paintLineHeight}; white-space: pre; {getPaintCellStyle(cell)}"
+                    class="paint-cell block shrink-0 cursor-crosshair border-0 p-0 m-0 text-center overflow-hidden {cell.blink ? 'paint-blink' : ''}"
+                    style="width: {Math.max(8, scaledPx(editorFontSize * 0.6))}px; height: {Math.max(8, scaledPx(editorFontSize * paintLineHeight))}px; font-family: {terminalFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: {Math.max(8, scaledPx(editorFontSize * paintLineHeight))}px; white-space: pre; {getPaintCellStyle(cell)}"
                     onmousedown={(e) => handlePaintMouseDown(r, c, e)}
                     onmouseenter={(e) => handlePaintMouseEnter(r, c, e)}
                     oncontextmenu={(e) => { e.preventDefault(); applyPaintCell(r, c, true); }}
                     title="Click/drag to paint. Ctrl+Click or right-click resets this cell."
-                  >{cell.char}</button>
+                  >{#if getPaintBlockClass(cell.char)}<span class="paint-block {getPaintBlockClass(cell.char)}"></span>{:else}{cell.char}{/if}</button>
                 {/each}
               </div>
             {/each}
@@ -2307,6 +2658,55 @@
 </div>
 
 <style>
+  .paint-cell {
+    appearance: none;
+    position: relative;
+    font-kerning: none;
+    font-variant-ligatures: none;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .paint-block {
+    position: absolute;
+    display: block;
+    pointer-events: none;
+    background-color: currentColor;
+  }
+
+  .paint-block-full {
+    inset: 0;
+  }
+
+  .paint-block-top {
+    top: 0;
+    right: 0;
+    bottom: 50%;
+    left: 0;
+  }
+
+  .paint-block-bottom {
+    top: 50%;
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  .paint-block-left {
+    top: 0;
+    right: 50%;
+    bottom: 0;
+    left: 0;
+  }
+
+  .paint-block-right {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 50%;
+  }
+
   .paint-blink-off .paint-blink {
     visibility: hidden;
   }

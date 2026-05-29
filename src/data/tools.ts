@@ -731,10 +731,10 @@ const rawCategories: Category[] = [
       {
         id: "assistant",
         name: "Assistant",
-        description: "Chat with a local AI assistant (SmolLM2-1.7B) directly in your browser. Private, secure, and purely client-side.",
+        description: "Chat with a local AI assistant, mask PII with OpenAI Privacy Filter, or use marked external free-tier endpoints like NVIDIA NIM, Groq, and OpenRouter.",
         icon: "💬",
         path: "/ai/assistant",
-        keywords: "ai assistant, chat bot, local llm, smollm2, text generation, transformers.js, offline ai, chatbot",
+        keywords: "ai assistant, chat bot, local llm, smollm2, text generation, transformers.js, offline ai, chatbot, privacy filter, pii detection, pii masking, redact text, nvidia nim, groq, openrouter, free llm endpoint",
         wasm: true,
       },
       {
