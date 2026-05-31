@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import DocxEditorTool from "../../components/tools/DocxEditorTool.tsx";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/docx-editor");
+---
+
+<Layout title="DOCX Editor - Edit Word Documents in Browser" description={tool?.description} keywords={tool?.keywords} currentPath="/text/docx-editor" fullBleed>
+  <h1 slot="navbar-title">DOCX Editor</h1>
+  <DocxEditorTool client:only="react" />
+</Layout>

@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@astrojs/react";
 import svelte from "@astrojs/svelte";
 import sitemap from "@astrojs/sitemap";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -12,6 +13,7 @@ export default defineConfig({
   site: "https://1.tools",
   integrations: [
     svelte(),
+    react(),
     sitemap(),
     AstroPWA({
       registerType: "autoUpdate",

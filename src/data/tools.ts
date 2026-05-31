@@ -143,6 +143,14 @@ const rawCategories: Category[] = [
         keywords: "docx viewer, word viewer, docx reader, word document, microsoft word, docx to html, docx to markdown, document viewer, office viewer, word file, docx preview",
       },
       {
+        id: "docx-editor",
+        name: "DOCX Editor",
+        description: "Edit Microsoft Word (.docx) documents directly in the browser with a WYSIWYG editor, track changes mode, rulers, outline navigation, and DOCX download.",
+        icon: "📝",
+        path: "/text/docx-editor",
+        keywords: "docx editor, word editor, docx wysiwyg, edit docx, microsoft word editor, word document editor, track changes, document editing, office editor, docx download",
+      },
+      {
         id: "subtitle-editor",
         name: "Subtitle Editor",
         description: "Edit and convert subtitle files (SRT, WebVTT, ASS) with synced video preview, visual timeline, time sync, bulk time shift, split/merge, search & replace, overlap detection, and format conversion",

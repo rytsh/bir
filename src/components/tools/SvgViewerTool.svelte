@@ -9,8 +9,18 @@
     editorHeightExtension,
   } from "../../lib/codemirror.ts";
 
-  type ExportTab = "preview" | "react-native" | "png" | "jpg" | "data-uri";
+  type ExportTab = "preview" | "colors" | "react-native" | "png" | "jpg" | "ico" | "data-uri";
   type BgPattern = "checkered" | "white" | "black" | "custom";
+  type ExportSize = 16 | 32 | 48 | 64 | 128 | 192 | 256 | 512;
+  type RasterSizeMode = "original" | "scale-2" | "scale-4" | "custom" | `size-${ExportSize}`;
+
+  interface SvgColorGroup {
+    key: string;
+    label: string;
+    hex: string;
+    raws: string[];
+    count: number;
+  }
 
   const SAMPLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-feather-icon lucide-feather">
   <path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z"/>
@@ -28,11 +38,14 @@
   let flipY = $state(false);
   let bgPattern = $state<BgPattern>("checkered");
   let customBg = $state("#ffffff");
-  let pngScale = $state<"1" | "2" | "4" | "custom">("2");
+  let rasterSizeMode = $state<RasterSizeMode>("scale-2");
   let pngWidth = $state(400);
   let pngHeight = $state(400);
   let pngTransparent = $state(true);
   let pngBgColor = $state("#ffffff");
+  let selectedIcoSizes = $state<ExportSize[]>([16, 32, 48]);
+  let icoTransparent = $state(true);
+  let icoBgColor = $state("#ffffff");
   let jpgQuality = $state(0.92);
   let jpgBgColor = $state("#ffffff");
   let dataUriFormat = $state<"encoded" | "base64">("encoded");
@@ -46,6 +59,38 @@
   let optimizing = $state(false);
   let prettifying = $state(false);
   let fileInput = $state<HTMLInputElement | undefined>(undefined);
+
+  const exportSizes: ExportSize[] = [16, 32, 48, 64, 128, 192, 256, 512];
+  const icoSizes: ExportSize[] = [16, 32, 48, 64, 128, 256];
+  const rasterModes: { id: RasterSizeMode; label: string }[] = [
+    { id: "original", label: "Original" },
+    { id: "scale-2", label: "2x" },
+    { id: "scale-4", label: "4x" },
+    { id: "custom", label: "Custom" },
+  ];
+  const colorProperties = ["fill", "stroke", "stop-color", "flood-color", "lighting-color"];
+  const skippedColorValues = new Set(["none", "transparent", "inherit", "initial", "unset"]);
+  const namedColors: Record<string, string> = {
+    black: "#000000",
+    blue: "#0000ff",
+    cyan: "#00ffff",
+    fuchsia: "#ff00ff",
+    gray: "#808080",
+    green: "#008000",
+    grey: "#808080",
+    lime: "#00ff00",
+    magenta: "#ff00ff",
+    maroon: "#800000",
+    navy: "#000080",
+    olive: "#808000",
+    orange: "#ffa500",
+    purple: "#800080",
+    red: "#ff0000",
+    silver: "#c0c0c0",
+    teal: "#008080",
+    white: "#ffffff",
+    yellow: "#ffff00",
+  };
 
   // ── SVGO lazy load ────────────────────────────────────────────────
   type SvgoModule = typeof import("svgo/browser");
@@ -107,6 +152,87 @@
 
   const svgInfo = $derived.by(() => getSvgInfo());
   const isValid = $derived(svgCode.trim() === "" || svgInfo !== null);
+
+  function normalizeHexColor(value: string): string | null {
+    const trimmed = value.trim().toLowerCase();
+    const shortHex = trimmed.match(/^#([0-9a-f]{3})$/i);
+    if (shortHex) {
+      return `#${shortHex[1].split("").map((ch) => ch + ch).join("")}`;
+    }
+    const longHex = trimmed.match(/^#([0-9a-f]{6})$/i);
+    if (longHex) {
+      return `#${longHex[1]}`;
+    }
+    const rgb = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i);
+    if (rgb) {
+      const channels = rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, parseInt(part, 10))));
+      return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+    }
+    return namedColors[trimmed] ?? null;
+  }
+
+  function stripImportant(value: string): { value: string; important: string } {
+    const match = value.match(/\s*!important\s*$/i);
+    return {
+      value: value.replace(/\s*!important\s*$/i, "").trim(),
+      important: match ? " !important" : "",
+    };
+  }
+
+  function getEditableColor(rawValue: string): { key: string; label: string; hex: string } | null {
+    const { value } = stripImportant(rawValue);
+    const normalized = value.trim();
+    const lower = normalized.toLowerCase();
+    if (!normalized || skippedColorValues.has(lower) || lower.startsWith("url(") || lower.startsWith("var(")) {
+      return null;
+    }
+    if (lower === "currentcolor") {
+      return { key: "token:currentColor", label: "currentColor", hex: "#000000" };
+    }
+    const hex = normalizeHexColor(normalized);
+    if (!hex) return null;
+    return { key: `hex:${hex}`, label: hex, hex };
+  }
+
+  function collectRawSvgColors(source: string): string[] {
+    const values: string[] = [];
+    const propPattern = colorProperties.join("|");
+    const attrRegex = new RegExp(`\\b(${propPattern})\\s*=\\s*(["'])(.*?)\\2`, "gi");
+    const styleRegex = new RegExp(`(^|[;{]\\s*)(${propPattern})\\s*:\\s*([^;}]+)`, "gi");
+    let match: RegExpExecArray | null;
+
+    while ((match = attrRegex.exec(source)) !== null) {
+      values.push(match[3]);
+    }
+    while ((match = styleRegex.exec(source)) !== null) {
+      values.push(match[3]);
+    }
+    return values;
+  }
+
+  function getSvgColors(): SvgColorGroup[] {
+    const groups = new Map<string, SvgColorGroup>();
+    for (const raw of collectRawSvgColors(svgCode)) {
+      const color = getEditableColor(raw);
+      if (!color) continue;
+      const group = groups.get(color.key) ?? {
+        key: color.key,
+        label: color.label,
+        hex: color.hex,
+        raws: [],
+        count: 0,
+      };
+      const stripped = stripImportant(raw).value;
+      if (!group.raws.includes(stripped)) {
+        group.raws.push(stripped);
+      }
+      group.count += 1;
+      groups.set(color.key, group);
+    }
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  const svgColors = $derived.by(() => getSvgColors());
 
   const previewTransform = $derived(
     `rotate(${rotation}deg) scaleX(${flipX ? -1 : 1}) scaleY(${flipY ? -1 : 1})`
@@ -326,6 +452,30 @@
     });
   }
 
+  function replaceSvgColorValues(source: string, raws: string[], nextColor: string): string {
+    const rawSet = new Set(raws.map((raw) => raw.trim()));
+    const propPattern = colorProperties.join("|");
+    const attrRegex = new RegExp(`\\b(${propPattern})\\s*=\\s*(["'])(.*?)\\2`, "gi");
+    const styleRegex = new RegExp(`(^|[;{]\\s*)(${propPattern})\\s*:\\s*([^;}]+)`, "gi");
+
+    return source
+      .replace(attrRegex, (match: string, prop: string, quote: string, raw: string) => {
+        const { value } = stripImportant(raw);
+        if (!rawSet.has(value)) return match;
+        return `${prop}=${quote}${nextColor}${quote}`;
+      })
+      .replace(styleRegex, (match: string, prefix: string, prop: string, raw: string) => {
+        const { value, important } = stripImportant(raw);
+        if (!rawSet.has(value)) return match;
+        return `${prefix}${prop}: ${nextColor}${important}`;
+      });
+  }
+
+  function applySvgColor(color: SvgColorGroup, nextColor: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(nextColor)) return;
+    svgCode = replaceSvgColorValues(svgCode, color.raws, nextColor.toLowerCase());
+  }
+
   function downloadSvg() {
     if (!svgCode) return;
     const blob = new Blob([svgCode], { type: "image/svg+xml" });
@@ -337,7 +487,12 @@
     URL.revokeObjectURL(url);
   }
 
-  async function renderToCanvas(width: number, height: number, bg?: string): Promise<HTMLCanvasElement> {
+  async function renderToCanvas(
+    width: number,
+    height: number,
+    bg?: string,
+    fit: "stretch" | "contain" = "stretch"
+  ): Promise<HTMLCanvasElement> {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(width));
@@ -355,7 +510,20 @@
       const blob = new Blob([svgCode], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (fit === "contain" && svgInfo && svgInfo.width > 0 && svgInfo.height > 0) {
+          const scale = Math.min(canvas.width / svgInfo.width, canvas.height / svgInfo.height);
+          const drawWidth = svgInfo.width * scale;
+          const drawHeight = svgInfo.height * scale;
+          ctx.drawImage(
+            img,
+            (canvas.width - drawWidth) / 2,
+            (canvas.height - drawHeight) / 2,
+            drawWidth,
+            drawHeight
+          );
+        } else {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
         URL.revokeObjectURL(url);
         resolve(canvas);
       };
@@ -367,18 +535,31 @@
     });
   }
 
-  const pngBaseWidth = $derived(svgInfo ? svgInfo.width : 400);
-  const pngBaseHeight = $derived(svgInfo ? svgInfo.height : 400);
+  const pngBaseWidth = $derived(svgInfo && svgInfo.width > 0 ? svgInfo.width : 400);
+  const pngBaseHeight = $derived(svgInfo && svgInfo.height > 0 ? svgInfo.height : 400);
+  const rasterPresetSize = $derived.by(() => {
+    if (!rasterSizeMode.startsWith("size-")) return null;
+    return parseInt(rasterSizeMode.slice(5), 10) as ExportSize;
+  });
   const pngOutputWidth = $derived(
-    pngScale === "custom"
+    rasterSizeMode === "custom"
       ? pngWidth
-      : Math.round(pngBaseWidth * parseInt(pngScale))
+      : rasterPresetSize
+        ? rasterPresetSize
+        : rasterSizeMode === "original"
+          ? Math.round(pngBaseWidth)
+          : Math.round(pngBaseWidth * parseInt(rasterSizeMode.replace("scale-", "")))
   );
   const pngOutputHeight = $derived(
-    pngScale === "custom"
+    rasterSizeMode === "custom"
       ? pngHeight
-      : Math.round(pngBaseHeight * parseInt(pngScale))
+      : rasterPresetSize
+        ? rasterPresetSize
+        : rasterSizeMode === "original"
+          ? Math.round(pngBaseHeight)
+          : Math.round(pngBaseHeight * parseInt(rasterSizeMode.replace("scale-", "")))
   );
+  const rasterFit = $derived(rasterPresetSize ? "contain" as const : "stretch" as const);
 
   async function downloadPng() {
     error = "";
@@ -386,7 +567,8 @@
       const canvas = await renderToCanvas(
         pngOutputWidth,
         pngOutputHeight,
-        pngTransparent ? undefined : pngBgColor
+        pngTransparent ? undefined : pngBgColor,
+        rasterFit
       );
       canvas.toBlob((blob) => {
         if (!blob) return;
@@ -405,7 +587,7 @@
   async function downloadJpg() {
     error = "";
     try {
-      const canvas = await renderToCanvas(pngOutputWidth, pngOutputHeight, jpgBgColor);
+      const canvas = await renderToCanvas(pngOutputWidth, pngOutputHeight, jpgBgColor, rasterFit);
       canvas.toBlob(
         (blob) => {
           if (!blob) return;
@@ -421,6 +603,95 @@
       );
     } catch (e) {
       error = e instanceof Error ? e.message : "JPG export failed";
+    }
+  }
+
+  function setRasterPresetSize(size: ExportSize) {
+    rasterSizeMode = `size-${size}`;
+  }
+
+  function toggleIcoSize(size: ExportSize) {
+    if (selectedIcoSizes.includes(size)) {
+      selectedIcoSizes = selectedIcoSizes.filter((s) => s !== size);
+    } else {
+      selectedIcoSizes = [...selectedIcoSizes, size].sort((a, b) => a - b);
+    }
+  }
+
+  async function canvasToBlob(canvas: HTMLCanvasElement, type = "image/png", quality?: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Failed to export canvas"));
+      }, type, quality);
+    });
+  }
+
+  async function buildIco(sizes: ExportSize[]): Promise<Blob> {
+    const pngDataArrays: Uint8Array[] = [];
+    for (const size of sizes) {
+      const canvas = await renderToCanvas(
+        size,
+        size,
+        icoTransparent ? undefined : icoBgColor,
+        "contain"
+      );
+      const blob = await canvasToBlob(canvas);
+      pngDataArrays.push(new Uint8Array(await blob.arrayBuffer()));
+    }
+
+    const numImages = sizes.length;
+    const headerSize = 6;
+    const dirEntrySize = 16;
+    const dirSize = dirEntrySize * numImages;
+    let dataOffset = headerSize + dirSize;
+    const totalSize = dataOffset + pngDataArrays.reduce((sum, data) => sum + data.length, 0);
+    const ico = new ArrayBuffer(totalSize);
+    const view = new DataView(ico);
+
+    view.setUint16(0, 0, true);
+    view.setUint16(2, 1, true);
+    view.setUint16(4, numImages, true);
+
+    for (let i = 0; i < numImages; i++) {
+      const offset = headerSize + i * dirEntrySize;
+      const size = sizes[i];
+      view.setUint8(offset, size === 256 ? 0 : size);
+      view.setUint8(offset + 1, size === 256 ? 0 : size);
+      view.setUint8(offset + 2, 0);
+      view.setUint8(offset + 3, 0);
+      view.setUint16(offset + 4, 1, true);
+      view.setUint16(offset + 6, 32, true);
+      view.setUint32(offset + 8, pngDataArrays[i].length, true);
+      view.setUint32(offset + 12, dataOffset, true);
+      dataOffset += pngDataArrays[i].length;
+    }
+
+    let currentOffset = headerSize + dirSize;
+    for (const data of pngDataArrays) {
+      new Uint8Array(ico).set(data, currentOffset);
+      currentOffset += data.length;
+    }
+
+    return new Blob([ico], { type: "image/x-icon" });
+  }
+
+  async function downloadIco() {
+    error = "";
+    if (selectedIcoSizes.length === 0) {
+      error = "Select at least one ICO size";
+      return;
+    }
+    try {
+      const blob = await buildIco(selectedIcoSizes);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "image.ico";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      error = e instanceof Error ? e.message : "ICO export failed";
     }
   }
 
@@ -683,7 +954,7 @@ export default SvgComponent;`;
 <div class="h-full flex flex-col">
   <header class="mb-3">
     <p class="text-sm text-(--color-text-muted)">
-      View, edit, transform, optimize, and convert SVG images. Export to PNG, JPG, Data URI, React JSX, and React Native.
+      View, edit, transform, optimize, and convert SVG images. Export to PNG, JPG, ICO, Data URI, React JSX, and React Native.
     </p>
   </header>
 
@@ -896,9 +1167,11 @@ export default SvgComponent;`;
       <div class="flex gap-1 mb-1.5 border-b border-(--color-border) overflow-x-auto">
         {#each [
           { id: "preview", label: "Preview" },
+          { id: "colors", label: "Colors" },
           { id: "react-native", label: "React Native" },
           { id: "png", label: "PNG" },
           { id: "jpg", label: "JPG" },
+          { id: "ico", label: "ICO" },
           { id: "data-uri", label: "Data URI" },
         ] as tab (tab.id)}
           <button
@@ -1000,6 +1273,58 @@ export default SvgComponent;`;
             </div>
           {/if}
         </div>
+      {:else if exportTab === "colors"}
+        <div class="flex flex-col flex-1 min-h-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Detected Colors</span>
+            <span class="text-xs text-(--color-text-muted)">{svgColors.length} editable</span>
+          </div>
+
+          {#if !svgCode.trim()}
+            <div class="flex-1 border border-(--color-border) flex items-center justify-center p-4 text-sm text-(--color-text-muted)">
+              Paste or upload an SVG to detect colors.
+            </div>
+          {:else if !isValid}
+            <div class="flex-1 border border-(--color-border) flex items-center justify-center p-4 text-sm text-(--color-error-text)">
+              Fix invalid SVG markup before editing colors.
+            </div>
+          {:else if svgColors.length === 0}
+            <div class="flex-1 border border-(--color-border) flex items-center justify-center p-4 text-sm text-(--color-text-muted)">
+              No editable fill, stroke, or gradient colors found.
+            </div>
+          {:else}
+            <div class="flex-1 overflow-auto space-y-2 pr-1">
+              {#each svgColors as color (color.key)}
+                <div class="flex items-center gap-3 p-2 border border-(--color-border) bg-(--color-bg-alt)">
+                  <div
+                    class="w-9 h-9 border border-(--color-border) shrink-0"
+                    style="background: {color.hex};"
+                    title={color.label}
+                  ></div>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-mono text-(--color-text)">{color.label}</div>
+                    <div class="text-xs text-(--color-text-muted) truncate">
+                      {color.count} occurrence{color.count === 1 ? "" : "s"}
+                      {#if color.raws.length > 1}
+                        · {color.raws.join(", ")}
+                      {/if}
+                    </div>
+                  </div>
+                  <input
+                    type="color"
+                    value={color.hex}
+                    onchange={(e) => applySvgColor(color, (e.currentTarget as HTMLInputElement).value)}
+                    class="w-10 h-8 border border-(--color-border) cursor-pointer bg-(--color-bg)"
+                    aria-label="Change {color.label}"
+                  />
+                </div>
+              {/each}
+            </div>
+            <p class="mt-2 px-1 text-xs text-(--color-text-muted)">
+              Skips non-direct colors such as none, transparent, url(...), and CSS variables.
+            </p>
+          {/if}
+        </div>
       {:else if exportTab === "react-native"}
         <div class="flex flex-col flex-1 min-h-0">
           <div class="flex items-center justify-between mb-1.5 px-1">
@@ -1023,18 +1348,31 @@ export default SvgComponent;`;
           <div class="mb-2 px-1 space-y-2">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Scale</span>
-              {#each ["1", "2", "4", "custom"] as scale (scale)}
+              {#each rasterModes as mode (mode.id)}
                 <button
-                  onclick={() => (pngScale = scale as typeof pngScale)}
-                  class="px-2.5 py-1 text-xs font-medium border transition-colors {pngScale === scale
+                  onclick={() => (rasterSizeMode = mode.id)}
+                  class="px-2.5 py-1 text-xs font-medium border transition-colors {rasterSizeMode === mode.id
                     ? 'border-(--color-accent) bg-(--color-bg-alt)'
                     : 'border-(--color-border)'}"
                 >
-                  {scale === "custom" ? "Custom" : `${scale}x`}
+                  {mode.label}
                 </button>
               {/each}
             </div>
-            {#if pngScale === "custom"}
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">PNG Size</span>
+              {#each exportSizes as size (size)}
+                <button
+                  onclick={() => setRasterPresetSize(size)}
+                  class="px-2 py-0.5 text-xs font-medium border transition-colors {rasterSizeMode === `size-${size}`
+                    ? 'border-(--color-accent) bg-(--color-bg-alt)'
+                    : 'border-(--color-border)'}"
+                >
+                  {size}
+                </button>
+              {/each}
+            </div>
+            {#if rasterSizeMode === "custom"}
               <div class="flex items-center gap-2">
                 <input
                   type="number"
@@ -1094,18 +1432,31 @@ export default SvgComponent;`;
           <div class="mb-2 px-1 space-y-2">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Scale</span>
-              {#each ["1", "2", "4", "custom"] as scale (scale)}
+              {#each rasterModes as mode (mode.id)}
                 <button
-                  onclick={() => (pngScale = scale as typeof pngScale)}
-                  class="px-2.5 py-1 text-xs font-medium border transition-colors {pngScale === scale
+                  onclick={() => (rasterSizeMode = mode.id)}
+                  class="px-2.5 py-1 text-xs font-medium border transition-colors {rasterSizeMode === mode.id
                     ? 'border-(--color-accent) bg-(--color-bg-alt)'
                     : 'border-(--color-border)'}"
                 >
-                  {scale === "custom" ? "Custom" : `${scale}x`}
+                  {mode.label}
                 </button>
               {/each}
             </div>
-            {#if pngScale === "custom"}
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">Size</span>
+              {#each exportSizes as size (size)}
+                <button
+                  onclick={() => setRasterPresetSize(size)}
+                  class="px-2 py-0.5 text-xs font-medium border transition-colors {rasterSizeMode === `size-${size}`
+                    ? 'border-(--color-accent) bg-(--color-bg-alt)'
+                    : 'border-(--color-border)'}"
+                >
+                  {size}
+                </button>
+              {/each}
+            </div>
+            {#if rasterSizeMode === "custom"}
               <div class="flex items-center gap-2">
                 <input
                   type="number"
@@ -1157,6 +1508,59 @@ export default SvgComponent;`;
           <div
             class="flex-1 border border-(--color-border) overflow-auto flex items-center justify-center p-4 min-h-[200px]"
             style="background: {jpgBgColor};"
+          >
+            {#if svgCode.trim() && isValid}
+              <div class="max-w-full max-h-full">{@html svgCode}</div>
+            {/if}
+          </div>
+        </div>
+      {:else if exportTab === "ico"}
+        <div class="flex flex-col flex-1 min-h-0">
+          <div class="mb-2 px-1 space-y-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium">ICO Sizes</span>
+              {#each icoSizes as size (size)}
+                <button
+                  onclick={() => toggleIcoSize(size)}
+                  class="px-2.5 py-1 text-xs font-medium border transition-colors {selectedIcoSizes.includes(size)
+                    ? 'border-(--color-accent) bg-(--color-bg-alt)'
+                    : 'border-(--color-border)'}"
+                >
+                  {size}
+                </button>
+              {/each}
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  bind:checked={icoTransparent}
+                  class="w-4 h-4 accent-(--color-text) cursor-pointer"
+                />
+                <span class="text-xs text-(--color-text-muted)">Transparent background</span>
+              </label>
+              {#if !icoTransparent}
+                <input
+                  type="color"
+                  bind:value={icoBgColor}
+                  class="w-8 h-6 border border-(--color-border) cursor-pointer"
+                />
+              {/if}
+            </div>
+            <div class="text-xs text-(--color-text-muted)">
+              Includes: <span class="font-mono">{selectedIcoSizes.length ? selectedIcoSizes.join(", ") : "none"}</span> px
+            </div>
+            <button
+              onclick={downloadIco}
+              disabled={!isValid || !svgCode.trim() || selectedIcoSizes.length === 0}
+              class="px-4 py-1.5 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Download ICO
+            </button>
+          </div>
+          <div
+            class="flex-1 border border-(--color-border) overflow-auto flex items-center justify-center p-4 min-h-[200px]"
+            style={icoTransparent ? checkeredBg : `background: ${icoBgColor};`}
           >
             {#if svgCode.trim() && isValid}
               <div class="max-w-full max-h-full">{@html svgCode}</div>

@@ -218,10 +218,13 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
                 d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
             </svg>
           </button>
-          <span class="w-full px-2 text-base tracking-tight">
+          <span class="min-w-0 flex-1 px-2 text-base tracking-tight">
             <slot name="navbar-title">Collection of Tools</slot>
           </span>
-          <div class="flex items-center gap-1">
+          <div class="flex min-w-0 shrink-0 items-center gap-1">
+            <div id="navbar-tool-actions" class="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-1 overflow-x-auto lg:max-w-none">
+              <slot name="navbar-actions" />
+            </div>
             {currentTool && <FavoriteButton tool={currentTool} variant="navbar" showLabel={true} client:load />}
             <ThemeToggle client:load />
           </div>

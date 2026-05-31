@@ -7,3 +7,8 @@ allowBuilds:
   tesseract.js: false
   tree-sitter: false
   tree-sitter-bash: false
+minimumReleaseAgeExclude:
+  - '@eigenpal/docx-editor-agents@1.1.0'
+  - '@eigenpal/docx-editor-core@1.1.0'
+  - '@eigenpal/docx-editor-i18n@1.1.0'
+  - '@eigenpal/docx-editor-react@1.1.0'
