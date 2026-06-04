@@ -839,10 +839,10 @@ const rawCategories: Category[] = [
       {
         id: "image-resizer",
         name: "Image Resizer",
-        description: "Resize and crop images in browser with aspect ratio control",
+        description: "Compose, resize, crop, rotate, and export multiple images with background control",
         icon: "📏",
         path: "/graphics/image-resizer",
-        keywords: "image resizer, resize image, crop image, image dimensions, scale image, image size, image editor",
+        keywords: "image resizer, resize image, crop image, rotate image, scale image, multiple images, image layers, transparent background, image dimensions, image size, image editor",
       },
       {
         id: "placeholder-image",
