@@ -47,6 +47,6 @@ jobs:
           # Mount values from GCP Secret Manager as runtime env vars.
           # Create the secrets once (see api/README.md) and grant the Cloud Run
           # runtime service account roles/secretmanager.secretAccessor.
-          secrets: |-
+          env_vars: |-
             BIR_API_FEEDBACK_DISCORD_WEBHOOK_URL=${{ secrets.FEEDBACK_DISCORD_WEBHOOK_URL }}
             BIR_API_FEEDBACK_HMAC_KEY=${{ secrets.FEEDBACK_HMAC_KEY }}
