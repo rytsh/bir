@@ -1,0 +1,13 @@
+---
+import Layout from "../layouts/Layout.astro";
+import FeedbackForm from "../components/FeedbackForm.svelte";
+---
+
+<Layout
+  title="Send Feedback"
+  description="Send feedback, report a bug, or request a tool for 1.tools."
+  currentPath="/feedback"
+>
+  <span slot="navbar-title">Send Feedback</span>
+  <FeedbackForm client:load />
+</Layout>

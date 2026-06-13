@@ -35,6 +35,28 @@ const structuredData = {
   description="A collection of open-source developer tools for everyday tasks - encoders, decoders, generators, converters, and more."
   currentPath="/"
 >
+  <a
+    slot="navbar-actions"
+    href="/feedback"
+    class="inline-flex items-center gap-1.5 px-2 py-2 text-white/70 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
+    aria-label="Send feedback"
+    title="Send feedback"
+  >
+    <svg
+      class="w-4 h-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      aria-hidden="true"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+    <span class="hidden sm:inline text-sm">Send Feedback</span>
+  </a>
+
   <!-- Structured Data -->
   <script
     type="application/ld+json"

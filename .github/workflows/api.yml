@@ -44,3 +44,9 @@ jobs:
           service: bir-api
           region: ${{ secrets.GCP_REGION }}
           image: ${{ secrets.GCP_ARTIFACT_REGISTRY }}/ghcr.io/rytsh/bir/api:${{ steps.version.outputs.VERSION }}
+          # Mount values from GCP Secret Manager as runtime env vars.
+          # Create the secrets once (see api/README.md) and grant the Cloud Run
+          # runtime service account roles/secretmanager.secretAccessor.
+          secrets: |-
+            BIR_API_FEEDBACK_DISCORD_WEBHOOK_URL=${{ secrets.FEEDBACK_DISCORD_WEBHOOK_URL }}
+            BIR_API_FEEDBACK_HMAC_KEY=${{ secrets.FEEDBACK_HMAC_KEY }}

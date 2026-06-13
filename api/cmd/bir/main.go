@@ -6,7 +6,6 @@ import (
 
 	"github.com/rakunlabs/ada"
 	"github.com/rakunlabs/chu"
-	"github.com/rakunlabs/chu/loader"
 	"github.com/rakunlabs/chu/loader/loaderenv"
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
@@ -14,6 +13,7 @@ import (
 	mcors "github.com/rakunlabs/ada/middleware/cors"
 
 	"github.com/rytsh/bir/api/tools/dns"
+	"github.com/rytsh/bir/api/tools/feedback"
 	"github.com/rytsh/bir/api/tools/ip"
 	"github.com/rytsh/bir/api/tools/ssl"
 	"github.com/rytsh/bir/api/tools/webrtc"
@@ -33,8 +33,9 @@ func main() {
 }
 
 type config struct {
-	Address    string     `cfg:"address" default:":8080"`
-	Middleware Middleware `cfg:"middleware"`
+	Address    string          `cfg:"address" default:":8080"`
+	Middleware Middleware      `cfg:"middleware"`
+	Feedback   feedback.Config `cfg:"feedback"`
 }
 
 type Middleware struct {
@@ -57,6 +58,11 @@ func run(ctx context.Context) error {
 	server.GET("/dns", server.Wrap(dns.DNS))
 	server.GET("/ssl", server.Wrap(ssl.SSL))
 	server.GET("/whois", server.Wrap(whois.Whois))
+
+	// feedback endpoints (ALTCHA captcha + Discord webhook)
+	fb := feedback.New(cfg.Feedback)
+	server.GET("/feedback/challenge", server.Wrap(fb.Challenge))
+	server.POST("/feedback", server.Wrap(fb.Submit))
 
 	// WebRTC signaling endpoints (HTTP + SSE)
 	server.POST("/webrtc/room", webrtc.CreateRoomHandler)
@@ -82,7 +88,7 @@ func getConfig(ctx context.Context) (*config, error) {
 
 	if err := chu.Load(
 		ctx, "bir-api", &cfg,
-		chu.WithLoaderOption(loader.NameEnv, loaderenv.New(
+		chu.WithLoaderOption(loaderenv.New(
 			loaderenv.WithPrefix("BIR_API_"),
 		)),
 	); err != nil {
