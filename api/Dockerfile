@@ -5,7 +5,7 @@ ARG VERSION=dev
 COPY . .
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /bir_api ./cmd/bir/main.go
-RUN sed '/http:\/\/localhost:4321/d' api/turna.yaml > /turna.yaml
+RUN sed '/http:\/\/localhost:4321/d' ./turna.yaml > /turna.yaml
 
 FROM ghcr.io/rytsh/dock/curl:latest AS external
 
