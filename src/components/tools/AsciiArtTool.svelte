@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
   import figlet from "figlet";
 
+  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
   import {
     allAnsiColors,
     ansiEscapeFormats,
@@ -609,16 +612,69 @@
     cursorColumn = 1;
   }
 
-  async function loadImage(file: File): Promise<HTMLImageElement> {
-    const url = URL.createObjectURL(file);
+  async function loadImage(
+    source: File | Blob | string,
+    timeoutMs = 20000,
+  ): Promise<HTMLImageElement> {
+    const isUrl = typeof source === "string";
+    const url = isUrl ? source : URL.createObjectURL(source);
     const img = new Image();
-    img.src = url;
+    // Request CORS for remote URLs so the canvas isn't tainted (best-effort;
+    // the server must still send permissive CORS headers). Data URLs and
+    // object URLs are same-origin and never tainted.
+    if (isUrl && /^https?:/i.test(source)) img.crossOrigin = "anonymous";
 
     try {
-      await img.decode();
+      // Use load/error events with a timeout instead of relying solely on
+      // img.decode(): an unreachable or slow URL can leave decode() pending
+      // forever, which hangs the MCP call that awaits this. The timeout
+      // guarantees we always settle (resolve or reject).
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => {
+          img.onload = null;
+          img.onerror = null;
+          clearTimeout(timer);
+        };
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(
+            new Error(
+              `Image load timed out after ${timeoutMs}ms. Check the URL is reachable and CORS-enabled.`,
+            ),
+          );
+        }, timeoutMs);
+        img.onload = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+        img.onerror = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(
+            new Error("Failed to load image (network error, bad data, or CORS block)."),
+          );
+        };
+        img.src = url;
+      });
+
+      // Best-effort: ensure pixels are decoded before drawing. The image has
+      // already loaded, so swallow decode-specific errors rather than failing.
+      if (typeof img.decode === "function") {
+        try {
+          await img.decode();
+        } catch {
+          /* already loaded via onload; drawing will still work */
+        }
+      }
       return img;
     } finally {
-      URL.revokeObjectURL(url);
+      if (!isUrl) URL.revokeObjectURL(url);
     }
   }
 
@@ -694,18 +750,17 @@
     return lines.join("\n").trimEnd();
   }
 
-  async function convertSelectedImageToAscii() {
-    if (!imageAsciiFile) {
-      imageAsciiError = "Choose an image first.";
-      return;
-    }
-
+  // Core converter: reads the current image-ascii options ($state) and turns an
+  // image source (File/Blob/URL/data URL) into ASCII or Braille, applying the
+  // result to the editor. Returns the produced string (throws on failure so
+  // callers — including MCP tools — can surface the error).
+  async function convertImageToAscii(source: File | Blob | string): Promise<string> {
     imageAsciiLoading = true;
     imageAsciiError = "";
 
     try {
-      const img = await loadImage(imageAsciiFile);
-      const targetWidth = Math.max(20, Math.min(220, Math.round(imageAsciiWidth)));
+      const img = await loadImage(source);
+      const targetWidth = Math.max(20, Math.min(500, Math.round(imageAsciiWidth)));
       const isBraille = imageAsciiCharset === "braille";
       const canvasWidth = isBraille ? targetWidth * 2 : targetWidth;
       const targetHeight = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * targetWidth * (isBraille ? 0.5 : 0.48)));
@@ -724,10 +779,25 @@
         : convertImageDataToCharacterAscii(data, canvasWidth, canvasHeight);
 
       applyImageAscii(ascii);
+      return ascii;
     } catch (e) {
       imageAsciiError = e instanceof Error ? e.message : "Failed to convert image.";
+      throw e;
     } finally {
       imageAsciiLoading = false;
+    }
+  }
+
+  async function convertSelectedImageToAscii() {
+    if (!imageAsciiFile) {
+      imageAsciiError = "Choose an image first.";
+      return;
+    }
+
+    try {
+      await convertImageToAscii(imageAsciiFile);
+    } catch {
+      // Error already surfaced via imageAsciiError.
     }
   }
 
@@ -1652,6 +1722,32 @@
     }
   }
 
+  // Pure FIGlet generation: loads the requested font and returns the banner
+  // string. Shared by the live UI (generateArt) and the headless MCP tool.
+  async function buildBanner(opts: {
+    text: string;
+    font?: string;
+    horizontalLayout?: LayoutOption;
+    verticalLayout?: LayoutOption;
+    printDirection?: PrintDirection;
+    width?: number;
+  }): Promise<string> {
+    const font = opts.font ?? selectedFont;
+    const fontLoaded = await loadFont(font);
+    if (!fontLoaded) {
+      throw new Error(`Failed to load font: ${font}`);
+    }
+
+    return figlet.textSync(opts.text, {
+      font: font as figlet.Fonts,
+      horizontalLayout: opts.horizontalLayout ?? horizontalLayout,
+      verticalLayout: opts.verticalLayout ?? verticalLayout,
+      printDirection: opts.printDirection ?? printDirection,
+      width: opts.width,
+      whitespaceBreak: opts.width !== undefined ? whitespaceBreak : undefined,
+    });
+  }
+
   // Generate ASCII art
   async function generateArt() {
     if (!inputText.trim()) {
@@ -1664,22 +1760,14 @@
     error = "";
 
     try {
-      const fontLoaded = await loadFont(selectedFont);
-      if (!fontLoaded) {
-        error = `Failed to load font: ${selectedFont}`;
-        output = "";
-        return;
-      }
-
-      const result = figlet.textSync(inputText, {
-        font: selectedFont as figlet.Fonts,
-        horizontalLayout: horizontalLayout,
-        verticalLayout: verticalLayout,
-        printDirection: printDirection,
+      output = await buildBanner({
+        text: inputText,
+        font: selectedFont,
+        horizontalLayout,
+        verticalLayout,
+        printDirection,
         width: widthEnabled ? width : undefined,
-        whitespaceBreak: widthEnabled ? whitespaceBreak : undefined,
       });
-      output = result;
     } catch (e) {
       error = `Error generating ASCII art: ${e instanceof Error ? e.message : "Unknown error"}`;
       output = "";
@@ -1712,6 +1800,216 @@
     output = "";
     error = "";
   };
+
+  // ---- MCP tools (mcp-page-bridge) ---------------------------------------
+  // Published on window.mcp so a coding agent can drive this page when the
+  // mcp-page-bridge extension is enabled on the tab. Inert without it. Handlers
+  // mutate the live $state, so the on-screen preview updates as the agent works.
+  function ensurePaintGrid() {
+    if (paintGrid.length === 0) syncPaintFromEditor();
+  }
+
+  onMount(() => {
+    const tabs: Tab[] = ["generator", "editor", "paint"];
+
+    const tools: Record<string, ToolManifest> = {
+      listFonts: {
+        description: "List the available FIGlet banner fonts.",
+        handler: () => availableFonts,
+      },
+      generateBanner: {
+        description:
+          "Generate a FIGlet ASCII-art banner from text. Updates the Generator tab and returns the banner.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "Text to render" },
+            font: { type: "string", description: `FIGlet font name (one of listFonts)` },
+            horizontalLayout: {
+              type: "string",
+              enum: ["default", "full", "fitted", "controlled smushing", "universal smushing"],
+            },
+            verticalLayout: {
+              type: "string",
+              enum: ["default", "full", "fitted", "controlled smushing", "universal smushing"],
+            },
+            printDirection: { type: "number", enum: [0, 1], description: "0 = left-to-right, 1 = right-to-left" },
+            width: { type: "number", description: "Wrap width in columns (optional)" },
+          },
+          required: ["text"],
+        },
+        handler: async (args) => {
+          if (args.text != null) inputText = String(args.text);
+          if (args.font != null) selectedFont = String(args.font);
+          if (args.horizontalLayout != null) horizontalLayout = args.horizontalLayout as LayoutOption;
+          if (args.verticalLayout != null) verticalLayout = args.verticalLayout as LayoutOption;
+          if (args.printDirection != null) printDirection = (Number(args.printDirection) === 1 ? 1 : 0) as PrintDirection;
+          if (args.width != null) {
+            widthEnabled = true;
+            width = Number(args.width);
+          }
+          activeTab = "generator";
+          await generateArt();
+          return error ? `Error: ${error}` : output;
+        },
+      },
+      setBannerText: {
+        description: "Set the Generator input text and return the regenerated banner.",
+        inputSchema: {
+          type: "object",
+          properties: { text: { type: "string" } },
+          required: ["text"],
+        },
+        handler: async (args) => {
+          inputText = String(args.text ?? "");
+          activeTab = "generator";
+          await generateArt();
+          return error ? `Error: ${error}` : output;
+        },
+      },
+      getBannerOutput: {
+        description: "Return the current Generator banner output.",
+        handler: () => output,
+      },
+      getEditorText: {
+        description: "Return the current Editor text (textarea or grid).",
+        handler: () => getCurrentEditorText(),
+      },
+      setEditorText: {
+        description: "Replace the Editor content with the given text.",
+        inputSchema: {
+          type: "object",
+          properties: { text: { type: "string" } },
+          required: ["text"],
+        },
+        handler: (args) => {
+          editorContent = String(args.text ?? "");
+          if (editorMode === "grid") textToGrid(editorContent);
+          cursorLine = 1;
+          cursorColumn = 1;
+          activeTab = "editor";
+          return "ok";
+        },
+      },
+      appendEditorText: {
+        description: "Append text to the end of the Editor content.",
+        inputSchema: {
+          type: "object",
+          properties: { text: { type: "string" } },
+          required: ["text"],
+        },
+        handler: (args) => {
+          const text = String(args.text ?? "");
+          editorContent = editorContent + text;
+          if (editorMode === "grid") textToGrid(editorContent);
+          activeTab = "editor";
+          return getCurrentEditorText();
+        },
+      },
+      clearEditor: {
+        description: "Clear the Editor content.",
+        handler: () => {
+          clearEditor();
+          if (editorMode === "grid") clearGrid();
+          return "ok";
+        },
+      },
+      imageToAscii: {
+        description:
+          "Convert an image into ASCII or Braille art and load it into the Editor. Provide a data URL (recommended) or an http(s) image URL (subject to CORS).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            dataUrl: { type: "string", description: "data: URL of the image (preferred)" },
+            imageUrl: { type: "string", description: "http(s) URL of the image (must be CORS-enabled)" },
+            width: { type: "number", description: "Output width in columns (20-500, default 90)" },
+            charset: {
+              type: "string",
+              enum: ["standard", "detailed", "blocks", "custom", "braille"],
+            },
+            customChars: { type: "string", description: "Characters for charset=custom, dark→light" },
+            detail: { type: "number", description: "Contrast/detail 25-250 (default 100)" },
+            invert: { type: "boolean" },
+            background: { type: "string", description: "Background fill char (single char)" },
+            threshold: { type: "number", description: "Braille on/off threshold 0-255 (default 128)" },
+          },
+        },
+        handler: async (args) => {
+          const source = args.dataUrl ?? args.imageUrl;
+          if (!source || typeof source !== "string") {
+            throw new Error("Provide dataUrl or imageUrl.");
+          }
+          if (args.width != null) imageAsciiWidth = Number(args.width);
+          if (args.charset != null) imageAsciiCharset = args.charset as ImageAsciiCharset;
+          if (args.customChars != null) {
+            imageAsciiCustomChars = String(args.customChars);
+            imageAsciiCharset = "custom";
+          }
+          if (args.detail != null) imageAsciiDetail = Number(args.detail);
+          if (args.invert != null) imageAsciiInvert = Boolean(args.invert);
+          if (args.background != null) {
+            imageAsciiBackground = "custom";
+            imageAsciiCustomBackground = String(args.background);
+          }
+          if (args.threshold != null) imageAsciiThreshold = Number(args.threshold);
+          imageAsciiFileName = typeof args.imageUrl === "string" ? args.imageUrl : "image";
+          activeTab = "editor";
+          return await convertImageToAscii(source);
+        },
+      },
+      getPaintAnsi: {
+        description:
+          "Return the Paint canvas as an ANSI-colored escape string in the requested format.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            format: { type: "string", enum: ansiEscapeFormats.map((f) => f.id) },
+          },
+        },
+        handler: (args) => {
+          ensurePaintGrid();
+          const format = (args.format as AnsiEscapeFormat) ?? paintCopyFormat;
+          return formatAnsiEscapes(paintAnsiText(), format);
+        },
+      },
+      getPaintPlain: {
+        description: "Return the Paint canvas as plain text (no ANSI codes).",
+        handler: () => {
+          ensurePaintGrid();
+          return paintPlainText();
+        },
+      },
+      getState: {
+        description: "Return a snapshot of the ASCII Art tool state.",
+        handler: () => ({
+          activeTab,
+          generator: { text: inputText, font: selectedFont, output },
+          editor: { mode: editorMode, text: getCurrentEditorText() },
+          image: {
+            width: imageAsciiWidth,
+            charset: imageAsciiCharset,
+            invert: imageAsciiInvert,
+          },
+        }),
+      },
+      setActiveTab: {
+        description: "Switch the active tab.",
+        inputSchema: {
+          type: "object",
+          properties: { tab: { type: "string", enum: tabs } },
+          required: ["tab"],
+        },
+        handler: (args) => {
+          const tab = String(args.tab) as Tab;
+          if (!tabs.includes(tab)) throw new Error(`Unknown tab: ${args.tab}`);
+          setActiveTab(tab);
+          return tab;
+        },
+      },
+    };
+
+    return registerPageMcp("ascii-art", tools);
+  });
 </script>
 
 <div class="h-full min-h-0 flex flex-col">
@@ -1922,7 +2220,7 @@
         {/if}
       </div>
     </div>
-    <div class="relative flex-1 min-h-48 border border-(--color-border) bg-[#1a1a1a] overflow-auto">
+    <div class="relative flex-1 min-h-48 border border-(--color-border) bg-[#1a1a1a] overflow-auto thin-scrollbar">
       {#if error}
         <div class="p-4 text-sm text-red-500">{error}</div>
       {:else}
@@ -1937,7 +2235,7 @@
   <!-- Editor Tab - Left sidebar with controls, Right side with canvas -->
   <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
     <!-- Left Sidebar: Mode, Settings, Brushes -->
-    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1">
+    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1 thin-scrollbar">
       <!-- Mode Toggle -->
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Mode</span>
@@ -2082,7 +2380,7 @@
           <input
             type="range"
             min="20"
-            max="220"
+            max="500"
             step="5"
             bind:value={imageAsciiWidth}
             class="w-full h-1.5 accent-(--color-accent)"
@@ -2252,13 +2550,20 @@
         <!-- Text Editor with Line Numbers -->
         <div class="flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a] flex overflow-hidden">
           <!-- Line Numbers -->
+          <!-- No own scrollbar: overflow-hidden + translateY synced to the
+               textarea scroll so the gutter tracks the editor 1:1. -->
           <div 
-            class="py-3 px-2 bg-[#252525] border-r border-(--color-border) text-right select-none shrink-0 overflow-y-auto overflow-x-hidden" 
+            class="bg-[#252525] border-r border-(--color-border) text-right select-none shrink-0 overflow-hidden" 
             style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2;"
           >
-            {#each editorLines as _, i}
-              <div class="text-gray-500" style="height: {scaledPx(editorFontSize * 1.2)}px; line-height: {scaledPx(editorFontSize * 1.2)}px;">{i + 1}</div>
-            {/each}
+            <div
+              class="py-3 px-2"
+              style="transform: translateY({-textareaScrollTop}px); will-change: transform;"
+            >
+              {#each editorLines as _, i}
+                <div class="text-gray-500" style="height: {scaledPx(editorFontSize * 1.2)}px; line-height: {scaledPx(editorFontSize * 1.2)}px;">{i + 1}</div>
+              {/each}
+            </div>
           </div>
           <!-- Textarea Container -->
           <div class="flex-1 min-w-0 relative">
@@ -2269,19 +2574,20 @@
               >
                 <div
                   class="p-3"
-                  style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2; white-space: pre-wrap; word-break: break-word; color: rgba(180,180,180,0.45); transform: translate({-textareaScrollLeft}px, {-textareaScrollTop}px); will-change: transform;"
+                  style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2; white-space: pre; color: rgba(180,180,180,0.45); transform: translate({-textareaScrollLeft}px, {-textareaScrollTop}px); will-change: transform;"
                 >{whitespaceOverlayText}</div>
               </div>
             {/if}
             <textarea
               bind:this={editorTextarea}
               bind:value={editorContent}
+              wrap="off"
               oninput={updateCursorPosition}
               onclick={updateCursorPosition}
               onkeyup={updateCursorPosition}
               onscroll={onTextareaScroll}
               placeholder="Create your ASCII art here...&#10;Click characters to insert them, or type directly.&#10;Use Enter for new lines."
-              class="absolute inset-0 w-full h-full p-3 text-white bg-transparent resize-none outline-none placeholder:text-gray-500"
+              class="ascii-editor thin-scrollbar absolute inset-0 w-full h-full p-3 text-white bg-transparent resize-none outline-none placeholder:text-gray-500 overflow-auto whitespace-pre"
               style="font-family: {editorFontFamily}; font-size: {scaledPx(editorFontSize)}px; line-height: 1.2;"
             ></textarea>
           </div>
@@ -2290,7 +2596,7 @@
         <!-- Grid/Canvas Editor -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div 
-          class="flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a] overflow-auto"
+          class="flex-1 min-h-0 border border-(--color-border) bg-[#1a1a1a] overflow-auto thin-scrollbar"
           onmouseup={handleGridMouseUp}
           onmouseleave={handleGridMouseUp}
         >
@@ -2342,7 +2648,7 @@
   <!-- Paint Tab - colorize the current editor output -->
   <div class="flex-1 flex min-h-0 overflow-hidden gap-4">
     <!-- Paint controls -->
-    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1">
+    <div class="w-64 shrink-0 min-h-0 h-full flex flex-col gap-4 overflow-y-auto pr-1 thin-scrollbar">
       <div class="flex flex-col gap-2">
         <span class="text-xs tracking-wider text-(--color-text-light) font-medium">History</span>
         <div class="flex gap-2">
@@ -2622,7 +2928,7 @@
 
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="flex-1 min-h-0 border border-(--color-border) overflow-auto p-3 {paintBlinkOn ? 'paint-blink-on' : 'paint-blink-off'}"
+        class="flex-1 min-h-0 border border-(--color-border) overflow-auto p-3 thin-scrollbar {paintBlinkOn ? 'paint-blink-on' : 'paint-blink-off'}"
         style="background-color: {terminalBgColor}; color: {terminalDefaultFg};"
         onmouseup={handlePaintMouseUp}
         onmouseleave={handlePaintMouseUp}
@@ -2658,6 +2964,17 @@
 </div>
 
 <style>
+  /* High-contrast (inverted) selection so highlighted text is clearly
+     visible against the dark editor: black text on a white background. */
+  .ascii-editor::selection {
+    background: #ffffff;
+    color: #000000;
+  }
+  .ascii-editor::-moz-selection {
+    background: #ffffff;
+    color: #000000;
+  }
+
   .paint-cell {
     appearance: none;
     position: relative;
