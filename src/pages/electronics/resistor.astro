@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ResistorColorCodeTool from "../../components/tools/ResistorColorCodeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/resistor");
+---
+
+<Layout title="Resistor Color Code Calculator" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/resistor">
+  <h1 slot="navbar-title">Resistor Color Code</h1>
+  <ResistorColorCodeTool client:load />
+</Layout>

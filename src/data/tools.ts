@@ -933,6 +933,14 @@ const rawCategories: Category[] = [
     icon: "🧪",
     tools: [
       {
+        id: "bluetooth-tester",
+        name: "Bluetooth",
+        description: "Scan and connect to Bluetooth Low Energy (BLE) devices via Web Bluetooth. Discover GATT services and characteristics, read values, subscribe to notifications, and send custom commands to any writable characteristic as hex, text, base64, or decimal bytes. Includes a live activity log. Chrome/Edge/Android only.",
+        icon: "🦷",
+        path: "/tester/bluetooth",
+        keywords: "bluetooth tester, web bluetooth, ble, bluetooth low energy, gatt, characteristic, service, send hex, custom command, write characteristic, notify, ble scanner, ble debugger, nordic uart, nus, bluetooth debug, ble write, ble read, bluetooth web api, navigator.bluetooth",
+      },
+      {
         id: "dead-pixel-tester",
         name: "Dead Pixel",
         description: "Test your screen for dead pixels by displaying solid colors and patterns",
@@ -1060,6 +1068,21 @@ const rawCategories: Category[] = [
         icon: "📷",
         path: "/tester/webcam",
         keywords: "webcam tester, camera test, webcam check, video device, getUserMedia, mediaDevices, camera resolution, camera fps, capability test, snapshot, camera capabilities",
+      },
+    ],
+  },
+  {
+    id: "electronics",
+    name: "Electronics",
+    icon: "🔌",
+    tools: [
+      {
+        id: "resistor-color-code",
+        name: "Resistor Color Code",
+        description: "Decode resistor color bands to ohms or encode a resistance value into bands. Supports 4-band and 5-band resistors with tolerance, live resistor preview, and a full color code reference table. Accepts inputs like 4.7k, 220, 1M, and European style 4k7.",
+        icon: "🎨",
+        path: "/electronics/resistor",
+        keywords: "resistor color code, resistor calculator, resistance calculator, color bands, resistor bands, ohm calculator, 4 band resistor, 5 band resistor, resistor color chart, resistor value, tolerance, electronics, resistor decoder, resistor encoder",
       },
     ],
   },
