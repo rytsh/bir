@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import { toPng, toSvg } from "html-to-image";
   import hljs from "highlight.js";
+  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
 
   type WindowStyle = "macos" | "windows" | "none";
 
@@ -187,41 +189,46 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
       .join("\n");
   }
 
-  async function exportPng() {
-    if (!captureRef) return;
+  async function imageDataUrl(format: "png" | "svg", pixelRatio = 2): Promise<string> {
+    await tick();
+    if (!captureRef) throw new Error("Screenshot preview is not ready.");
+    if (format === "svg") return toSvg(captureRef, { cacheBust: true });
+    return toPng(captureRef, { pixelRatio, cacheBust: true });
+  }
+
+  function downloadDataUrl(dataUrl: string, filename: string): void {
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
+  }
+
+  async function exportPng(): Promise<void> {
     exporting = true;
     try {
-      const dataUrl = await toPng(captureRef, { pixelRatio: 2, cacheBust: true });
-      const link = document.createElement("a");
-      link.download = "code-screenshot.png";
-      link.href = dataUrl;
-      link.click();
+      downloadDataUrl(await imageDataUrl("png"), "code-screenshot.png");
     } catch (err) {
       console.error("Export PNG failed:", err);
+    } finally {
+      exporting = false;
     }
-    exporting = false;
   }
 
-  async function exportSvg() {
-    if (!captureRef) return;
+  async function exportSvg(): Promise<void> {
     exporting = true;
     try {
-      const dataUrl = await toSvg(captureRef, { cacheBust: true });
-      const link = document.createElement("a");
-      link.download = "code-screenshot.svg";
-      link.href = dataUrl;
-      link.click();
+      downloadDataUrl(await imageDataUrl("svg"), "code-screenshot.svg");
     } catch (err) {
       console.error("Export SVG failed:", err);
+    } finally {
+      exporting = false;
     }
-    exporting = false;
   }
 
-  async function copyToClipboard() {
-    if (!captureRef) return;
+  async function copyToClipboard(): Promise<void> {
     exporting = true;
     try {
-      const dataUrl = await toPng(captureRef, { pixelRatio: 2, cacheBust: true });
+      const dataUrl = await imageDataUrl("png");
       const res = await fetch(dataUrl);
       const blob = await res.blob();
       await navigator.clipboard.write([
@@ -231,8 +238,9 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
       setTimeout(() => { copiedNotice = false; }, 2000);
     } catch (err) {
       console.error("Copy to clipboard failed:", err);
+    } finally {
+      exporting = false;
     }
-    exporting = false;
   }
 
   const languages = [
@@ -240,6 +248,159 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
     "rust", "ruby", "php", "swift", "kotlin", "scala", "html", "css", "sql",
     "bash", "json", "yaml", "xml", "markdown", "dockerfile", "plaintext",
   ];
+
+  function screenshotState(): Record<string, unknown> {
+    const rect = captureRef?.getBoundingClientRect();
+    return {
+      code,
+      language,
+      theme: themeId,
+      background: transparentBg ? "transparent" : backgrounds[bgIndex].name,
+      windowStyle,
+      padding,
+      fontSize,
+      showLineNumbers,
+      borderRadius,
+      previewSize: rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null,
+    };
+  }
+
+  function setBoundedNumber(value: unknown, name: string, min: number, max: number): number {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < min || number > max) {
+      throw new Error(`${name} must be between ${min} and ${max}.`);
+    }
+    return number;
+  }
+
+  function configureScreenshot(args: Record<string, any>): void {
+    if (args.theme != null) {
+      const nextTheme = String(args.theme);
+      if (!themes[nextTheme]) throw new Error(`Unknown theme: ${nextTheme}`);
+      themeId = nextTheme;
+    }
+    if (args.background != null) {
+      const nextBackground = String(args.background);
+      if (nextBackground === "transparent") {
+        transparentBg = true;
+      } else {
+        const index = backgrounds.findIndex((item) => item.name === nextBackground);
+        if (index === -1) throw new Error(`Unknown background: ${nextBackground}`);
+        bgIndex = index;
+        transparentBg = false;
+      }
+    }
+    if (args.windowStyle != null) {
+      const nextStyle = String(args.windowStyle) as WindowStyle;
+      if (!["macos", "windows", "none"].includes(nextStyle)) {
+        throw new Error(`Unknown window style: ${nextStyle}`);
+      }
+      windowStyle = nextStyle;
+    }
+    if (args.padding != null) padding = setBoundedNumber(args.padding, "padding", 0, 64);
+    if (args.fontSize != null) fontSize = setBoundedNumber(args.fontSize, "fontSize", 10, 24);
+    if (args.borderRadius != null) borderRadius = setBoundedNumber(args.borderRadius, "borderRadius", 0, 24);
+    if (args.showLineNumbers != null) showLineNumbers = Boolean(args.showLineNumbers);
+  }
+
+  onMount(() => {
+    const themeIds = Object.keys(themes);
+    const backgroundNames = ["transparent", ...backgrounds.map((item) => item.name)];
+    const tools: Record<string, ToolManifest> = {
+      listOptions: {
+        description: "List supported languages, themes, backgrounds, window styles, and numeric setting ranges.",
+        handler: () => ({
+          languages,
+          themes: Object.entries(themes).map(([id, item]) => ({ id, name: item.name })),
+          backgrounds: backgroundNames,
+          windowStyles: ["macos", "windows", "none"],
+          ranges: {
+            padding: { min: 0, max: 64 },
+            fontSize: { min: 10, max: 24 },
+            borderRadius: { min: 0, max: 24 },
+            pngPixelRatio: { min: 1, max: 4 },
+          },
+        }),
+      },
+      getState: {
+        description: "Return the current code and all Code Screenshot preview settings.",
+        handler: () => screenshotState(),
+      },
+      setCode: {
+        description: "Set the source code and optionally its syntax-highlighting language.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            code: { type: "string", description: "Source code to display" },
+            language: { type: "string", enum: languages },
+          },
+          required: ["code"],
+        },
+        handler: (args) => {
+          if (args.language != null) {
+            const nextLanguage = String(args.language);
+            if (!languages.includes(nextLanguage)) throw new Error(`Unknown language: ${nextLanguage}`);
+            language = nextLanguage;
+          }
+          code = String(args.code ?? "");
+          return screenshotState();
+        },
+      },
+      configure: {
+        description: "Configure the screenshot theme, background, window chrome, spacing, font, and line numbers.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            theme: { type: "string", enum: themeIds },
+            background: { type: "string", enum: backgroundNames },
+            windowStyle: { type: "string", enum: ["macos", "windows", "none"] },
+            padding: { type: "number", minimum: 0, maximum: 64 },
+            fontSize: { type: "number", minimum: 10, maximum: 24 },
+            borderRadius: { type: "number", minimum: 0, maximum: 24 },
+            showLineNumbers: { type: "boolean" },
+          },
+        },
+        handler: async (args) => {
+          configureScreenshot(args);
+          await tick();
+          return screenshotState();
+        },
+      },
+      exportScreenshot: {
+        description: "Render the current preview and download it as a PNG or SVG file in the browser.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            format: { type: "string", enum: ["png", "svg"] },
+            filename: { type: "string", description: "Download filename without or with the matching extension" },
+            pixelRatio: { type: "number", minimum: 1, maximum: 4, description: "PNG scale (default 2)" },
+          },
+          required: ["format"],
+        },
+        handler: async (args) => {
+          const format = String(args.format) as "png" | "svg";
+          if (format !== "png" && format !== "svg") throw new Error(`Unknown format: ${format}`);
+          const pixelRatio = args.pixelRatio == null
+            ? 2
+            : setBoundedNumber(args.pixelRatio, "pixelRatio", 1, 4);
+          const requestedName = String(args.filename ?? "code-screenshot");
+          const filename = requestedName.toLowerCase().endsWith(`.${format}`)
+            ? requestedName
+            : `${requestedName}.${format}`;
+
+          exporting = true;
+          try {
+            downloadDataUrl(await imageDataUrl(format, pixelRatio), filename);
+            return { format, filename, pixelRatio: format === "png" ? pixelRatio : undefined };
+          } finally {
+            exporting = false;
+          }
+        },
+      },
+    };
+
+    return registerPageMcp("code-screenshot", tools);
+  });
 </script>
 
 <div class="h-full flex flex-col gap-4">

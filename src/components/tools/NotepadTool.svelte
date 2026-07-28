@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
   import { EditorView } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
   import {
     createDarkModeObserver,
     getInitialDarkMode,
@@ -10,9 +12,8 @@
     type DarkModeCleanup,
     type SelectionInfo,
   } from "../../lib/codemirror.js";
+  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
   import { buildZip } from "./pdf/shared/zip-store";
-  import Sparkles from "@lucide/svelte/icons/sparkles";
-  import { onMount } from "svelte";
 
   type NodeType = "folder" | "note";
   type ViewMode = "split" | "editor" | "preview";
@@ -347,26 +348,29 @@ console.log("Code blocks are highlighted");
     }
   }
 
-  function deleteNode(id: string): void {
+  async function deleteNode(id: string, confirmed = false): Promise<NodeMeta | null> {
     const n = nodes.find((x) => x.id === id);
-    if (!n) return;
+    if (!n) return null;
     const label = n.type === "folder" ? `folder "${n.name}" and all its contents` : `note "${n.name}"`;
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+    if (!confirmed && !confirm(`Delete ${label}? This cannot be undone.`)) return null;
 
     const subtree = collectSubtree(id);
     const ids = new Set(subtree.map((x) => x.id));
-    for (const x of subtree) {
-      if (x.type === "note") idbDel(noteKey(x.id)).catch(() => {});
+    if (activeId && ids.has(activeId)) {
+      await flushSave();
     }
+    await Promise.all(subtree.filter((x) => x.type === "note").map((x) => idbDel(noteKey(x.id))));
     nodes = nodes.filter((x) => !ids.has(x.id));
-    persistIndex();
+    await idbSet(INDEX_KEY, $state.snapshot(nodes));
 
     if (selectedId && ids.has(selectedId)) selectedId = null;
     if (activeId && ids.has(activeId)) {
+      activeId = null;
       const next = nodes.find((x) => x.type === "note");
-      if (next) openNote(next.id);
+      if (next) await openNote(next.id);
       else clearEditor();
     }
+    return n;
   }
 
   function clearEditor(): void {
@@ -944,7 +948,253 @@ console.log("Code blocks are highlighted");
     }
   }
 
+  function nodePath(node: NodeMeta): string {
+    const parts = [node.name];
+    let parentId = node.parentId;
+    while (parentId) {
+      const parent = nodes.find((n) => n.id === parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+    return parts.join("/");
+  }
+
+  function nodeSummary(node: NodeMeta): Record<string, unknown> {
+    return {
+      id: node.id,
+      type: node.type,
+      name: node.name,
+      path: nodePath(node),
+      parentId: node.parentId,
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+      active: node.id === activeId,
+    };
+  }
+
+  function orderedNodes(parentId: string | null = null): NodeMeta[] {
+    return childrenOf(parentId).flatMap((node) => [node, ...orderedNodes(node.id)]);
+  }
+
+  function requireNode(id: unknown, type?: NodeType): NodeMeta {
+    const node = nodes.find((n) => n.id === String(id ?? ""));
+    if (!node || (type && node.type !== type)) {
+      throw new Error(type ? `${type} not found: ${id}` : `Node not found: ${id}`);
+    }
+    return node;
+  }
+
+  function parentFolderId(value: unknown): string | null {
+    if (value == null || value === "") return null;
+    return requireNode(value, "folder").id;
+  }
+
+  async function writeNoteContent(node: NodeMeta, content: string): Promise<void> {
+    if (node.id === activeId && saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = undefined;
+    }
+    await idbSet(noteKey(node.id), content);
+    node.updatedAt = Date.now();
+    nodes = [...nodes];
+    await idbSet(INDEX_KEY, $state.snapshot(nodes));
+
+    if (node.id === activeId) {
+      currentContent = content;
+      programmatic = true;
+      updateEditorContent(editor, content);
+      programmatic = false;
+      saveStatus = "saved";
+      scheduleRender(content);
+    }
+  }
+
+  function registerNotepadMcp(): () => void {
+    const nullableIdSchema = {
+      anyOf: [{ type: "string" }, { type: "null" }],
+      description: "Folder id, or null for the notebook root",
+    };
+    const tools: Record<string, ToolManifest> = {
+      listNotes: {
+        description:
+          "List every note and folder in tree order. Returns ids and paths for use with the other Notepad tools.",
+        handler: () => ({
+          activeId,
+          nodes: orderedNodes().map(nodeSummary),
+        }),
+      },
+      readNote: {
+        description: "Read a Markdown note by id without changing the active note.",
+        inputSchema: {
+          type: "object",
+          properties: { id: { type: "string", description: "Note id from listNotes" } },
+          required: ["id"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id, "note");
+          return { ...nodeSummary(node), content: await noteContent(node.id) };
+        },
+      },
+      openNote: {
+        description: "Open a note by id in the visible Notepad editor and return its content.",
+        inputSchema: {
+          type: "object",
+          properties: { id: { type: "string", description: "Note id from listNotes" } },
+          required: ["id"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id, "note");
+          await openNote(node.id);
+          return { ...nodeSummary(node), content: currentContent };
+        },
+      },
+      createNote: {
+        description: "Create and open a Markdown note. Names are made unique within the destination folder.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Note name" },
+            content: { type: "string", description: "Initial Markdown content (default empty)" },
+            parentId: nullableIdSchema,
+          },
+          required: ["name"],
+        },
+        handler: async (args) => {
+          const parentId = parentFolderId(args.parentId);
+          const node = addNote(parentId, String(args.name || "Untitled"), String(args.content ?? ""));
+          expandFolder(parentId);
+          await Promise.all([
+            idbSet(noteKey(node.id), String(args.content ?? "")),
+            idbSet(INDEX_KEY, $state.snapshot(nodes)),
+          ]);
+          await openNote(node.id);
+          return { ...nodeSummary(node), content: currentContent };
+        },
+      },
+      updateNote: {
+        description: "Replace a note's complete Markdown content by id.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note id from listNotes" },
+            content: { type: "string", description: "Complete replacement Markdown" },
+          },
+          required: ["id", "content"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id, "note");
+          await writeNoteContent(node, String(args.content ?? ""));
+          return { ...nodeSummary(node), content: await noteContent(node.id) };
+        },
+      },
+      appendNote: {
+        description: "Append Markdown text to a note by id.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note id from listNotes" },
+            text: { type: "string", description: "Text to append exactly as provided" },
+          },
+          required: ["id", "text"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id, "note");
+          const content = (await noteContent(node.id)) + String(args.text ?? "");
+          await writeNoteContent(node, content);
+          return { ...nodeSummary(node), content };
+        },
+      },
+      createFolder: {
+        description: "Create a folder in the notebook. Names are made unique within the parent folder.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Folder name" },
+            parentId: nullableIdSchema,
+          },
+          required: ["name"],
+        },
+        handler: async (args) => {
+          const parentId = parentFolderId(args.parentId);
+          const node = addFolder(parentId, String(args.name || "New Folder"));
+          expandFolder(parentId);
+          selectedId = node.id;
+          await idbSet(INDEX_KEY, $state.snapshot(nodes));
+          return nodeSummary(node);
+        },
+      },
+      renameNode: {
+        description: "Rename a note or folder by id. The final name is made unique among its siblings.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note or folder id from listNotes" },
+            name: { type: "string", description: "New name" },
+          },
+          required: ["id", "name"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id);
+          const fallback = node.type === "folder" ? "New Folder" : "Untitled";
+          node.name = uniqueName(node.parentId, node.type, String(args.name).trim() || fallback, node.id);
+          node.updatedAt = Date.now();
+          nodes = [...nodes];
+          await idbSet(INDEX_KEY, $state.snapshot(nodes));
+          return nodeSummary(node);
+        },
+      },
+      moveNode: {
+        description: "Move a note or folder into another folder, or to the notebook root.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note or folder id from listNotes" },
+            parentId: nullableIdSchema,
+          },
+          required: ["id", "parentId"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id);
+          const parentId = parentFolderId(args.parentId);
+          if (node.type === "folder" && parentId && (parentId === node.id || isDescendant(node.id, parentId))) {
+            throw new Error("A folder cannot be moved into itself or one of its descendants.");
+          }
+          moveNode(node.id, parentId, null);
+          node.name = uniqueName(parentId, node.type, node.name, node.id);
+          node.updatedAt = Date.now();
+          expandFolder(parentId);
+          await idbSet(INDEX_KEY, $state.snapshot(nodes));
+          return nodeSummary(node);
+        },
+      },
+      deleteNode: {
+        description:
+          "Permanently delete a note or folder and all notes inside it. Requires confirm=true; this cannot be undone.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note or folder id from listNotes" },
+            confirm: { type: "boolean", description: "Must be true to allow permanent deletion" },
+          },
+          required: ["id", "confirm"],
+        },
+        handler: async (args) => {
+          const node = requireNode(args.id);
+          if (args.confirm !== true) throw new Error("Set confirm=true to permanently delete this node.");
+          const deleted = nodeSummary(node);
+          await deleteNode(node.id, true);
+          return { deleted };
+        },
+      },
+    };
+
+    return registerPageMcp("notepad", tools);
+  }
+
   onMount(() => {
+    let disposed = false;
+    let unregisterMcp = () => {};
     buildEditor("");
 
     darkModeCleanup = createDarkModeObserver((dark) => {
@@ -960,10 +1210,14 @@ console.log("Code blocks are highlighted");
       }
     });
 
-    loadAll();
+    void loadAll().then(() => {
+      if (!disposed) unregisterMcp = registerNotepadMcp();
+    });
 
     return () => {
-      flushSave();
+      disposed = true;
+      unregisterMcp();
+      void flushSave();
       if (darkModeCleanup) darkModeCleanup();
       if (editor) editor.destroy();
       if (saveTimer) clearTimeout(saveTimer);
