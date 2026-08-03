@@ -129,6 +129,14 @@ export default defineConfig({
             dest: "wasm",
             rename: "pandoc.wasm",
           },
+          {
+            // QR reader used by the fountain-coded file transfer. Served
+            // locally so the tool keeps working offline (the library would
+            // otherwise fetch it from a CDN at runtime).
+            src: "node_modules/zxing-wasm/dist/reader/zxing_reader.wasm",
+            dest: "wasm",
+            rename: "zxing_reader.wasm",
+          },
         ],
       }),
       // basicSsl(),
