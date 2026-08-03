@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import bwipjs from "@bwip-js/browser";
-  import jsQR from "jsqr";
+  import { MatrixPainter, type ErrorCorrectionLevel } from "./qr-transfer/qr-encoder.ts";
+  import { QrScanner, type Region } from "./qr-transfer/qr-decoder.ts";
+  import {
+    TransferReceiver,
+    TransferSender,
+    type ReceiverProgress,
+    type SenderStats,
+  } from "./qr-transfer/session.ts";
 
   type TabType = "barcode" | "wifi" | "reader" | "transfer";
   type OutputFormat = "png" | "svg" | "ascii";
@@ -10,13 +17,24 @@
   type ReaderMode = "file" | "camera" | "screen" | "receive";
   type FileTransferState = "idle" | "ready" | "playing";
 
-  interface FileTransferChunk {
-    t: "file";           // type identifier
-    n?: string;          // filename (only in first chunk)
-    i: number;           // chunk index (0-based)
-    c: number;           // total chunks
-    d: string;           // chunk data (base64 encoded)
-    h?: string;          // file hash (only in last chunk)
+  /**
+   * Legacy v1 transfer frame: a JSON envelope holding one sequential base64
+   * chunk. Still parsed on the receiving side so codes produced by an older
+   * build of this tool keep working, but no longer generated - see
+   * `qr-transfer/protocol.ts` for the fountain-coded format that replaced it.
+   */
+  interface VideoFrameCallbackHost extends HTMLVideoElement {
+    requestVideoFrameCallback?: (cb: () => void) => number;
+    cancelVideoFrameCallback?: (handle: number) => void;
+  }
+
+  interface LegacyChunk {
+    t: "file";
+    n?: string;
+    i: number;
+    c: number;
+    d: string;
+    h?: string;
   }
 
   interface BarcodeType {
@@ -86,7 +104,6 @@
   let screenStream: MediaStream | null = null;
   let screenVideoElement = $state<HTMLVideoElement | null>(null);
   let screenActive = $state(false);
-  let screenScanInterval: number | null = null;
   
   // Screen region selection states
   let screenRegionEnabled = $state(false);
@@ -97,21 +114,55 @@
 
   // File Transfer (sender) states
   let fileTransferFile = $state<File | null>(null);
-  let fileTransferChunks = $state<string[]>([]);
-  let fileTransferCurrentIndex = $state(0);
   let fileTransferState = $state<FileTransferState>("idle");
-  let fileTransferSpeed = $state(1000);
-  let fileTransferChunkSize = $state(400); // Default to medium - ~300 bytes per QR
-  let fileTransferScale = $state(4); // QR code scale
-  let fileTransferInterval: number | null = null;
-  let fileTransferQrSvg = $state("");
+  let fileTransferFps = $state(12);
+  let fileTransferBlockSize = $state(512);
+  let fileTransferEc = $state<ErrorCorrectionLevel>("L");
+  let fileTransferDisplaySize = $state(400);
   let fileTransferDragOver = $state(false);
+  let fileTransferPreparing = $state(false);
+  let fileTransferCanvas = $state<HTMLCanvasElement | null>(null);
+  let fileTransferStats = $state<SenderStats>({ framesEmitted: 0, bytesPerSecond: 0, passSeconds: 0 });
+  /** Reactive snapshot of the sender; the sender itself is deliberately not $state. */
+  let fileTransferInfo = $state<{
+    blockCount: number;
+    blockSize: number;
+    payloadLength: number;
+    rawLength: number;
+    gzip: boolean;
+    qrVersion: number;
+    qrModules: number;
+  } | null>(null);
+
+  let transferSender: TransferSender | null = null;
+  let matrixPainter: MatrixPainter | null = null;
+  let transferRaf: number | null = null;
+  let transferTimer: number | null = null;
+  let transferLastFrameAt = 0;
+  let transferLastRafAt = 0;
+  let transferLastStatsAt = 0;
 
   // File Receive states
-  let fileReceiveChunks = $state<Map<number, string>>(new Map());
-  let fileReceiveMetadata = $state<{ name: string; total: number; hash?: string } | null>(null);
+  const fileReceiver = new TransferReceiver();
+  let fileReceiveProgress = $state<ReceiverProgress | null>(null);
+  let fileReceiveResult = $state<{ name: string; size: number; verified: boolean } | null>(null);
+  let fileReceiveBytes: Uint8Array | null = null;
   let fileReceiveComplete = $state(false);
   let fileReceiveError = $state("");
+  let scanBackend = $state<string | null>(null);
+
+  // Legacy (sequential JSON) receive state, kept for backwards compatibility.
+  // The Map itself is not reactive (Svelte 5 does not proxy Map); `legacyCount`
+  // is the reactive projection the template renders from.
+  let legacyChunks = new Map<number, string>();
+  let legacyCount = $state(0);
+  let legacyMetadata = $state<{ name: string; total: number; hash?: string } | null>(null);
+
+  let scanner: QrScanner | null = null;
+  let scannerIsQrOnly = false;
+  let scanBusy = false;
+  let scanFrameHandle: number | null = null;
+  let scanFrameTarget: VideoFrameCallbackHost | null = null;
 
   // Output states
   let outputCanvas: HTMLCanvasElement;
@@ -484,68 +535,35 @@
   };
 
   // QR Reader functions
-  const checkBarcodeDetectorSupport = (): boolean => {
-    return "BarcodeDetector" in window;
-  };
-
-  // Convert image source to ImageData for jsQR
-  const getImageData = (source: HTMLImageElement | HTMLVideoElement): ImageData | null => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    if (source instanceof HTMLVideoElement) {
-      canvas.width = source.videoWidth;
-      canvas.height = source.videoHeight;
-    } else {
-      canvas.width = source.naturalWidth || source.width;
-      canvas.height = source.naturalHeight || source.height;
+  /**
+   * One scanner instance for the whole component. The previous code built a
+   * `BarcodeDetector` and a fresh `<canvas>` on every frame, which dominated
+   * the per-frame cost during continuous scanning.
+   */
+  const getScanner = (): QrScanner => {
+    // Receiving a file transfer only ever sees QR codes, and restricting the
+    // format list keeps the native detector from also hunting for the twelve
+    // 1D symbologies on every frame.
+    const qrOnly = readerMode === "receive";
+    if (scanner && scannerIsQrOnly !== qrOnly) {
+      scanner.dispose();
+      scanner = null;
     }
-
-    if (canvas.width === 0 || canvas.height === 0) return null;
-
-    ctx.drawImage(source, 0, 0);
-    return ctx.getImageData(0, 0, canvas.width, canvas.height);
-  };
-
-  // Fallback QR detection using jsQR library
-  const detectWithJsQR = (source: HTMLImageElement | HTMLVideoElement): string | null => {
-    const imageData = getImageData(source);
-    if (!imageData) return null;
-
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    return code?.data || null;
-  };
-
-  const detectBarcode = async (imageSource: HTMLImageElement | HTMLVideoElement): Promise<string | null> => {
-    // Try native BarcodeDetector first (faster and supports more formats)
-    if (checkBarcodeDetectorSupport()) {
-      try {
-        // @ts-expect-error BarcodeDetector is not in TypeScript's lib yet
-        const barcodeDetector = new BarcodeDetector({
-          formats: ["qr_code", "ean_13", "ean_8", "code_128", "code_39", "code_93", "codabar", "data_matrix", "itf", "pdf417", "aztec", "upc_a", "upc_e"],
-        });
-        const barcodes = await barcodeDetector.detect(imageSource);
-        
-        if (barcodes.length > 0) {
-          return barcodes[0].rawValue;
-        }
-      } catch {
-        // Fall through to jsQR
-      }
+    if (!scanner) {
+      scanner = new QrScanner({ qrOnly, tryHarder: false });
+      scannerIsQrOnly = qrOnly;
     }
+    return scanner;
+  };
 
-    // Fallback to jsQR for QR codes (works on all browsers including iOS)
+  /** Still images get the slow, thorough settings; there is no frame budget. */
+  const detectInImage = async (image: HTMLImageElement): Promise<string | null> => {
+    const still = new QrScanner({ qrOnly: false, tryHarder: true, maxDimension: 4096 });
     try {
-      const result = detectWithJsQR(imageSource);
-      if (result) {
-        return result;
-      }
-    } catch {
-      // Ignore jsQR errors
+      return await still.scan(image);
+    } finally {
+      still.dispose();
     }
-
-    return null;
   };
 
   const handleFileUpload = async (event: Event) => {
@@ -564,7 +582,7 @@
       // Create image for detection
       const img = new Image();
       img.onload = async () => {
-        const result = await detectBarcode(img);
+        const result = await detectInImage(img);
         if (result) {
           handleScannedResult(result);
         } else if (!readerError) {
@@ -595,9 +613,18 @@
     }
 
     try {
+      // Resolution is the single biggest factor in how dense a QR the camera
+      // can resolve; the browser default is often 640x480, which caps the
+      // usable symbol version and therefore the bytes per frame.
       cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
       });
+      await requestContinuousFocus(cameraStream);
       cameraActive = true;
 
       // Wait for video element to be available
@@ -633,11 +660,28 @@
     }
   };
 
-  const stopCamera = () => {
-    if (scanInterval) {
-      clearInterval(scanInterval);
-      scanInterval = null;
+  /**
+   * Continuous autofocus is a non-standard constraint that only some mobile
+   * browsers expose. Without it the camera tends to lock focus on the first
+   * frame and never re-focus on the QR, so it is worth asking for.
+   */
+  const requestContinuousFocus = async (stream: MediaStream): Promise<void> => {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const capabilities = track.getCapabilities?.() as { focusMode?: string[] } | undefined;
+      if (capabilities?.focusMode?.includes("continuous")) {
+        await track.applyConstraints({
+          advanced: [{ focusMode: "continuous" }],
+        } as MediaTrackConstraints);
+      }
+    } catch {
+      // Optional optimisation; ignore when unsupported.
     }
+  };
+
+  const stopCamera = () => {
+    stopScanLoop();
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => { track.stop(); });
       cameraStream = null;
@@ -660,10 +704,10 @@
 
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: { frameRate: { ideal: 30 } },
         audio: false,
       } as DisplayMediaStreamOptions);
-      
+
       screenActive = true;
 
       // Wait for video element to be available
@@ -703,10 +747,7 @@
   };
 
   const stopScreenCapture = () => {
-    if (screenScanInterval) {
-      clearInterval(screenScanInterval);
-      screenScanInterval = null;
-    }
+    stopScanLoop();
     if (screenStream) {
       screenStream.getTracks().forEach((track) => { track.stop(); });
       screenStream = null;
@@ -812,125 +853,102 @@
     screenRegionStart = null;
   };
 
-  const getScreenRegionImageData = (): ImageData | null => {
-    if (!screenVideoElement || !screenRegion) return null;
-    
+  /** Maps the on-screen selection rectangle into source video coordinates. */
+  const getScreenRegionInSource = (): Region | null => {
+    if (!screenRegionEnabled || !screenRegion) return null;
+
     const renderInfo = getVideoRenderInfo();
     if (!renderInfo) return null;
-    
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    
-    // Adjust region coordinates for letterboxing offset
-    const adjustedX = screenRegion.x - renderInfo.offsetX;
-    const adjustedY = screenRegion.y - renderInfo.offsetY;
-    
-    // Clamp to video bounds
-    const clampedX = Math.max(0, adjustedX);
-    const clampedY = Math.max(0, adjustedY);
+
+    // Undo the object-contain letterboxing before scaling to video pixels.
+    const clampedX = Math.max(0, screenRegion.x - renderInfo.offsetX);
+    const clampedY = Math.max(0, screenRegion.y - renderInfo.offsetY);
     const clampedWidth = Math.min(screenRegion.width, renderInfo.renderedWidth - clampedX);
     const clampedHeight = Math.min(screenRegion.height, renderInfo.renderedHeight - clampedY);
-    
     if (clampedWidth <= 0 || clampedHeight <= 0) return null;
-    
-    // Scale to actual video coordinates
-    const srcX = Math.floor(clampedX * renderInfo.scaleX);
-    const srcY = Math.floor(clampedY * renderInfo.scaleY);
-    const srcWidth = Math.floor(clampedWidth * renderInfo.scaleX);
-    const srcHeight = Math.floor(clampedHeight * renderInfo.scaleY);
-    
-    if (srcWidth <= 0 || srcHeight <= 0) return null;
-    
-    canvas.width = srcWidth;
-    canvas.height = srcHeight;
-    
-    ctx.drawImage(
-      screenVideoElement,
-      srcX, srcY, srcWidth, srcHeight,
-      0, 0, srcWidth, srcHeight
-    );
-    
-    return ctx.getImageData(0, 0, srcWidth, srcHeight);
+
+    return {
+      x: Math.floor(clampedX * renderInfo.scaleX),
+      y: Math.floor(clampedY * renderInfo.scaleY),
+      width: Math.floor(clampedWidth * renderInfo.scaleX),
+      height: Math.floor(clampedHeight * renderInfo.scaleY),
+    };
   };
-  
-  const detectBarcodeInRegion = async (): Promise<string | null> => {
-    if (!screenRegionEnabled || !screenRegion) {
-      // No region, scan full video
-      if (screenVideoElement) {
-        return await detectBarcode(screenVideoElement);
-      }
-      return null;
-    }
-    
-    const imageData = getScreenRegionImageData();
-    if (!imageData) {
-      return null;
-    }
-    
-    // Try jsQR first (works well for QR codes)
+
+  /**
+   * Scans one frame. Guarded against re-entry because a decode can outlast the
+   * frame interval; the old `setInterval(async ...)` had no such guard, so slow
+   * decodes queued up and the scanner fell further and further behind.
+   */
+  const scanTick = async (video: HTMLVideoElement, region: Region | null) => {
+    if (scanBusy || video.readyState < 2) return;
+    scanBusy = true;
     try {
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
-      if (code?.data) {
-        return code.data;
+      const result = await getScanner().scan(video, region ?? undefined);
+      if (result) {
+        scanBackend = getScanner().lastBackend;
+        handleScannedResult(result);
       }
     } catch {
-      // jsQR failed, continue
+      // Ignore transient decode failures during continuous scanning.
+    } finally {
+      scanBusy = false;
     }
-    
-    // Try with inverted colors
-    try {
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "attemptBoth",
-      });
-      if (code?.data) {
-        return code.data;
-      }
-    } catch {
-      // jsQR failed
+  };
+
+  /**
+   * Drives scanning from the video's own frame clock rather than a fixed timer.
+   * That way the scanner runs exactly once per delivered frame - never wasting
+   * work on a frame it has already seen, and never sitting idle while a new one
+   * is available. Browsers without `requestVideoFrameCallback` (Firefox) fall
+   * back to a short interval.
+   */
+  const startScanLoop = (getVideo: () => HTMLVideoElement | null, getRegion: () => Region | null) => {
+    stopScanLoop();
+    void getScanner().init();
+
+    const video = getVideo() as VideoFrameCallbackHost | null;
+    if (!video) return;
+
+    if (typeof video.requestVideoFrameCallback === "function") {
+      scanFrameTarget = video;
+      const onFrame = () => {
+        const current = getVideo() as VideoFrameCallbackHost | null;
+        if (!current || scanFrameHandle === null) return;
+        scanFrameHandle = current.requestVideoFrameCallback!(onFrame);
+        void scanTick(current, getRegion());
+      };
+      scanFrameHandle = video.requestVideoFrameCallback(onFrame);
+      return;
     }
-    
-    return null;
+
+    scanInterval = window.setInterval(() => {
+      const current = getVideo();
+      if (current) void scanTick(current, getRegion());
+    }, 33);
+  };
+
+  const stopScanLoop = () => {
+    if (scanInterval !== null) {
+      clearInterval(scanInterval);
+      scanInterval = null;
+    }
+    if (scanFrameHandle !== null) {
+      // Cancel on the exact element the callback was registered against; the
+      // camera and screen elements can be torn down independently.
+      scanFrameTarget?.cancelVideoFrameCallback?.(scanFrameHandle);
+      scanFrameHandle = null;
+    }
+    scanFrameTarget = null;
+    scanBusy = false;
   };
 
   const startScreenScanning = () => {
-    if (screenScanInterval) {
-      clearInterval(screenScanInterval);
-    }
-
-    screenScanInterval = window.setInterval(async () => {
-      if (!screenVideoElement || !screenActive) return;
-
-      try {
-        const result = await detectBarcodeInRegion();
-        if (result) {
-          handleScannedResult(result);
-        }
-      } catch {
-        // Ignore scan errors during continuous scanning
-      }
-    }, 300); // Scan every 300ms for screen (can be faster than camera)
+    startScanLoop(() => screenVideoElement, getScreenRegionInSource);
   };
 
   const startScanning = () => {
-    if (scanInterval) {
-      clearInterval(scanInterval);
-    }
-
-    scanInterval = window.setInterval(async () => {
-      if (!cameraVideoElement || !cameraActive) return;
-
-      try {
-        const result = await detectBarcode(cameraVideoElement);
-        if (result) {
-          handleScannedResult(result);
-        }
-      } catch {
-        // Ignore scan errors during continuous scanning
-      }
-    }, 500); // Scan every 500ms
+    startScanLoop(() => cameraVideoElement, () => null);
   };
 
   const copyReaderResult = async () => {
@@ -950,334 +968,301 @@
     readerImagePreview = null;
     stopCamera();
     stopScreenCapture();
-    // Clear file receive state
-    fileReceiveChunks = new Map();
-    fileReceiveMetadata = null;
-    fileReceiveComplete = false;
-    fileReceiveError = "";
+    clearFileReceive();
+    scanBackend = null;
   };
 
-  // File Transfer Functions
-  const computeFileHash = async (data: ArrayBuffer): Promise<string> => {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").substring(0, 16);
-  };
-
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-  };
-
-  const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-  };
+  // ---------------------------------------------------------------- Sender
 
   const processFileForTransfer = async (file: File) => {
+    stopFileTransferPlayback();
     fileTransferFile = file;
     fileTransferState = "idle";
-    fileTransferCurrentIndex = 0;
-    fileTransferChunks = [];
+    fileTransferInfo = null;
+    fileTransferPreparing = true;
+    transferSender = null;
     error = "";
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const fileHash = await computeFileHash(arrayBuffer);
-      const base64Data = arrayBufferToBase64(arrayBuffer);
-      
-      // QR codes in alphanumeric mode can hold ~4296 characters, binary ~2953 bytes
-      // Our JSON uses mixed characters, so we target conservative limits
-      // The JSON structure: {"t":"file","i":0,"c":10,"d":"BASE64DATA","n":"file.txt","h":"hash"}
-      // overhead is roughly: 40 chars + filename length + 16 char hash = ~80 chars max
-      // 
-      // fileTransferChunkSize represents the MAX BASE64 DATA per chunk (not raw bytes)
-      // This directly controls how much base64 data goes in the "d" field
-      const base64ChunkSize = fileTransferChunkSize;
-      const totalChunks = Math.ceil(base64Data.length / base64ChunkSize);
-      
-      const chunks: string[] = [];
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * base64ChunkSize;
-        const end = Math.min(start + base64ChunkSize, base64Data.length);
-        const chunkData = base64Data.substring(start, end);
-        
-        const chunk: FileTransferChunk = {
-          t: "file",
-          i: i,
-          c: totalChunks,
-          d: chunkData,
-        };
-        
-        // Add filename to first chunk
-        if (i === 0) {
-          chunk.n = file.name;
-        }
-        
-        // Add hash to last chunk
-        if (i === totalChunks - 1) {
-          chunk.h = fileHash;
-        }
-        
-        chunks.push(JSON.stringify(chunk));
-      }
-      
-      fileTransferChunks = chunks;
+      const sender = await TransferSender.create(file, {
+        blockSize: fileTransferBlockSize,
+        errorCorrection: fileTransferEc,
+      });
+      transferSender = sender;
+      fileTransferInfo = {
+        blockCount: sender.blockCount,
+        blockSize: sender.blockSize,
+        payloadLength: sender.payloadLength,
+        rawLength: sender.rawLength,
+        gzip: sender.gzip,
+        qrVersion: sender.qrVersion,
+        qrModules: sender.qrVersion * 4 + 17,
+      };
+      fileTransferStats = { framesEmitted: 0, bytesPerSecond: 0, passSeconds: 0 };
       fileTransferState = "ready";
-      generateTransferQr();
+      paintTransferFrame();
     } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to process file";
-      console.error("File transfer error:", e);
+      const message = e instanceof Error ? e.message : "Failed to prepare file";
+      error = `Could not prepare transfer: ${message}. Try a smaller block size or a lower error correction level.`;
+      transferSender = null;
+      fileTransferFile = null;
+    } finally {
+      fileTransferPreparing = false;
     }
   };
 
-  const generateTransferQr = () => {
-    if (fileTransferChunks.length === 0) {
-      fileTransferQrSvg = "";
-      return;
-    }
+  const paintTransferFrame = () => {
+    if (!transferSender || !fileTransferCanvas) return;
+    matrixPainter ??= new MatrixPainter();
 
-    try {
-      const currentChunk = fileTransferChunks[fileTransferCurrentIndex];
-      
-      let svg = bwipjs.toSVG({
-        bcid: "qrcode",
-        text: currentChunk,
-        scale: fileTransferScale,
-        barcolor: "000000",
-        backgroundcolor: "ffffff",
-      } as Parameters<typeof bwipjs.toSVG>[0]);
-      
-      // Ensure SVG has proper width/height for display
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svg, "image/svg+xml");
-      const svgElement = doc.querySelector("svg");
-      
-      if (svgElement) {
-        if (!svgElement.getAttribute("width") || !svgElement.getAttribute("height")) {
-          const viewBox = svgElement.getAttribute("viewBox");
-          if (viewBox) {
-            const parts = viewBox.split(/[\s,]+/);
-            if (parts.length === 4) {
-              svgElement.setAttribute("width", parts[2]);
-              svgElement.setAttribute("height", parts[3]);
-            }
-          }
-        }
-        svg = new XMLSerializer().serializeToString(doc);
-      }
-      
-      fileTransferQrSvg = svg;
-      error = ""; // Clear any previous error
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : "Failed to generate QR code";
-      error = `QR generation failed: ${errorMsg}. Try smaller chunk size.`;
-      fileTransferQrSvg = "";
-      console.error("QR generation error:", e);
+    matrixPainter.paint(fileTransferCanvas, transferSender.next(), {
+      quietZone: 3,
+      targetSize: fileTransferDisplaySize,
+    });
+
+    // Refill the look-ahead queue immediately after painting, so the encode for
+    // the next frame happens in the idle gap rather than delaying that frame.
+    transferSender.prefetch();
+  };
+
+  /** Paints the next frame if one is due. Safe to call from either pump. */
+  const pumpTransferFrame = (now: number) => {
+    const period = 1000 / fileTransferFps;
+    // Half a millisecond of slack so a frame due exactly on a refresh boundary
+    // is not pushed to the following refresh by rounding.
+    if (now - transferLastFrameAt < period - 0.5) return;
+    transferLastFrameAt = now;
+
+    paintTransferFrame();
+
+    // Stats drive DOM updates, so refresh them well below the frame rate.
+    if (now - transferLastStatsAt > 250) {
+      transferLastStatsAt = now;
+      fileTransferStats = transferSender!.stats();
     }
+  };
+
+  /**
+   * Frame pump driven by requestAnimationFrame instead of setInterval.
+   * setInterval cannot align to the display refresh, so frames were being shown
+   * for an inconsistent number of refreshes and a camera sampling at a similar
+   * rate would systematically miss some of them.
+   */
+  const transferLoop = (now: number) => {
+    if (fileTransferState !== "playing") return;
+    transferRaf = requestAnimationFrame(transferLoop);
+    transferLastRafAt = now;
+    pumpTransferFrame(now);
+  };
+
+  /**
+   * Watchdog for the rAF pump. Browsers throttle requestAnimationFrame to about
+   * one call per second - and stop it entirely for hidden documents - as soon as
+   * the sending tab is no longer the frontmost one, which silently drops a
+   * broadcast to ~1 fps the moment the user switches to the receiving tab.
+   * Timers are throttled far less aggressively, so this takes over the pump
+   * whenever rAF has stopped delivering, and stays out of the way otherwise so
+   * the normal case keeps its refresh alignment.
+   */
+  const transferWatchdog = () => {
+    if (fileTransferState !== "playing") return;
+    const period = 1000 / fileTransferFps;
+    transferTimer = window.setTimeout(transferWatchdog, Math.max(8, period / 2));
+
+    const now = performance.now();
+    // 200 ms is far longer than any real refresh interval, so a healthy rAF
+    // never trips this and the two pumps never fight over the same frame.
+    if (now - transferLastRafAt > 200) pumpTransferFrame(now);
+  };
+
+  const startFileTransferPlayback = () => {
+    if (fileTransferState === "playing" || !transferSender) return;
+    fileTransferState = "playing";
+    transferLastFrameAt = 0;
+    transferLastStatsAt = 0;
+    // Assume rAF is healthy until proven otherwise, so the watchdog does not
+    // fire a duplicate frame before the first animation callback arrives.
+    transferLastRafAt = performance.now();
+    transferRaf = requestAnimationFrame(transferLoop);
+    transferWatchdog();
+  };
+
+  const stopFileTransferPlayback = () => {
+    if (transferRaf !== null) {
+      cancelAnimationFrame(transferRaf);
+      transferRaf = null;
+    }
+    if (transferTimer !== null) {
+      clearTimeout(transferTimer);
+      transferTimer = null;
+    }
+    if (fileTransferState === "playing") fileTransferState = "ready";
+  };
+
+  const toggleFileTransferPlayback = () => {
+    if (fileTransferState === "playing") stopFileTransferPlayback();
+    else startFileTransferPlayback();
+  };
+
+  const clearFileTransfer = () => {
+    stopFileTransferPlayback();
+    transferSender = null;
+    fileTransferFile = null;
+    fileTransferInfo = null;
+    fileTransferState = "idle";
+    fileTransferStats = { framesEmitted: 0, bytesPerSecond: 0, passSeconds: 0 };
+  };
+
+  /** Re-prepares the current file when an encoding parameter changes. */
+  const reprocessTransfer = () => {
+    if (fileTransferFile) void processFileForTransfer(fileTransferFile);
   };
 
   const handleFileTransferDrop = async (event: DragEvent) => {
     event.preventDefault();
     fileTransferDragOver = false;
-    
     const file = event.dataTransfer?.files?.[0];
-    if (file) {
-      await processFileForTransfer(file);
-    }
+    if (file) await processFileForTransfer(file);
   };
 
   const handleFileTransferSelect = async (event: Event) => {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (file) {
-      await processFileForTransfer(file);
-    }
+    if (file) await processFileForTransfer(file);
   };
 
-  const startFileTransferPlayback = () => {
-    if (fileTransferState === "playing") return;
-    fileTransferState = "playing";
-    
-    fileTransferInterval = window.setInterval(() => {
-      if (fileTransferCurrentIndex < fileTransferChunks.length - 1) {
-        fileTransferCurrentIndex++;
-        generateTransferQr();
-      } else {
-        // Loop back to start
-        fileTransferCurrentIndex = 0;
-        generateTransferQr();
-      }
-    }, fileTransferSpeed);
+  // ---------------------------------------------------------------- Receiver
+
+  const refreshReceiveProgress = () => {
+    fileReceiveProgress = fileReceiver.progress();
   };
 
-  const stopFileTransferPlayback = () => {
-    if (fileTransferInterval) {
-      clearInterval(fileTransferInterval);
-      fileTransferInterval = null;
-    }
-    if (fileTransferState === "playing") {
-      fileTransferState = "ready";
-    }
-  };
-
-  const goToNextChunk = () => {
-    if (fileTransferCurrentIndex < fileTransferChunks.length - 1) {
-      fileTransferCurrentIndex++;
-      generateTransferQr();
-    }
-  };
-
-  const goToPrevChunk = () => {
-    if (fileTransferCurrentIndex > 0) {
-      fileTransferCurrentIndex--;
-      generateTransferQr();
-    }
-  };
-
-  const goToChunk = (index: number) => {
-    if (index >= 0 && index < fileTransferChunks.length) {
-      fileTransferCurrentIndex = index;
-      generateTransferQr();
-    }
-  };
-
-  const clearFileTransfer = () => {
-    stopFileTransferPlayback();
-    fileTransferFile = null;
-    fileTransferChunks = [];
-    fileTransferCurrentIndex = 0;
-    fileTransferState = "idle";
-    fileTransferQrSvg = "";
-  };
-
-  // File Receive Functions
-  const processReceivedChunk = (data: string) => {
+  const completeReceive = async () => {
     try {
-      const chunk = JSON.parse(data) as FileTransferChunk;
-      
-      // Validate it's a file transfer chunk
-      if (chunk.t !== "file" || typeof chunk.i !== "number" || typeof chunk.c !== "number" || typeof chunk.d !== "string") {
-        return false;
-      }
-      
-      // Initialize or update metadata
-      if (!fileReceiveMetadata) {
-        // Create metadata even if we don't have the filename yet
-        fileReceiveMetadata = {
-          name: chunk.n || "received_file",
-          total: chunk.c,
-        };
-      } else {
-        // Update filename if we get it later (from chunk 0)
-        if (chunk.n && fileReceiveMetadata.name === "received_file") {
-          fileReceiveMetadata = { ...fileReceiveMetadata, name: chunk.n };
-        }
-      }
-      
-      // Store hash from last chunk
-      if (chunk.h) {
-        fileReceiveMetadata = { ...fileReceiveMetadata, hash: chunk.h };
-      }
-      
-      // Store chunk data
-      if (!fileReceiveChunks.has(chunk.i)) {
-        const newChunks = new Map(fileReceiveChunks);
-        newChunks.set(chunk.i, chunk.d);
-        fileReceiveChunks = newChunks;
-        
-        console.log(`Received chunk ${chunk.i + 1}/${chunk.c}, total received: ${newChunks.size}`);
-        
-        // Check if complete - use newChunks.size since fileReceiveChunks update is async
-        if (newChunks.size === chunk.c) {
-          console.log("All chunks received! Transfer complete.");
-          fileReceiveComplete = true;
-        }
-      } else {
-        // Even if chunk already exists, check for completion (in case we missed setting it)
-        if (fileReceiveChunks.size === chunk.c && !fileReceiveComplete) {
-          console.log("All chunks already received! Marking complete.");
-          fileReceiveComplete = true;
-        }
-      }
-      
-      return true;
+      const parsed = await fileReceiver.finish();
+      fileReceiveBytes = parsed.bytes;
+      fileReceiveResult = {
+        name: parsed.meta.n || "received_file",
+        size: parsed.bytes.length,
+        verified: parsed.verified,
+      };
+      fileReceiveComplete = true;
+      fileReceiveError = parsed.verified ? "" : "Checksum mismatch - the received file is corrupt.";
     } catch (e) {
-      console.error("Error processing chunk:", e);
+      fileReceiveError = e instanceof Error ? e.message : "Failed to reassemble the file";
+    }
+  };
+
+  /**
+   * Legacy sequential-chunk receiver, retained so QR codes generated by the
+   * previous version of this tool can still be read.
+   */
+  const processLegacyChunk = (data: string): boolean => {
+    let chunk: LegacyChunk;
+    try {
+      chunk = JSON.parse(data) as LegacyChunk;
+    } catch {
       return false;
     }
+    if (chunk.t !== "file" || typeof chunk.i !== "number" || typeof chunk.c !== "number" || typeof chunk.d !== "string") {
+      return false;
+    }
+
+    if (!legacyMetadata || legacyMetadata.total !== chunk.c) {
+      legacyMetadata = { name: chunk.n || "received_file", total: chunk.c };
+      legacyChunks = new Map();
+      legacyCount = 0;
+    } else if (chunk.n && legacyMetadata.name === "received_file") {
+      legacyMetadata = { ...legacyMetadata, name: chunk.n };
+    }
+    if (chunk.h) legacyMetadata = { ...legacyMetadata, hash: chunk.h };
+
+    if (!legacyChunks.has(chunk.i)) {
+      // Mutate in place; the old code cloned the whole Map per chunk, which
+      // made receiving a large file quadratic.
+      legacyChunks.set(chunk.i, chunk.d);
+      legacyCount = legacyChunks.size;
+    }
+
+    if (legacyChunks.size === chunk.c && !fileReceiveComplete) {
+      void finishLegacyTransfer();
+    }
+    return true;
   };
 
-  const downloadReceivedFile = async () => {
-    if (!fileReceiveMetadata || !fileReceiveComplete) return;
-    
-    try {
-      // Reconstruct base64 data from chunks
-      let base64Data = "";
-      for (let i = 0; i < fileReceiveMetadata.total; i++) {
-        const chunk = fileReceiveChunks.get(i);
-        if (!chunk) {
-          fileReceiveError = `Missing chunk ${i}`;
-          return;
-        }
-        base64Data += chunk;
-      }
-      
-      // Convert to ArrayBuffer
-      const arrayBuffer = base64ToArrayBuffer(base64Data);
-      
-      // Verify hash if available
-      if (fileReceiveMetadata.hash) {
-        const computedHash = await computeFileHash(arrayBuffer);
-        if (computedHash !== fileReceiveMetadata.hash) {
-          fileReceiveError = "File hash mismatch - transfer may be corrupted";
-          return;
-        }
-      }
-      
-      // Create blob and download
-      const blob = new Blob([arrayBuffer]);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileReceiveMetadata.name || "received_file";
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      fileReceiveError = e instanceof Error ? e.message : "Failed to download file";
+  const finishLegacyTransfer = async () => {
+    if (!legacyMetadata) return;
+    let base64 = "";
+    for (let i = 0; i < legacyMetadata.total; i++) {
+      const part = legacyChunks.get(i);
+      if (part === undefined) return;
+      base64 += part;
     }
+
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      let verified = true;
+      if (legacyMetadata.hash) {
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        const hex = Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .substring(0, 16);
+        verified = hex === legacyMetadata.hash;
+      }
+
+      fileReceiveBytes = bytes;
+      fileReceiveResult = { name: legacyMetadata.name, size: bytes.length, verified };
+      fileReceiveComplete = true;
+      fileReceiveError = verified ? "" : "Checksum mismatch - the received file is corrupt.";
+    } catch (e) {
+      fileReceiveError = e instanceof Error ? e.message : "Failed to reassemble the file";
+    }
+  };
+
+  const downloadReceivedFile = () => {
+    if (!fileReceiveBytes || !fileReceiveResult) return;
+    const blob = new Blob([fileReceiveBytes as BlobPart]);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileReceiveResult.name;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const clearFileReceive = () => {
-    fileReceiveChunks = new Map();
-    fileReceiveMetadata = null;
+    fileReceiver.reset();
+    fileReceiveProgress = null;
+    fileReceiveResult = null;
+    fileReceiveBytes = null;
     fileReceiveComplete = false;
     fileReceiveError = "";
+    legacyChunks = new Map();
+    legacyCount = 0;
+    legacyMetadata = null;
   };
 
-  // Modified barcode detection to handle file transfer chunks
+  /** Routes a decoded string to the transfer receiver or to the plain result box. */
   const handleScannedResult = (result: string) => {
-    // Try to parse as file transfer chunk
-    if (readerMode === "receive" || result.startsWith('{"t":"file"')) {
-      const isChunk = processReceivedChunk(result);
-      if (isChunk) {
-        // Auto-switch to receive mode if not already
-        if (readerMode !== "receive") {
-          readerMode = "receive";
-        }
-        return;
-      }
+    if (fileReceiveComplete) return;
+
+    const outcome = fileReceiver.accept(result);
+    if (outcome !== "ignored") {
+      if (readerMode !== "receive") readerMode = "receive";
+      refreshReceiveProgress();
+      if (outcome === "complete") void completeReceive();
+      return;
     }
-    
-    // Regular barcode result
+
+    if (result.startsWith('{"t":"file"') && processLegacyChunk(result)) {
+      if (readerMode !== "receive") readerMode = "receive";
+      return;
+    }
+
     readerResult = result;
   };
 
@@ -1291,6 +1276,8 @@
       stopCamera();
       stopScreenCapture();
       stopFileTransferPlayback();
+      scanner?.dispose();
+      scanner = null;
     };
   });
 
@@ -1314,7 +1301,19 @@
       wifiHidden,
       activeTab,
     ];
+    // The reader and transfer tabs share the `error` slot with the generator,
+    // so running the generator there would clobber their messages (and burn
+    // bwip-js time for output nobody is looking at).
+    if (activeTab === "reader" || activeTab === "transfer") return;
     generateBarcode();
+  });
+
+  // The transfer canvas is inside a tab block, so it unmounts when the user
+  // navigates away. Repaint the current frame whenever it comes back.
+  $effect(() => {
+    if (fileTransferCanvas && transferSender && fileTransferState === "ready") {
+      paintTransferFrame();
+    }
   });
 
   // Disable transparent background when ASCII format is selected
@@ -1342,7 +1341,10 @@
   <!-- Tabs -->
   <div class="flex gap-0 mb-4 border-b border-(--color-border)">
     <button
-      onclick={() => (activeTab = "barcode")}
+      onclick={() => {
+        activeTab = "barcode";
+        stopFileTransferPlayback();
+      }}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'barcode'
         ? 'text-(--color-text) border-b-2 border-(--color-accent)'
         : 'text-(--color-text-muted) hover:text-(--color-text)'}"
@@ -1353,6 +1355,7 @@
       onclick={() => {
         activeTab = "wifi";
         selectedType = "qrcode";
+        stopFileTransferPlayback();
       }}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'wifi'
         ? 'text-(--color-text) border-b-2 border-(--color-accent)'
@@ -1362,8 +1365,11 @@
     </button>
     <button
       onclick={() => {
-        activeTab = "reader";
-        clearReader();
+        if (activeTab !== "reader") {
+          activeTab = "reader";
+          stopFileTransferPlayback();
+          clearReader();
+        }
       }}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'reader'
         ? 'text-(--color-text) border-b-2 border-(--color-accent)'
@@ -1373,8 +1379,12 @@
     </button>
     <button
       onclick={() => {
-        activeTab = "transfer";
-        clearFileTransfer();
+        // Guarded: clicking the tab you are already on must not tear down a
+        // broadcast that is in progress.
+        if (activeTab !== "transfer") {
+          activeTab = "transfer";
+          clearFileTransfer();
+        }
       }}
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'transfer'
         ? 'text-(--color-text) border-b-2 border-(--color-accent)'
@@ -1677,32 +1687,81 @@
               {/if}
 
               <!-- Receive Progress -->
-              {#if fileReceiveMetadata}
+              {#if fileReceiveProgress}
+                {@const p = fileReceiveProgress}
                 <div class="flex flex-col gap-2 p-4 border border-(--color-border) bg-(--color-bg-alt)">
                   <div class="flex justify-between items-center">
-                    <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Receiving File</span>
+                    <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Receiving</span>
                     <span class="text-xs text-(--color-text-muted)">
-                      {fileReceiveChunks.size} / {fileReceiveMetadata.total} chunks
+                      {p.blocksDecoded} / {p.blockCount} blocks
                     </span>
                   </div>
-                  <div class="text-sm text-(--color-text) font-mono truncate">
-                    {fileReceiveMetadata.name || "Unknown file"}
+
+                  <div class="w-full h-2 bg-(--color-bg) border border-(--color-border) overflow-hidden">
+                    <div
+                      class="h-full bg-(--color-accent) transition-all duration-150"
+                      style="width: {p.percent}%"
+                    ></div>
                   </div>
-                  <!-- Progress bar -->
+
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-(--color-text-muted)">
+                    <span>Progress</span>
+                    <span class="text-right text-(--color-text) font-mono">{p.percent.toFixed(1)}%</span>
+                    <span>Payload</span>
+                    <span class="text-right text-(--color-text) font-mono">
+                      {(p.payloadLength / 1024).toFixed(1)} KB{p.gzip ? " (gzip)" : ""}
+                    </span>
+                    <span>Frames read</span>
+                    <span class="text-right text-(--color-text) font-mono">
+                      {p.framesAccepted}{p.framesDuplicate > 0 ? ` (+${p.framesDuplicate} repeat)` : ""}
+                    </span>
+                    {#if p.etaSeconds !== null}
+                      <span>Remaining</span>
+                      <span class="text-right text-(--color-text) font-mono">
+                        {p.etaSeconds < 60
+                          ? `${Math.ceil(p.etaSeconds)}s`
+                          : `${Math.floor(p.etaSeconds / 60)}m ${Math.ceil(p.etaSeconds % 60)}s`}
+                      </span>
+                    {/if}
+                  </div>
+
+                  <!--
+                    One cell per recovered block. Capped because a large transfer
+                    can have thousands of blocks and rendering a node per block
+                    would cost more than the decoding itself.
+                  -->
+                  {#if p.blockCount <= 512}
+                    <div class="flex flex-wrap gap-0.5 mt-1">
+                      {#each Array(p.blockCount) as _, i}
+                        <div
+                          class="w-2 h-2 {fileReceiver.has(i)
+                            ? 'bg-(--color-accent)'
+                            : 'bg-(--color-bg) border border-(--color-border)'}"
+                        ></div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <p class="text-xs text-(--color-text-muted)">
+                    Every frame counts towards the total, so missed frames do not need to be recaptured.
+                  </p>
+                </div>
+              {:else if legacyMetadata}
+                <div class="flex flex-col gap-2 p-4 border border-(--color-border) bg-(--color-bg-alt)">
+                  <div class="flex justify-between items-center">
+                    <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
+                      Receiving (legacy format)
+                    </span>
+                    <span class="text-xs text-(--color-text-muted)">
+                      {legacyCount} / {legacyMetadata.total} chunks
+                    </span>
+                  </div>
+                  <div class="text-sm text-(--color-text) font-mono truncate">{legacyMetadata.name}</div>
                   <div class="w-full h-2 bg-(--color-bg) border border-(--color-border) overflow-hidden">
                     <div
                       class="h-full bg-(--color-accent) transition-all duration-300"
-                      style="width: {(fileReceiveChunks.size / fileReceiveMetadata.total) * 100}%"
+                      style="width: {(legacyCount / legacyMetadata.total) * 100}%"
                     ></div>
-                  </div>
-                  <!-- Chunk indicators -->
-                  <div class="flex flex-wrap gap-1">
-                    {#each Array(fileReceiveMetadata.total) as _, i}
-                      <div
-                        class="w-3 h-3 border {fileReceiveChunks.has(i) ? 'bg-(--color-accent) border-(--color-accent)' : 'bg-(--color-bg) border-(--color-border)'}"
-                        title="Chunk {i + 1}"
-                      ></div>
-                    {/each}
                   </div>
                 </div>
               {:else}
@@ -1712,14 +1771,27 @@
                 </div>
               {/if}
 
+              {#if scanBackend}
+                <p class="text-xs text-(--color-text-muted)">
+                  Decoder: {scanBackend === "native"
+                    ? "native BarcodeDetector"
+                    : scanBackend === "zxing"
+                      ? "zxing-wasm"
+                      : "jsQR (slow fallback)"}
+                </p>
+              {/if}
+
               <!-- Download button when complete -->
-              {#if fileReceiveComplete}
+              {#if fileReceiveComplete && fileReceiveResult}
                 <button
                   onclick={downloadReceivedFile}
                   class="w-full px-4 py-2 text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
                 >
-                  Download {fileReceiveMetadata?.name || "File"}
+                  Download {fileReceiveResult.name} ({(fileReceiveResult.size / 1024).toFixed(1)} KB)
                 </button>
+                {#if fileReceiveResult.verified}
+                  <p class="text-xs text-green-600 dark:text-green-400">Checksum verified.</p>
+                {/if}
               {/if}
 
               <!-- Error -->
@@ -1760,7 +1832,7 @@
           {/if}
 
           <!-- Clear Button -->
-          {#if readerResult || readerImagePreview || cameraActive || fileReceiveMetadata}
+          {#if readerResult || readerImagePreview || cameraActive || screenActive || fileReceiveProgress || legacyMetadata}
             <button
               onclick={clearReader}
               class="w-full px-4 py-2 text-sm border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) transition-colors"
@@ -1772,42 +1844,86 @@
       {:else if activeTab === "transfer"}
         <!-- File Transfer -->
         <div class="flex flex-col gap-4">
-          <!-- Chunk Size Configuration -->
+          <!-- Block Size -->
           <div class="flex flex-col gap-2">
-            <label for="chunk-size" class="text-xs tracking-wider text-(--color-text-light) font-medium">
-              Chunk Size
+            <label for="block-size" class="text-xs tracking-wider text-(--color-text-light) font-medium">
+              Data per QR
             </label>
             <select
-              id="chunk-size"
-              bind:value={fileTransferChunkSize}
-              disabled={fileTransferState !== "idle"}
-              class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              id="block-size"
+              bind:value={fileTransferBlockSize}
+              onchange={reprocessTransfer}
+              class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
             >
-              <option value={200}>Small (~150 bytes/QR) - most reliable</option>
-              <option value={400}>Medium (~300 bytes/QR) - balanced</option>
-              <option value={800}>Large (~600 bytes/QR) - fewer codes</option>
+              <option value={128}>128 bytes - poor lighting / long range</option>
+              <option value={256}>256 bytes - phone camera, cautious</option>
+              <option value={512}>512 bytes - phone camera, balanced</option>
+              <option value={1024}>1 KB - good camera, close range</option>
+              <option value={2048}>2 KB - screen sharing only</option>
             </select>
-            <p class="text-xs text-(--color-text-muted)">Smaller chunks scan more reliably but generate more QR codes</p>
+            <p class="text-xs text-(--color-text-muted)">
+              Throughput scales with this directly. Raise it until the receiver starts missing frames.
+            </p>
           </div>
 
-          <!-- QR Scale -->
+          <!-- Frame rate -->
           <div class="flex flex-col gap-2">
-            <label for="transfer-scale" class="text-xs tracking-wider text-(--color-text-light) font-medium">
-              QR Code Size: {fileTransferScale}x
+            <label for="transfer-fps" class="text-xs tracking-wider text-(--color-text-light) font-medium">
+              Frame Rate: {fileTransferFps} fps
             </label>
             <input
-              id="transfer-scale"
+              id="transfer-fps"
               type="range"
-              min="2"
-              max="10"
-              bind:value={fileTransferScale}
-              onchange={() => generateTransferQr()}
+              min="1"
+              max="30"
+              bind:value={fileTransferFps}
               class="w-full accent-(--color-accent)"
             />
             <div class="flex justify-between text-xs text-(--color-text-muted)">
-              <span>Small</span>
-              <span>Large</span>
+              <span>1</span>
+              <span>30</span>
             </div>
+            <p class="text-xs text-(--color-text-muted)">
+              Cameras deliver ~30 fps, so going beyond that only shows frames the receiver cannot capture.
+            </p>
+          </div>
+
+          <!-- Error correction -->
+          <div class="flex flex-col gap-2">
+            <label for="transfer-ec" class="text-xs tracking-wider text-(--color-text-light) font-medium">
+              Error Correction
+            </label>
+            <select
+              id="transfer-ec"
+              bind:value={fileTransferEc}
+              onchange={reprocessTransfer}
+              class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
+            >
+              <option value="L">Low (7%) - smallest symbol, fastest</option>
+              <option value="M">Medium (15%)</option>
+              <option value="Q">Quartile (25%)</option>
+              <option value="H">High (30%) - largest symbol</option>
+            </select>
+            <p class="text-xs text-(--color-text-muted)">
+              Low is usually best here: a damaged frame is simply skipped and the next one replaces it.
+            </p>
+          </div>
+
+          <!-- Display size -->
+          <div class="flex flex-col gap-2">
+            <label for="transfer-size" class="text-xs tracking-wider text-(--color-text-light) font-medium">
+              Display Size: {fileTransferDisplaySize}px
+            </label>
+            <input
+              id="transfer-size"
+              type="range"
+              min="200"
+              max="900"
+              step="20"
+              bind:value={fileTransferDisplaySize}
+              onchange={() => { if (fileTransferState === "ready") paintTransferFrame(); }}
+              class="w-full accent-(--color-accent)"
+            />
           </div>
 
           <!-- File Drop Zone -->
@@ -1849,100 +1965,69 @@
                 </button>
               </div>
               <div class="text-sm text-(--color-text) font-mono truncate">{fileTransferFile?.name}</div>
-              <div class="text-xs text-(--color-text-muted)">
-                {fileTransferFile ? (fileTransferFile.size / 1024).toFixed(1) : 0} KB
-                ({fileTransferChunks.length} QR codes)
-              </div>
-            </div>
-
-            <!-- Playback Controls -->
-            <div class="flex flex-col gap-4">
-              <!-- Progress -->
-              <div class="flex flex-col gap-2">
-                <div class="flex justify-between items-center">
-                  <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Progress</span>
-                  <span class="text-sm text-(--color-text)">
-                    {fileTransferCurrentIndex + 1} / {fileTransferChunks.length}
+              {#if fileTransferInfo}
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-(--color-text-muted)">
+                  <span>Size</span>
+                  <span class="text-right text-(--color-text)">
+                    {((fileTransferFile?.size ?? 0) / 1024).toFixed(1)} KB
+                  </span>
+                  <span>On the wire</span>
+                  <span class="text-right text-(--color-text)">
+                    {(fileTransferInfo.payloadLength / 1024).toFixed(1)} KB
+                    {#if fileTransferInfo.gzip}
+                      <span class="text-green-600 dark:text-green-400">
+                        (gzip {(100 - (fileTransferInfo.payloadLength / fileTransferInfo.rawLength) * 100).toFixed(0)}% smaller)
+                      </span>
+                    {/if}
+                  </span>
+                  <span>Blocks</span>
+                  <span class="text-right text-(--color-text)">
+                    {fileTransferInfo.blockCount} x {fileTransferInfo.blockSize} B
+                  </span>
+                  <span>Symbol</span>
+                  <span class="text-right text-(--color-text)">
+                    v{fileTransferInfo.qrVersion} ({fileTransferInfo.qrModules}x{fileTransferInfo.qrModules})
                   </span>
                 </div>
-                <!-- Progress bar -->
-                <div class="w-full h-2 bg-(--color-bg) border border-(--color-border) overflow-hidden">
-                  <div
-                    class="h-full bg-(--color-accent) transition-all duration-150"
-                    style="width: {((fileTransferCurrentIndex + 1) / fileTransferChunks.length) * 100}%"
-                  ></div>
-                </div>
-                <!-- Clickable progress -->
-                <input
-                  type="range"
-                  min="0"
-                  max={fileTransferChunks.length - 1}
-                  bind:value={fileTransferCurrentIndex}
-                  oninput={() => generateTransferQr()}
-                  class="w-full accent-(--color-accent)"
-                />
-              </div>
+              {/if}
+            </div>
 
-              <!-- Navigation buttons -->
-              <div class="flex gap-2">
-                <button
-                  onclick={goToPrevChunk}
-                  disabled={fileTransferCurrentIndex === 0}
-                  class="flex-1 px-4 py-2 text-sm border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {#if fileTransferState === "playing"}
-                  <button
-                    onclick={stopFileTransferPlayback}
-                    class="flex-1 px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                  >
-                    Stop
-                  </button>
-                {:else}
-                  <button
-                    onclick={startFileTransferPlayback}
-                    class="flex-1 px-4 py-2 text-sm font-medium bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
-                  >
-                    Play
-                  </button>
-                {/if}
-                <button
-                  onclick={goToNextChunk}
-                  disabled={fileTransferCurrentIndex === fileTransferChunks.length - 1}
-                  class="flex-1 px-4 py-2 text-sm border border-(--color-border) text-(--color-text) hover:bg-(--color-bg-alt) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
+            <!-- Playback -->
+            <div class="flex flex-col gap-4">
+              <button
+                onclick={toggleFileTransferPlayback}
+                class="w-full px-4 py-2 text-sm font-medium transition-colors {fileTransferState === 'playing'
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-(--color-accent) text-(--color-btn-text) hover:bg-(--color-accent-hover)'}"
+              >
+                {fileTransferState === "playing" ? "Stop Broadcasting" : "Start Broadcasting"}
+              </button>
 
-              <!-- Speed control -->
-              <div class="flex flex-col gap-2">
-                <label for="transfer-speed" class="text-xs tracking-wider text-(--color-text-light) font-medium">
-                  Speed: {fileTransferSpeed}ms
-                </label>
-                <input
-                  id="transfer-speed"
-                  type="range"
-                  min="200"
-                  max="2000"
-                  step="100"
-                  bind:value={fileTransferSpeed}
-                  class="w-full accent-(--color-accent)"
-                />
-                <div class="flex justify-between text-xs text-(--color-text-muted)">
-                  <span>Fast (200ms)</span>
-                  <span>Slow (2000ms)</span>
+              {#if fileTransferState === "playing" && fileTransferInfo}
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 p-3 border border-(--color-border) bg-(--color-bg-alt) text-xs text-(--color-text-muted)">
+                  <span>Frames sent</span>
+                  <span class="text-right text-(--color-text) font-mono">{fileTransferStats.framesEmitted}</span>
+                  <span>Throughput</span>
+                  <span class="text-right text-(--color-text) font-mono">
+                    {(fileTransferStats.bytesPerSecond / 1024).toFixed(1)} KB/s
+                  </span>
+                  <span>One full pass</span>
+                  <span class="text-right text-(--color-text) font-mono">
+                    {fileTransferStats.passSeconds > 0 ? fileTransferStats.passSeconds.toFixed(1) + "s" : "-"}
+                  </span>
                 </div>
-              </div>
+              {/if}
+
+              <p class="text-xs text-(--color-text-muted)">
+                Frames are fountain coded, so there is no beginning or end to line up.
+                Point the receiver at the code at any time and leave it running until it reaches 100%.
+              </p>
             </div>
           {/if}
 
-          <!-- Warning for large files -->
-          {#if fileTransferFile && fileTransferFile.size > 100 * 1024}
-            <div class="p-3 border border-yellow-500 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-sm">
-              Large file detected ({(fileTransferFile.size / 1024).toFixed(0)}KB).
-              This will generate {fileTransferChunks.length} QR codes and may take a while to scan.
+          {#if fileTransferPreparing}
+            <div class="p-3 border border-(--color-border) bg-(--color-bg-alt) text-sm text-(--color-text-muted)">
+              Preparing file...
             </div>
           {/if}
         </div>
@@ -2182,9 +2267,9 @@
           <span class="text-xs tracking-wider text-(--color-text-light) font-medium">
             QR Code
           </span>
-          {#if fileTransferQrSvg}
-            <span class="text-xs text-(--color-text-muted)">
-              Chunk {fileTransferCurrentIndex + 1} of {fileTransferChunks.length}
+          {#if fileTransferState === "playing"}
+            <span class="text-xs text-(--color-accent)">
+              Broadcasting at {fileTransferFps} fps
             </span>
           {/if}
         </div>
@@ -2198,11 +2283,18 @@
 
         <!-- QR Display -->
         <div class="flex-1 border border-(--color-border) bg-white overflow-auto flex items-center justify-center p-4">
-          {#if fileTransferQrSvg}
-            <div class="max-w-full max-h-full">
-              {@html fileTransferQrSvg}
-            </div>
-          {:else}
+          <!--
+            Kept mounted so the canvas reference survives play/stop toggles.
+            Deliberately not `max-w-full`: the painter sizes the canvas to a
+            whole number of device pixels per module, and letting the browser
+            shrink it to fit would reintroduce the fractional module widths that
+            make a dense QR unreadable. The container scrolls instead.
+          -->
+          <canvas
+            bind:this={fileTransferCanvas}
+            class="shrink-0 {fileTransferInfo ? '' : 'hidden'}"
+          ></canvas>
+          {#if !fileTransferInfo}
             <div class="text-gray-500 text-sm text-center">
               <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />

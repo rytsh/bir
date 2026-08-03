@@ -584,8 +584,13 @@
     }
     files.push({ name: "favicon.ico", data: new Blob([ico], { type: "image/x-icon" }) });
 
+    // Generate SVG
+    const svgMarkup = generateSvgMarkup();
+    files.push({ name: "favicon.svg", data: new Blob([svgMarkup], { type: "image/svg+xml" }) });
+
     // Generate HTML snippet
     const html = `<!-- Favicon Setup -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="/favicon-192x192.png">
 <link rel="manifest" href="/manifest.webmanifest">

@@ -396,10 +396,10 @@ const rawCategories: Category[] = [
       {
         id: "barcode-generator",
         name: "Barcode",
-        description: "Generate barcodes and QR codes with WiFi support, custom colors, and frames",
+        description: "Generate and scan barcodes and QR codes, plus offline file transfer over an animated QR stream",
         icon: "📊",
         path: "/generators/barcode",
-        keywords: "barcode generator, qr code generator, barcode creator, qr code maker, wifi qr code, barcode generator, qr code custom, barcode design",
+        keywords: "barcode generator, qr code generator, barcode creator, qr code maker, wifi qr code, qr code custom, barcode design, qr scanner, qr reader, qr file transfer, send file over qr, animated qr, fountain code, airgap file transfer",
       },
       {
         id: "bcrypt-generator",
