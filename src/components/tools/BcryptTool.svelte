@@ -1,7 +1,9 @@
 <script lang="ts">
   import bcrypt from "bcryptjs";
+  import { generateApr1Hash, verifyApr1Hash } from "../../lib/apr1.js";
 
   type Tab = "generate" | "validate";
+  type HashAlgorithm = "bcrypt" | "apr1";
   type OutputFormat = "hash" | "htpasswd";
 
   let activeTab = $state<Tab>("generate");
@@ -11,6 +13,7 @@
   let username = $state("");
   let saltRounds = $state(10);
   let generatedHash = $state("");
+  let hashAlgorithm = $state<HashAlgorithm>("bcrypt");
   let outputFormat = $state<OutputFormat>("hash");
   let generating = $state(false);
   let generateError = $state("");
@@ -47,9 +50,13 @@
     generatedHash = "";
 
     try {
-      const rounds = Number(saltRounds) || 10;
-      const salt = await bcrypt.genSalt(rounds);
-      generatedHash = await bcrypt.hash(plainText, salt);
+      if (hashAlgorithm === "apr1") {
+        generatedHash = generateApr1Hash(plainText);
+      } else {
+        const rounds = Number(saltRounds) || 10;
+        const salt = await bcrypt.genSalt(rounds);
+        generatedHash = await bcrypt.hash(plainText, salt);
+      }
     } catch (e) {
       generateError = e instanceof Error ? e.message : "Failed to generate hash";
     } finally {
@@ -72,7 +79,12 @@
     validateResult = null;
 
     try {
-      validateResult = await bcrypt.compare(validateText, hashToValidate);
+      const hash = hashToValidate.includes(":")
+        ? hashToValidate.slice(hashToValidate.indexOf(":") + 1)
+        : hashToValidate;
+      validateResult = hash.startsWith("$apr1$")
+        ? verifyApr1Hash(validateText, hash)
+        : await bcrypt.compare(validateText, hash);
     } catch (e) {
       validateError = e instanceof Error ? e.message : "Failed to validate hash";
     } finally {
@@ -120,7 +132,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate bcrypt hashes from plain text or validate text against existing hashes.
+      Generate and validate bcrypt or Apache MD5 password hashes.
     </p>
   </header>
 
@@ -147,6 +159,35 @@
   <!-- Generate Tab -->
   {#if activeTab === "generate"}
     <div class="flex-1 flex flex-col">
+      <!-- Hash Algorithm -->
+      <div class="mb-4">
+        <label class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
+          Hash Algorithm
+        </label>
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="hashAlgorithm"
+              value="bcrypt"
+              bind:group={hashAlgorithm}
+              class="accent-(--color-accent)"
+            />
+            bcrypt (recommended)
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="hashAlgorithm"
+              value="apr1"
+              bind:group={hashAlgorithm}
+              class="accent-(--color-accent)"
+            />
+            Apache MD5 ($apr1$, legacy)
+          </label>
+        </div>
+      </div>
+
       <!-- Output Format -->
       <div class="mb-4">
         <label class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
@@ -193,24 +234,30 @@
       {/if}
 
       <!-- Salt Rounds -->
-      <div class="mb-4">
-        <label for="salt-rounds" class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
-          Salt Rounds (Cost Factor)
-        </label>
-        <div class="flex items-center gap-4">
-          <input
-            id="salt-rounds"
-            type="number"
-            min="4"
-            max="31"
-            bind:value={saltRounds}
-            class="w-24 px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent)"
-          />
-          <span class="text-xs text-(--color-text-muted)">
-            Higher = more secure but slower (recommended: 10-12)
-          </span>
+      {#if hashAlgorithm === "bcrypt"}
+        <div class="mb-4">
+          <label for="salt-rounds" class="block text-xs tracking-wider text-(--color-text-light) font-medium mb-2">
+            Salt Rounds (Cost Factor)
+          </label>
+          <div class="flex items-center gap-4">
+            <input
+              id="salt-rounds"
+              type="number"
+              min="4"
+              max="31"
+              bind:value={saltRounds}
+              class="w-24 px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent)"
+            />
+            <span class="text-xs text-(--color-text-muted)">
+              Higher = more secure but slower (recommended: 10-12)
+            </span>
+          </div>
         </div>
-      </div>
+      {:else}
+        <p class="mb-4 text-xs text-(--color-text-muted)">
+          Apache MD5 is provided for compatibility with older htpasswd files. Use bcrypt for new credentials.
+        </p>
+      {/if}
 
       <!-- Input -->
       <div class="mb-4">
@@ -309,7 +356,7 @@
       <!-- Hash Input -->
       <div class="mb-4">
         <div class="flex justify-between items-center mb-2">
-          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Bcrypt Hash</span>
+          <span class="text-xs tracking-wider text-(--color-text-light) font-medium">Hash or htpasswd Entry</span>
           <button
             onclick={handlePasteHash}
             class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
@@ -320,7 +367,7 @@
         <input
           type="text"
           bind:value={hashToValidate}
-          placeholder="Enter bcrypt hash (e.g., $2a$10$...)..."
+          placeholder="Enter $2a$..., $apr1$..., or username:hash..."
           class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg-alt) text-(--color-text) font-mono text-sm focus:outline-none focus:border-(--color-accent)"
         />
       </div>
@@ -367,7 +414,7 @@
 
   <!-- Info Section -->
   <div class="mt-6 border-t border-(--color-border) pt-4">
-    <h2 class="text-sm font-medium text-(--color-text) mb-3">About Bcrypt & htpasswd</h2>
+    <h2 class="text-sm font-medium text-(--color-text) mb-3">About Password Hashes & htpasswd</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
         <div class="text-(--color-text-light) mb-1">Bcrypt Format</div>
@@ -375,7 +422,7 @@
       </div>
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
         <div class="text-(--color-text-light) mb-1">htpasswd Format</div>
-        <div class="font-mono text-(--color-text)">user:$2y$10$...</div>
+        <div class="font-mono text-(--color-text)">user:$2y$... or user:$apr1$...</div>
       </div>
       <div class="p-2 bg-(--color-bg-alt) border border-(--color-border)">
         <div class="text-(--color-text-light) mb-1">Cost Factor</div>

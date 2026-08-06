@@ -404,10 +404,10 @@ const rawCategories: Category[] = [
       {
         id: "bcrypt-generator",
         name: "Bcrypt",
-        description: "Generate and validate bcrypt password hashes with htpasswd support",
+        description: "Generate bcrypt and Apache MD5 password hashes with htpasswd support",
         icon: "🔐",
         path: "/generators/bcrypt",
-        keywords: "bcrypt, bcrypt generator, bcrypt validator, password hash, hash generator, password hashing, bcrypt hash, secure password, htpasswd, apache password, nginx auth, basic auth",
+        keywords: "bcrypt, bcrypt generator, bcrypt validator, apr1, apache md5, password hash, hash generator, password hashing, bcrypt hash, secure password, htpasswd, apache password, nginx auth, basic auth",
       },
       {
         id: "hash-generator",
