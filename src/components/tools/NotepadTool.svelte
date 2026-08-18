@@ -1728,6 +1728,14 @@ console.log("Code blocks are highlighted");
     padding-left: 2em;
   }
 
+  :global(.markdown-body ul) {
+    list-style-type: square;
+  }
+
+  :global(.markdown-body ol) {
+    list-style-type: decimal;
+  }
+
   :global(.markdown-body li) {
     margin-bottom: 0.25em;
   }
