@@ -15,7 +15,7 @@
   import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
   import { buildZip } from "./pdf/shared/zip-store";
 
-  type NodeType = "folder" | "note";
+  type NodeType = "folder" | "note" | "file";
   type ViewMode = "split" | "editor" | "preview";
 
   interface NodeMeta {
@@ -25,6 +25,8 @@
     parentId: string | null;
     order: number;
     expanded?: boolean;
+    mimeType?: string;
+    size?: number;
     createdAt: number;
     updatedAt: number;
   }
@@ -32,6 +34,7 @@
   const INDEX_KEY = "notepad-index";
   const ACTIVE_KEY = "notepad-active";
   const noteKey = (id: string) => `notepad-note-${id}`;
+  const fileKey = (id: string) => `notepad-file-${id}`;
 
   const WELCOME = `# Welcome to Notepad
 
@@ -41,6 +44,7 @@ This is your personal **markdown notebook**. Everything you type is saved automa
 
 - Use **+ Note** and **+ Folder** in the sidebar to organize your notes.
 - Notes go inside the **selected folder** (or the root if none is selected).
+- Import any file to keep a local copy alongside your notes. Text and Markdown files remain editable.
 - **Drag and drop** notes and folders to move or reorder them.
 - Double-click a name to rename it.
 - Toggle **Split / Editor / Preview** to control the live preview.
@@ -117,7 +121,9 @@ console.log("Code blocks are highlighted");
   };
 
   // ---- Derived ----
-  let activeNode = $derived(nodes.find((n) => n.id === activeId && n.type === "note"));
+  let activeNode = $derived(nodes.find((n) => n.id === activeId && n.type !== "folder"));
+  let activeNote = $derived(activeNode?.type === "note" ? activeNode : undefined);
+  let activeFile = $derived(activeNode?.type === "file" ? activeNode : undefined);
   let charCount = $derived(currentContent.length);
   let wordCount = $derived(currentContent.trim() ? currentContent.trim().split(/\s+/).length : 0);
   let hasNotes = $derived(nodes.some((n) => n.type === "note"));
@@ -270,6 +276,23 @@ console.log("Code blocks are highlighted");
     return node;
   }
 
+  async function addFile(parentId: string | null, file: File): Promise<NodeMeta> {
+    const node: NodeMeta = {
+      id: crypto.randomUUID(),
+      type: "file",
+      name: uniqueName(parentId, "file", file.name || "Untitled file"),
+      parentId,
+      order: nextOrder(parentId),
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await idbSet(fileKey(node.id), file);
+    nodes = [...nodes, node];
+    return node;
+  }
+
   function newNote(): void {
     const parentId = targetParentId();
     expandFolder(parentId);
@@ -304,13 +327,30 @@ console.log("Code blocks are highlighted");
     scheduleRender(content);
   }
 
+  async function openFile(id: string): Promise<void> {
+    await flushSave();
+    const node = nodes.find((n) => n.id === id && n.type === "file");
+    if (!node) return;
+    selectedId = id;
+    activeId = id;
+    idbSet(ACTIVE_KEY, id).catch(() => {});
+    currentContent = "";
+    previewHtml = "";
+    programmatic = true;
+    updateEditorContent(editor, "");
+    programmatic = false;
+    saveStatus = "saved";
+  }
+
   function onRowClick(node: NodeMeta): void {
     selectedId = node.id;
     if (node.type === "folder") {
       node.expanded = !node.expanded;
       schedulePersistIndex();
-    } else {
+    } else if (node.type === "note") {
       openNote(node.id);
+    } else {
+      openFile(node.id);
     }
   }
 
@@ -351,7 +391,7 @@ console.log("Code blocks are highlighted");
   async function deleteNode(id: string, confirmed = false): Promise<NodeMeta | null> {
     const n = nodes.find((x) => x.id === id);
     if (!n) return null;
-    const label = n.type === "folder" ? `folder "${n.name}" and all its contents` : `note "${n.name}"`;
+    const label = n.type === "folder" ? `folder "${n.name}" and all its contents` : `${n.type} "${n.name}"`;
     if (!confirmed && !confirm(`Delete ${label}? This cannot be undone.`)) return null;
 
     const subtree = collectSubtree(id);
@@ -359,15 +399,20 @@ console.log("Code blocks are highlighted");
     if (activeId && ids.has(activeId)) {
       await flushSave();
     }
-    await Promise.all(subtree.filter((x) => x.type === "note").map((x) => idbDel(noteKey(x.id))));
+    await Promise.all(
+      subtree
+        .filter((x) => x.type !== "folder")
+        .map((x) => idbDel(x.type === "note" ? noteKey(x.id) : fileKey(x.id))),
+    );
     nodes = nodes.filter((x) => !ids.has(x.id));
     await idbSet(INDEX_KEY, $state.snapshot(nodes));
 
     if (selectedId && ids.has(selectedId)) selectedId = null;
     if (activeId && ids.has(activeId)) {
       activeId = null;
-      const next = nodes.find((x) => x.type === "note");
-      if (next) await openNote(next.id);
+      const next = nodes.find((x) => x.type !== "folder");
+      if (next?.type === "note") await openNote(next.id);
+      else if (next) await openFile(next.id);
       else clearEditor();
     }
     return n;
@@ -626,7 +671,7 @@ console.log("Code blocks are highlighted");
   }
 
   function beautify(): void {
-    if (!activeNode) return;
+    if (!activeNote) return;
     const formatted = beautifyMarkdown(currentContent);
     if (formatted === currentContent) return;
     currentContent = formatted;
@@ -721,8 +766,27 @@ console.log("Code blocks are highlighted");
     return ((await idbGet(noteKey(id))) as string | undefined) ?? "";
   }
 
-  function downloadNote(): void {
-    if (activeNode) downloadNoteById(activeNode.id);
+  async function fileContent(id: string): Promise<Blob | null> {
+    const value = await idbGet(fileKey(id));
+    if (value instanceof Blob) return value;
+    if (value instanceof ArrayBuffer) return new Blob([value]);
+    return null;
+  }
+
+  function formatBytes(bytes = 0): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let value = bytes / 1024;
+    let unit = units[0];
+    for (let i = 1; i < units.length && value >= 1024; i++) {
+      value /= 1024;
+      unit = units[i];
+    }
+    return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`;
+  }
+
+  function downloadActiveNode(): void {
+    if (activeNode) downloadNode(activeNode);
   }
 
   async function downloadNoteById(id: string): Promise<void> {
@@ -735,9 +799,21 @@ console.log("Code blocks are highlighted");
     );
   }
 
-  // Relative path of a note within the given root folder, e.g. "Sub/Note.md"
+  async function downloadFileById(id: string): Promise<void> {
+    const node = nodes.find((n) => n.id === id && n.type === "file");
+    if (!node) return;
+    const content = await fileContent(id);
+    if (!content) {
+      alert(`"${node.name}" could not be read from browser storage.`);
+      return;
+    }
+    triggerBlobDownload(sanitizeSegment(node.name), content);
+  }
+
+  // Relative path of an item within the given root folder, e.g. "Sub/Note.md".
   function relativePath(node: NodeMeta, rootId: string): string {
-    const parts: string[] = [`${sanitizeSegment(node.name)}.md`];
+    const filename = node.type === "note" ? `${sanitizeSegment(node.name)}.md` : sanitizeSegment(node.name);
+    const parts: string[] = [filename];
     let cur = nodes.find((n) => n.id === node.parentId);
     while (cur && cur.id !== rootId) {
       parts.unshift(sanitizeSegment(cur.name));
@@ -753,7 +829,7 @@ console.log("Code blocks are highlighted");
     const used = new Set<string>();
     const entries: { name: string; bytes: Uint8Array }[] = [];
     for (const n of collectSubtree(id)) {
-      if (n.type !== "note") continue;
+      if (n.type === "folder") continue;
       let path = relativePath(n, id);
       if (used.has(path)) {
         const dot = path.lastIndexOf(".");
@@ -764,10 +840,15 @@ console.log("Code blocks are highlighted");
         path = `${stem} (${i})${ext}`;
       }
       used.add(path);
-      entries.push({ name: path, bytes: encoder.encode(await noteContent(n.id)) });
+      if (n.type === "note") {
+        entries.push({ name: path, bytes: encoder.encode(await noteContent(n.id)) });
+      } else {
+        const content = await fileContent(n.id);
+        if (content) entries.push({ name: path, bytes: new Uint8Array(await content.arrayBuffer()) });
+      }
     }
     if (entries.length === 0) {
-      alert("This folder has no notes to export.");
+      alert("This folder has no notes or files to export.");
       return;
     }
     const zip = buildZip(entries);
@@ -776,7 +857,8 @@ console.log("Code blocks are highlighted");
 
   function downloadNode(node: NodeMeta): void {
     if (node.type === "folder") downloadFolderZip(node.id);
-    else downloadNoteById(node.id);
+    else if (node.type === "note") downloadNoteById(node.id);
+    else downloadFileById(node.id);
   }
 
   function triggerImport(parentId: string | null): void {
@@ -792,15 +874,41 @@ console.log("Code blocks are highlighted");
     importParentId = null;
     expandFolder(parentId);
     let lastId: string | null = null;
+    const failures: string[] = [];
+    void navigator.storage?.persist?.();
     for (const file of Array.from(files)) {
-      const text = await file.text();
-      const name = file.name.replace(/\.(md|markdown|txt)$/i, "");
-      const node = addNote(parentId, name || "Untitled", text);
-      lastId = node.id;
+      let node: NodeMeta | null = null;
+      try {
+        if (/\.(md|markdown|txt)$/i.test(file.name)) {
+          const text = await file.text();
+          const name = file.name.replace(/\.(md|markdown|txt)$/i, "");
+          node = addNote(parentId, name || "Untitled", text);
+          await idbSet(noteKey(node.id), text);
+        } else {
+          node = await addFile(parentId, file);
+        }
+        lastId = node.id;
+      } catch (error) {
+        if (node) {
+          nodes = nodes.filter((candidate) => candidate.id !== node!.id);
+          await idbDel(node.type === "note" ? noteKey(node.id) : fileKey(node.id)).catch(() => {});
+        }
+        const reason = error instanceof DOMException && error.name === "QuotaExceededError"
+          ? "browser storage is full"
+          : "the file could not be stored";
+        failures.push(`${file.name}: ${reason}`);
+      }
     }
-    persistIndex();
-    if (lastId) openNote(lastId);
+    await idbSet(INDEX_KEY, $state.snapshot(nodes)).catch(() => {});
+    if (lastId) {
+      const last = nodes.find((node) => node.id === lastId);
+      if (last?.type === "note") await openNote(last.id);
+      else if (last) await openFile(last.id);
+    }
     input.value = "";
+    if (failures.length > 0) {
+      alert(`Some files were not imported:\n\n${failures.join("\n")}\n\nFree browser storage and try again.`);
+    }
   }
 
   // ---- Preview rendering ----
@@ -931,18 +1039,20 @@ console.log("Code blocks are highlighted");
 
     const storedActive = (await idbGet(ACTIVE_KEY)) as string | null | undefined;
     let openId: string | null = null;
-    if (storedActive && nodes.some((n) => n.id === storedActive && n.type === "note")) {
+    if (storedActive && nodes.some((n) => n.id === storedActive && n.type !== "folder")) {
       openId = storedActive;
-    } else if (activeId && nodes.some((n) => n.id === activeId && n.type === "note")) {
+    } else if (activeId && nodes.some((n) => n.id === activeId && n.type !== "folder")) {
       openId = activeId;
     } else {
-      const first = nodes.find((n) => n.type === "note");
+      const first = nodes.find((n) => n.type !== "folder");
       openId = first ? first.id : null;
     }
 
     loaded = true;
     if (openId) {
-      await openNote(openId);
+      const node = nodes.find((candidate) => candidate.id === openId);
+      if (node?.type === "note") await openNote(openId);
+      else if (node?.type === "file") await openFile(openId);
     } else {
       scheduleRender("");
     }
@@ -967,6 +1077,7 @@ console.log("Code blocks are highlighted");
       name: node.name,
       path: nodePath(node),
       parentId: node.parentId,
+      ...(node.type === "file" ? { mimeType: node.mimeType, size: node.size } : {}),
       createdAt: node.createdAt,
       updatedAt: node.updatedAt,
       active: node.id === activeId,
@@ -1273,9 +1384,12 @@ console.log("Code blocks are highlighted");
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
       </svg>
       <span class="shrink-0" aria-hidden="true">{node.expanded ? "📂" : "📁"}</span>
-    {:else}
+    {:else if node.type === "note"}
       <span class="w-3 shrink-0"></span>
       <span class="shrink-0" aria-hidden="true">📄</span>
+    {:else}
+      <span class="w-3 shrink-0"></span>
+      <span class="shrink-0" aria-hidden="true">📦</span>
     {/if}
 
     {#if editingId === node.id}
@@ -1292,7 +1406,7 @@ console.log("Code blocks are highlighted");
       <span class="flex-1 min-w-0 truncate">{node.name}</span>
       <span class="hidden group-hover:flex items-center gap-0.5 shrink-0">
         <button
-          title={node.type === "folder" ? "Download as .zip" : "Download as .md"}
+          title={node.type === "folder" ? "Download as .zip" : node.type === "note" ? "Download as .md" : "Download file"}
           aria-label="Download"
           class="p-0.5 text-(--color-text-light) hover:text-(--color-text)"
           onclick={(e) => {
@@ -1371,8 +1485,8 @@ console.log("Code blocks are highlighted");
           <button
             onclick={() => triggerImport(targetParentId())}
             class="p-1 text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-            title="Import .md files into the selected folder"
-            aria-label="Import markdown files"
+            title="Import notes or files into the selected folder"
+            aria-label="Import notes or files"
           >
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 7.5L12 3m0 0L7.5 7.5M12 3v13.5" />
@@ -1419,33 +1533,41 @@ console.log("Code blocks are highlighted");
               class="flex-1 min-w-0 px-2 py-1 text-sm font-medium bg-transparent text-(--color-text) border border-transparent hover:border-(--color-border) focus:border-(--color-accent) focus:bg-(--color-bg) focus:outline-none transition-colors"
               placeholder="Untitled"
             />
-            <span
-              class="shrink-0 text-xs {saveStatus === 'saving' ? 'text-(--color-text-light)' : 'text-(--color-text-muted)'}"
-              title="Notes are saved automatically"
-            >
-              {saveStatus === "saving" ? "Saving…" : "Saved"}
-            </span>
+            {#if activeNote}
+              <span
+                class="shrink-0 text-xs {saveStatus === 'saving' ? 'text-(--color-text-light)' : 'text-(--color-text-muted)'}"
+                title="Notes are saved automatically"
+              >
+                {saveStatus === "saving" ? "Saving…" : "Saved"}
+              </span>
+            {:else if activeFile}
+              <span class="shrink-0 text-xs text-(--color-text-muted)" title="Stored locally in this browser">
+                {formatBytes(activeFile.size)}
+              </span>
+            {/if}
           {:else}
             <span class="flex-1 text-sm text-(--color-text-light)">No note open</span>
           {/if}
 
           <!-- View toggle -->
-          <div class="hidden sm:flex p-0.5 bg-(--color-border) gap-0.5 shrink-0">
-            {#each VIEW_MODES as vm (vm.val)}
-              <button
-                class="px-2 py-1 text-xs font-medium transition-colors {viewMode === vm.val
-                  ? 'bg-(--color-text) text-(--color-btn-text)'
-                  : 'text-(--color-text-muted) hover:text-(--color-text)'}"
-                onclick={() => (viewMode = vm.val)}
-              >
-                {vm.label}
-              </button>
-            {/each}
-          </div>
+          {#if activeNote}
+            <div class="hidden sm:flex p-0.5 bg-(--color-border) gap-0.5 shrink-0">
+              {#each VIEW_MODES as vm (vm.val)}
+                <button
+                  class="px-2 py-1 text-xs font-medium transition-colors {viewMode === vm.val
+                    ? 'bg-(--color-text) text-(--color-btn-text)'
+                    : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+                  onclick={() => (viewMode = vm.val)}
+                >
+                  {vm.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
 
           <button
             onclick={beautify}
-            disabled={!activeNode}
+            disabled={!activeNote}
             class="p-1 text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 shrink-0"
             title="Beautify (align tables, trim trailing spaces)"
             aria-label="Beautify markdown"
@@ -1454,11 +1576,11 @@ console.log("Code blocks are highlighted");
           </button>
 
           <button
-            onclick={downloadNote}
+            onclick={downloadActiveNode}
             disabled={!activeNode}
             class="p-1 text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 shrink-0"
-            title="Download as .md"
-            aria-label="Download note as markdown"
+            title={activeFile ? "Download file" : "Download as .md"}
+            aria-label={activeFile ? "Download file" : "Download note as markdown"}
           >
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 10.5L12 15m0 0l4.5-4.5M12 15V3" />
@@ -1466,9 +1588,44 @@ console.log("Code blocks are highlighted");
           </button>
         </div>
 
+        {#if activeFile}
+          <div class="flex-1 min-h-0 overflow-auto bg-(--color-bg-alt) p-6 sm:p-10">
+            <div class="mx-auto flex min-h-full max-w-xl flex-col justify-center">
+              <div class="flex items-start gap-4 border-y border-(--color-border) py-6">
+                <svg class="mt-0.5 h-9 w-9 shrink-0 text-(--color-text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m5.25 0H6.375c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h11.25c.621 0 1.125-.504 1.125-1.125V7.5L13.5 2.25z" />
+                </svg>
+                <div class="min-w-0 flex-1">
+                  <h2 class="truncate text-base font-semibold text-(--color-text)" title={activeFile.name}>{activeFile.name}</h2>
+                  <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+                    <dt class="text-(--color-text-light)">Type</dt>
+                    <dd class="min-w-0 truncate text-(--color-text-muted)" title={activeFile.mimeType}>{activeFile.mimeType || "application/octet-stream"}</dd>
+                    <dt class="text-(--color-text-light)">Size</dt>
+                    <dd class="text-(--color-text-muted)">{formatBytes(activeFile.size)}</dd>
+                    <dt class="text-(--color-text-light)">Location</dt>
+                    <dd class="text-(--color-text-muted)">This browser only</dd>
+                  </dl>
+                  <button
+                    onclick={downloadActiveNode}
+                    class="mt-5 inline-flex items-center gap-2 bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
+                  >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 10.5L12 15m0 0l4.5-4.5M12 15V3" />
+                    </svg>
+                    Download file
+                  </button>
+                </div>
+              </div>
+              <p class="mt-4 text-xs leading-5 text-(--color-text-light)">
+                The original bytes are stored in IndexedDB and never uploaded. Clearing this site's browser data removes this file.
+              </p>
+            </div>
+          </div>
+        {/if}
         <div
           bind:this={gridEl}
           class="flex-1 grid min-h-0 overflow-hidden"
+          class:hidden={!!activeFile}
           style:grid-template-columns={viewMode === "split"
             ? `${splitPct}% 0.375rem minmax(0, 1fr)`
             : "1fr"}
@@ -1511,15 +1668,21 @@ console.log("Code blocks are highlighted");
         </div>
 
         <div class="shrink-0 flex items-center gap-3 px-3 py-1 text-xs text-(--color-text-light) border-t border-(--color-border)">
-          <span>Ln {cursorLine}, Col {cursorColumn}</span>
-          {#if selectionLength > 0}
-            <span>
-              {selectionLength} selected{selectedLines > 1 ? ` (${selectedLines} lines)` : ""}
-            </span>
+          {#if activeFile}
+            <span>{activeFile.mimeType || "application/octet-stream"}</span>
+            <div class="flex-1"></div>
+            <span>{formatBytes(activeFile.size)}</span>
+          {:else}
+            <span>Ln {cursorLine}, Col {cursorColumn}</span>
+            {#if selectionLength > 0}
+              <span>
+                {selectionLength} selected{selectedLines > 1 ? ` (${selectedLines} lines)` : ""}
+              </span>
+            {/if}
+            <div class="flex-1"></div>
+            <span>{wordCount} words</span>
+            <span>{charCount} chars</span>
           {/if}
-          <div class="flex-1"></div>
-          <span>{wordCount} words</span>
-          <span>{charCount} chars</span>
         </div>
 
         <!-- Empty state overlay -->
@@ -1544,7 +1707,6 @@ console.log("Code blocks are highlighted");
   <input
     bind:this={fileInput}
     type="file"
-    accept=".md,.markdown,.txt"
     multiple
     onchange={handleImport}
     class="hidden"
@@ -1588,7 +1750,7 @@ console.log("Code blocks are highlighted");
         }}
       >
         <span aria-hidden="true">⬆️</span>
-        {menuNode && menuNode.type === "folder" ? "Import into folder…" : "Import .md…"}
+        {menuNode && menuNode.type === "folder" ? "Import into folder…" : "Import notes or files…"}
       </button>
 
       {#if menuNode}
@@ -1601,7 +1763,7 @@ console.log("Code blocks are highlighted");
           }}
         >
           <span aria-hidden="true">⬇️</span>
-          {menuNode.type === "folder" ? "Download as .zip" : "Download as .md"}
+          {menuNode.type === "folder" ? "Download as .zip" : menuNode.type === "note" ? "Download as .md" : "Download file"}
         </button>
         <div class="my-1 h-px bg-(--color-border)"></div>
         <button

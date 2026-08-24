@@ -129,10 +129,10 @@ const rawCategories: Category[] = [
       {
         id: "notepad",
         name: "Notepad",
-        description: "Markdown notes organized in nested folders with live preview, drag-and-drop, and auto-save to your browser via IndexedDB. Import and export .md files",
+        description: "Markdown notes and local files organized in nested folders with live preview, drag-and-drop, and auto-save to your browser via IndexedDB. Import any file and export notes or folders",
         icon: "📓",
         path: "/text/notepad",
-        keywords: "notepad, notes, markdown notes, note taking, notebook, folders, file tree, auto save, indexeddb, offline notes, markdown editor, local notes",
+        keywords: "notepad, notes, markdown notes, note taking, notebook, folders, file tree, file storage, binary files, local files, auto save, indexeddb, offline notes, markdown editor, local notes",
       },
       {
         id: "docx-viewer",
