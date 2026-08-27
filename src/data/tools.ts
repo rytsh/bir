@@ -190,6 +190,15 @@ const rawCategories: Category[] = [
         keywords: "formatter, prettifier, beautifier, JSON formatter, YAML formatter, TOML formatter, Markdown formatter, code formatter, pretty print, format code, beautify",
       },
       {
+        id: "sqlite-studio",
+        name: "SQLite Studio",
+        description: "Open, inspect, query, edit, and export SQLite database files directly in the browser with a schema explorer, SQL editor, result tables, and CSV or JSON export",
+        icon: "🗄️",
+        path: "/converter/sqlite",
+        keywords: "sqlite studio, sqlite viewer, sqlite editor, sqlite browser, database viewer, database editor, sql query, db file, sqlite wasm, schema explorer, sql editor, csv export, json export, local database",
+        wasm: true,
+      },
+      {
         id: "document-converter",
         name: "Document Converter",
         description: "Convert documents between Markdown, HTML, DOCX, EPUB, RTF, ODT, LaTeX, reStructuredText, DocBook, AsciiDoc, Org Mode, and more using Pandoc WASM in the browser",
@@ -939,6 +948,14 @@ const rawCategories: Category[] = [
         icon: "🦷",
         path: "/tester/bluetooth",
         keywords: "bluetooth tester, web bluetooth, ble, bluetooth low energy, gatt, characteristic, service, send hex, custom command, write characteristic, notify, ble scanner, ble debugger, nordic uart, nus, bluetooth debug, ble write, ble read, bluetooth web api, navigator.bluetooth",
+      },
+      {
+        id: "serial-terminal",
+        name: "Serial Terminal",
+        description: "Connect to Arduino, ESP32, microcontrollers, and serial adapters with Web Serial. Send and receive text or hex data, control line endings and signals, inspect timestamps, and export session logs",
+        icon: "🔌",
+        path: "/tester/serial",
+        keywords: "serial terminal, web serial, serial monitor, arduino serial monitor, esp32 serial, usb serial, uart terminal, baud rate, com port, tty, send hex, serial console, microcontroller, dtr, rts",
       },
       {
         id: "dead-pixel-tester",

@@ -113,9 +113,32 @@
     rtf: "application/rtf",
     xls: "application/vnd.ms-excel",
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    c: "text/x-c",
+    conf: "text/plain",
+    cpp: "text/x-c",
+    cs: "text/x-csharp",
     css: "text/css",
     csv: "text/csv",
+    env: "text/plain",
+    go: "text/x-go",
+    h: "text/x-c",
+    hpp: "text/x-c",
+    htm: "text/html",
     html: "text/html",
+    ini: "text/plain",
+    java: "text/x-java",
+    jsx: "text/javascript",
+    mjs: "text/javascript",
+    php: "text/x-php",
+    properties: "text/plain",
+    py: "text/x-python",
+    rb: "text/x-ruby",
+    rs: "text/x-rust",
+    sh: "text/x-shellscript",
+    sql: "text/x-sql",
+    srt: "text/plain",
+    tsx: "text/typescript",
+    vtt: "text/vtt",
     js: "text/javascript",
     json: "application/json",
     log: "text/plain",
@@ -1823,7 +1846,7 @@ console.log("Code blocks are highlighted");
   {/if}
 {/snippet}
 
-<div class="relative h-full min-h-0 overflow-hidden">
+<div class="relative h-full min-h-[75vh] overflow-hidden lg:min-h-0">
   <div class="absolute inset-0 flex flex-col">
     <div class="flex-1 min-h-0 flex border border-(--color-border)">
       <!-- Sidebar: file tree -->
@@ -2015,7 +2038,7 @@ console.log("Code blocks are highlighted");
                   </button>
                 </div>
                 {#if rawLoadStatus === "loading"}
-                  <div role="status" class="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
+                  <div role="status" class="flex grow items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
                     <LoaderCircle class="h-4 w-4 animate-spin" />
                     Reading raw bytes…
                   </div>
@@ -2024,7 +2047,7 @@ console.log("Code blocks are highlighted");
                     Raw bytes could not be read. Download the file to inspect it locally.
                   </div>
                 {:else}
-                  <pre class="raw-file-viewer flex-1 overflow-auto p-3 text-xs leading-5 text-(--color-text) sm:p-4">{rawPreview}</pre>
+                  <pre class="raw-file-viewer grow overflow-auto p-3 text-xs leading-5 text-(--color-text) sm:p-4">{rawPreview}</pre>
                 {/if}
               </div>
             {:else if mediaPreviewError}
@@ -2032,22 +2055,22 @@ console.log("Code blocks are highlighted");
                 {@render fileDetails(activeFile, activeFileKind, "This browser cannot preview the file's encoding. The original file is still available.")}
               </div>
             {:else if activeFileKind === "image"}
-              <div class="file-media-stage flex min-h-full items-center justify-center bg-[#111111] p-3 sm:p-6">
+              <div class="flex min-h-full items-center justify-center bg-[#111111] p-3 sm:p-6">
                 <img
                   src={activeFileUrl}
                   alt={activeFile.name}
-                  class="max-h-full max-w-full object-contain"
+                  class="max-h-[70vh] max-w-full object-contain"
                   onerror={handleMediaPreviewError}
                 />
               </div>
             {:else if activeFileKind === "video"}
-              <div class="file-media-stage flex min-h-full items-center justify-center bg-black p-2 sm:p-5">
+              <div class="flex min-h-full items-center justify-center bg-black p-2 sm:p-5">
                 <video
                   src={activeFileUrl}
                   controls
                   playsinline
                   preload="metadata"
-                  class="max-h-full max-w-full"
+                  class="max-h-[70vh] w-full max-w-full"
                   onerror={handleMediaPreviewError}
                 ></video>
               </div>
@@ -2090,7 +2113,7 @@ console.log("Code blocks are highlighted");
                   src={activeFileUrl}
                   title={`Preview of ${activeFile.name}`}
                   sandbox=""
-                  class="min-h-[26rem] w-full flex-1 border-0 bg-white"
+                  class="min-h-[26rem] w-full grow border-0 bg-white"
                 ></iframe>
               </div>
             {:else if activeFileKind === "text"}
@@ -2105,7 +2128,7 @@ console.log("Code blocks are highlighted");
                   </div>
                 </div>
                 {#if fileTextStatus === "loading"}
-                  <div role="status" class="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
+                  <div role="status" class="flex grow items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
                     <LoaderCircle class="h-4 w-4 animate-spin" />
                     Reading text…
                   </div>
@@ -2114,7 +2137,7 @@ console.log("Code blocks are highlighted");
                     This text file could not be decoded. Use Raw to inspect its bytes.
                   </div>
                 {:else}
-                  <pre class="text-file-viewer flex-1 overflow-auto p-3 text-sm leading-6 text-(--color-text) sm:p-5">{fileText || "(empty file)"}</pre>
+                  <pre class="text-file-viewer grow overflow-auto p-3 text-sm leading-6 text-(--color-text) sm:p-5">{fileText || "(empty file)"}</pre>
                 {/if}
               </div>
             {:else}
@@ -2294,10 +2317,6 @@ console.log("Code blocks are highlighted");
 </div>
 
 <style>
-  .file-media-stage {
-    height: 100%;
-  }
-
   .raw-file-viewer,
   .text-file-viewer {
     margin: 0;
