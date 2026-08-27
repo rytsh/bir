@@ -3,6 +3,15 @@
   import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
   import { EditorView } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
+  import Binary from "@lucide/svelte/icons/binary";
+  import Eye from "@lucide/svelte/icons/eye";
+  import FileArchive from "@lucide/svelte/icons/file-archive";
+  import FileAudio from "@lucide/svelte/icons/file-audio";
+  import FileImage from "@lucide/svelte/icons/file-image";
+  import FileQuestion from "@lucide/svelte/icons/file-question";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import FileVideo from "@lucide/svelte/icons/file-video";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import Sparkles from "@lucide/svelte/icons/sparkles";
   import {
     createDarkModeObserver,
@@ -17,6 +26,9 @@
 
   type NodeType = "folder" | "note" | "file";
   type ViewMode = "split" | "editor" | "preview";
+  type FileViewMode = "preview" | "raw";
+  type FilePreviewKind = "image" | "video" | "audio" | "pdf" | "text" | "archive" | "document" | "unknown";
+  type LoadStatus = "idle" | "loading" | "ready" | "error";
 
   interface NodeMeta {
     id: string;
@@ -35,6 +47,86 @@
   const ACTIVE_KEY = "notepad-active";
   const noteKey = (id: string) => `notepad-note-${id}`;
   const fileKey = (id: string) => `notepad-file-${id}`;
+  const TEXT_PREVIEW_LIMIT = 1024 * 1024;
+  const RAW_PREVIEW_LIMIT = 64 * 1024;
+
+  const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "ico", "jfif", "jpeg", "jpg", "png", "svg", "webp"]);
+  const VIDEO_EXTENSIONS = new Set(["3gp", "avi", "m4v", "mkv", "mov", "mp4", "ogv", "webm"]);
+  const AUDIO_EXTENSIONS = new Set(["aac", "aif", "aiff", "flac", "m4a", "mid", "midi", "mp3", "oga", "ogg", "opus", "wav", "weba"]);
+  const TEXT_EXTENSIONS = new Set([
+    "c", "conf", "cpp", "cs", "css", "csv", "env", "go", "h", "hpp", "htm", "html", "ini", "java", "js", "json",
+    "jsx", "log", "mjs", "php", "properties", "py", "rb", "rs", "sh", "sql", "srt", "toml", "ts", "tsv", "tsx", "vtt",
+    "xml", "yaml", "yml",
+  ]);
+  const ARCHIVE_EXTENSIONS = new Set(["7z", "bz2", "gz", "rar", "tar", "tgz", "txz", "xz", "zip"]);
+  const DOCUMENT_EXTENSIONS = new Set(["doc", "docx", "epub", "odp", "ods", "odt", "pages", "ppt", "pptx", "rtf", "xls", "xlsx"]);
+
+  const MIME_BY_EXTENSION: Record<string, string> = {
+    avif: "image/avif",
+    bmp: "image/bmp",
+    gif: "image/gif",
+    ico: "image/x-icon",
+    jfif: "image/jpeg",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    png: "image/png",
+    svg: "image/svg+xml",
+    webp: "image/webp",
+    "3gp": "video/3gpp",
+    avi: "video/x-msvideo",
+    m4v: "video/mp4",
+    mkv: "video/x-matroska",
+    mov: "video/quicktime",
+    mp4: "video/mp4",
+    ogv: "video/ogg",
+    webm: "video/webm",
+    aac: "audio/aac",
+    aif: "audio/aiff",
+    aiff: "audio/aiff",
+    flac: "audio/flac",
+    m4a: "audio/mp4",
+    mid: "audio/midi",
+    midi: "audio/midi",
+    mp3: "audio/mpeg",
+    oga: "audio/ogg",
+    ogg: "audio/ogg",
+    opus: "audio/ogg",
+    wav: "audio/wav",
+    weba: "audio/webm",
+    pdf: "application/pdf",
+    "7z": "application/x-7z-compressed",
+    bz2: "application/x-bzip2",
+    gz: "application/gzip",
+    rar: "application/vnd.rar",
+    tar: "application/x-tar",
+    tgz: "application/gzip",
+    txz: "application/x-xz",
+    xz: "application/x-xz",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    epub: "application/epub+zip",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    odt: "application/vnd.oasis.opendocument.text",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    rtf: "application/rtf",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    css: "text/css",
+    csv: "text/csv",
+    html: "text/html",
+    js: "text/javascript",
+    json: "application/json",
+    log: "text/plain",
+    toml: "text/plain",
+    ts: "text/typescript",
+    tsv: "text/tab-separated-values",
+    xml: "application/xml",
+    yaml: "application/yaml",
+    yml: "application/yaml",
+    zip: "application/zip",
+  };
 
   const WELCOME = `# Welcome to Notepad
 
@@ -83,6 +175,7 @@ console.log("Code blocks are highlighted");
 
   let editingId = $state<string | null>(null);
   let editingName = $state("");
+  let titleNameBeforeEdit = "";
 
   let dragId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
@@ -97,6 +190,19 @@ console.log("Code blocks are highlighted");
   let previewHtml = $state("");
   let fileInput: HTMLInputElement;
 
+  let activeFileBlob = $state<Blob | null>(null);
+  let activeFileUrl = $state("");
+  let fileViewMode = $state<FileViewMode>("preview");
+  let fileLoadStatus = $state<LoadStatus>("idle");
+  let fileLoadError = $state("");
+  let fileText = $state("");
+  let fileTextStatus = $state<LoadStatus>("idle");
+  let fileTextTruncated = $state(false);
+  let rawPreview = $state("");
+  let rawLoadStatus = $state<LoadStatus>("idle");
+  let rawPreviewTruncated = $state(false);
+  let mediaPreviewError = $state(false);
+
   let darkModeCleanup: DarkModeCleanup | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let indexTimer: ReturnType<typeof setTimeout> | undefined;
@@ -105,6 +211,9 @@ console.log("Code blocks are highlighted");
   let mermaidLoaded = false;
   let hljs: typeof import("highlight.js") | undefined;
   let comarkRender: ((markdown: string) => Promise<string>) | undefined;
+  let fileLoadGeneration = 0;
+  let openRequestGeneration = 0;
+  let componentDisposed = false;
 
   const VIEW_MODES: { val: ViewMode; label: string }[] = [
     { val: "editor", label: "Editor" },
@@ -128,6 +237,142 @@ console.log("Code blocks are highlighted");
   let wordCount = $derived(currentContent.trim() ? currentContent.trim().split(/\s+/).length : 0);
   let hasNotes = $derived(nodes.some((n) => n.type === "note"));
   let menuNode = $derived(contextMenu ? (nodes.find((n) => n.id === contextMenu!.nodeId) ?? null) : null);
+  let activeFileKind = $derived(activeFile ? filePreviewKind(activeFile) : "unknown");
+  let activeFileMime = $derived(activeFile ? effectiveMimeType(activeFile) : "application/octet-stream");
+  let activeFileTypeLabel = $derived(activeFile ? fileTypeLabel(activeFile) : "File");
+
+  // ---- File preview helpers ----
+  function fileExtension(name: string): string {
+    const basename = name.split(/[\\/]/).pop() ?? name;
+    const dot = basename.lastIndexOf(".");
+    return dot > 0 && dot < basename.length - 1 ? basename.slice(dot + 1).toLowerCase() : "";
+  }
+
+  function effectiveMimeType(node: NodeMeta): string {
+    const stored = (node.mimeType || "").split(";", 1)[0].trim().toLowerCase();
+    if (stored && stored !== "application/octet-stream") return stored;
+    return MIME_BY_EXTENSION[fileExtension(node.name)] || stored || "application/octet-stream";
+  }
+
+  function filePreviewKind(node: NodeMeta): FilePreviewKind {
+    const storedMime = (node.mimeType || "").split(";", 1)[0].trim().toLowerCase();
+    const canInferFromExtension = !storedMime || storedMime === "application/octet-stream";
+    const mime = effectiveMimeType(node);
+    const extension = fileExtension(node.name);
+    if (mime.startsWith("image/") || (canInferFromExtension && IMAGE_EXTENSIONS.has(extension))) return "image";
+    if (mime.startsWith("video/") || (canInferFromExtension && VIDEO_EXTENSIONS.has(extension))) return "video";
+    if (mime.startsWith("audio/") || (canInferFromExtension && AUDIO_EXTENSIONS.has(extension))) return "audio";
+    if (mime === "application/pdf" || (canInferFromExtension && extension === "pdf")) return "pdf";
+    if (
+      mime.startsWith("text/") ||
+      ["application/json", "application/ld+json", "application/toml", "application/xml", "application/x-yaml", "application/yaml"].includes(mime) ||
+      mime.endsWith("+json") ||
+      mime.endsWith("+xml") ||
+      (canInferFromExtension && TEXT_EXTENSIONS.has(extension))
+    ) return "text";
+    if (
+      ["application/zip", "application/x-7z-compressed", "application/x-bzip2", "application/x-rar-compressed", "application/x-tar", "application/x-zip-compressed", "application/gzip", "application/vnd.rar"].includes(mime) ||
+      (canInferFromExtension && ARCHIVE_EXTENSIONS.has(extension))
+    ) return "archive";
+    if (
+      ["application/epub+zip", "application/msword", "application/rtf", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.oasis.opendocument.presentation", "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.oasis.opendocument.text"].includes(mime) ||
+      mime.includes("officedocument") ||
+      (canInferFromExtension && DOCUMENT_EXTENSIONS.has(extension))
+    ) return "document";
+    return "unknown";
+  }
+
+  function fileTypeLabel(node: NodeMeta): string {
+    const extension = fileExtension(node.name);
+    const labels: Record<FilePreviewKind, string> = {
+      image: "Image",
+      video: "Video",
+      audio: "Audio",
+      pdf: "PDF document",
+      text: "Text / code",
+      archive: "Archive",
+      document: "Document",
+      unknown: extension ? `${extension.toUpperCase()} file` : "Unknown file",
+    };
+    return labels[filePreviewKind(node)];
+  }
+
+  function resetActiveFilePreview(): void {
+    fileLoadGeneration++;
+    if (activeFileUrl) URL.revokeObjectURL(activeFileUrl);
+    activeFileBlob = null;
+    activeFileUrl = "";
+    fileViewMode = "preview";
+    fileLoadStatus = "idle";
+    fileLoadError = "";
+    fileText = "";
+    fileTextStatus = "idle";
+    fileTextTruncated = false;
+    rawPreview = "";
+    rawLoadStatus = "idle";
+    rawPreviewTruncated = false;
+    mediaPreviewError = false;
+  }
+
+  async function loadTextFile(blob: Blob, generation: number): Promise<void> {
+    fileTextStatus = "loading";
+    try {
+      const limit = Math.min(blob.size, TEXT_PREVIEW_LIMIT);
+      const text = await blob.slice(0, limit).text();
+      if (generation !== fileLoadGeneration) return;
+      fileText = text;
+      fileTextTruncated = blob.size > limit;
+      fileTextStatus = "ready";
+    } catch {
+      if (generation !== fileLoadGeneration) return;
+      fileTextStatus = "error";
+    }
+  }
+
+  function formatHexDump(bytes: Uint8Array): string {
+    if (bytes.length === 0) return "(empty file)";
+    const lines: string[] = [];
+    for (let offset = 0; offset < bytes.length; offset += 16) {
+      const row = bytes.subarray(offset, offset + 16);
+      const hex = Array.from(row, (byte) => byte.toString(16).padStart(2, "0")).join(" ").padEnd(47, " ");
+      const ascii = Array.from(row, (byte) => (byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".")).join("");
+      lines.push(`${offset.toString(16).padStart(8, "0")}  ${hex}  |${ascii}|`);
+    }
+    return lines.join("\n");
+  }
+
+  async function showRawFile(): Promise<void> {
+    fileViewMode = "raw";
+    if (rawLoadStatus === "loading" || rawLoadStatus === "ready") return;
+    const blob = activeFileBlob;
+    if (!blob) {
+      rawLoadStatus = "error";
+      return;
+    }
+
+    const generation = fileLoadGeneration;
+    rawLoadStatus = "loading";
+    try {
+      const limit = Math.min(blob.size, RAW_PREVIEW_LIMIT);
+      const bytes = new Uint8Array(await blob.slice(0, limit).arrayBuffer());
+      if (generation !== fileLoadGeneration) return;
+      rawPreview = formatHexDump(bytes);
+      rawPreviewTruncated = blob.size > limit;
+      rawLoadStatus = "ready";
+    } catch {
+      if (generation !== fileLoadGeneration) return;
+      rawLoadStatus = "error";
+    }
+  }
+
+  function showFilePreview(): void {
+    fileViewMode = "preview";
+  }
+
+  function handleMediaPreviewError(event: Event): void {
+    const target = event.currentTarget as HTMLImageElement | HTMLMediaElement;
+    if (target.src === activeFileUrl) mediaPreviewError = true;
+  }
 
   // ---- Tree helpers ----
   // Ensures a name is unique among same-type siblings in the same folder,
@@ -312,13 +557,17 @@ console.log("Code blocks are highlighted");
   }
 
   async function openNote(id: string): Promise<void> {
+    const openGeneration = ++openRequestGeneration;
     await flushSave();
+    if (componentDisposed || openGeneration !== openRequestGeneration) return;
     const node = nodes.find((n) => n.id === id && n.type === "note");
     if (!node) return;
+    resetActiveFilePreview();
     selectedId = id;
     activeId = id;
     idbSet(ACTIVE_KEY, id).catch(() => {});
     const content = ((await idbGet(noteKey(id))) as string | undefined) ?? "";
+    if (componentDisposed || openGeneration !== openRequestGeneration || activeId !== id) return;
     currentContent = content;
     programmatic = true;
     updateEditorContent(editor, content);
@@ -328,9 +577,13 @@ console.log("Code blocks are highlighted");
   }
 
   async function openFile(id: string): Promise<void> {
+    const openGeneration = ++openRequestGeneration;
     await flushSave();
+    if (componentDisposed || openGeneration !== openRequestGeneration) return;
     const node = nodes.find((n) => n.id === id && n.type === "file");
     if (!node) return;
+    resetActiveFilePreview();
+    const generation = fileLoadGeneration;
     selectedId = id;
     activeId = id;
     idbSet(ACTIVE_KEY, id).catch(() => {});
@@ -340,6 +593,28 @@ console.log("Code blocks are highlighted");
     updateEditorContent(editor, "");
     programmatic = false;
     saveStatus = "saved";
+
+    fileLoadStatus = "loading";
+    try {
+      const content = await fileContent(id);
+      if (componentDisposed || openGeneration !== openRequestGeneration || generation !== fileLoadGeneration || activeId !== id) return;
+      if (!content) {
+        fileLoadStatus = "error";
+        fileLoadError = "The file data is missing from browser storage.";
+        return;
+      }
+
+      activeFileBlob = content;
+      const mimeType = effectiveMimeType(node);
+      const previewBlob = content.type === mimeType ? content : content.slice(0, content.size, mimeType);
+      activeFileUrl = URL.createObjectURL(previewBlob);
+      fileLoadStatus = "ready";
+      if (filePreviewKind(node) === "text") void loadTextFile(content, generation);
+    } catch {
+      if (generation !== fileLoadGeneration) return;
+      fileLoadStatus = "error";
+      fileLoadError = "The file could not be read from browser storage.";
+    }
   }
 
   function onRowClick(node: NodeMeta): void {
@@ -361,15 +636,23 @@ console.log("Code blocks are highlighted");
     editingName = n.name;
   }
 
+  async function refreshPreviewAfterRename(node: NodeMeta): Promise<void> {
+    if (node.type === "file" && node.id === activeId) {
+      await openFile(node.id);
+    }
+  }
+
   function commitRename(): void {
     if (!editingId) return;
     const n = nodes.find((x) => x.id === editingId);
     if (n) {
+      const previousName = n.name;
       const name = (editingName.trim() || (n.type === "folder" ? "New Folder" : "Untitled"));
       n.name = uniqueName(n.parentId, n.type, name, n.id);
       n.updatedAt = Date.now();
       nodes = [...nodes];
       persistIndex();
+      if (n.name !== previousName) void refreshPreviewAfterRename(n);
     }
     editingId = null;
   }
@@ -419,6 +702,8 @@ console.log("Code blocks are highlighted");
   }
 
   function clearEditor(): void {
+    openRequestGeneration++;
+    resetActiveFilePreview();
     activeId = null;
     currentContent = "";
     previewHtml = "";
@@ -511,13 +796,20 @@ console.log("Code blocks are highlighted");
     schedulePersistIndex();
   }
 
+  function onTitleFocus(): void {
+    titleNameBeforeEdit = activeNode?.name ?? "";
+  }
+
   function onTitleBlur(): void {
     const node = activeNode;
     if (!node) return;
     const name = node.name.trim() || "Untitled";
-    node.name = uniqueName(node.parentId, "note", name, node.id);
+    node.name = uniqueName(node.parentId, node.type, name, node.id);
     nodes = [...nodes];
     persistIndex();
+    const nameChanged = node.name !== titleNameBeforeEdit;
+    titleNameBeforeEdit = "";
+    if (nameChanged) void refreshPreviewAfterRename(node);
   }
 
   function onUpdate(content: string): void {
@@ -1029,6 +1321,7 @@ console.log("Code blocks are highlighted");
 
   async function loadAll(): Promise<void> {
     const idx = (await idbGet(INDEX_KEY)) as NodeMeta[] | undefined;
+    if (componentDisposed) return;
     if (Array.isArray(idx) && idx.length > 0) {
       nodes = idx;
     } else {
@@ -1038,6 +1331,7 @@ console.log("Code blocks are highlighted");
     }
 
     const storedActive = (await idbGet(ACTIVE_KEY)) as string | null | undefined;
+    if (componentDisposed) return;
     let openId: string | null = null;
     if (storedActive && nodes.some((n) => n.id === storedActive && n.type !== "folder")) {
       openId = storedActive;
@@ -1236,7 +1530,7 @@ console.log("Code blocks are highlighted");
         },
       },
       renameNode: {
-        description: "Rename a note or folder by id. The final name is made unique among its siblings.",
+        description: "Rename a note, file, or folder by id. The final name is made unique among its siblings.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1247,11 +1541,13 @@ console.log("Code blocks are highlighted");
         },
         handler: async (args) => {
           const node = requireNode(args.id);
+          const previousName = node.name;
           const fallback = node.type === "folder" ? "New Folder" : "Untitled";
           node.name = uniqueName(node.parentId, node.type, String(args.name).trim() || fallback, node.id);
           node.updatedAt = Date.now();
           nodes = [...nodes];
           await idbSet(INDEX_KEY, $state.snapshot(nodes));
+          if (node.name !== previousName) await refreshPreviewAfterRename(node);
           return nodeSummary(node);
         },
       },
@@ -1304,6 +1600,7 @@ console.log("Code blocks are highlighted");
   }
 
   onMount(() => {
+    componentDisposed = false;
     let disposed = false;
     let unregisterMcp = () => {};
     buildEditor("");
@@ -1327,8 +1624,10 @@ console.log("Code blocks are highlighted");
 
     return () => {
       disposed = true;
+      componentDisposed = true;
       unregisterMcp();
       void flushSave();
+      resetActiveFilePreview();
       if (darkModeCleanup) darkModeCleanup();
       if (editor) editor.destroy();
       if (saveTimer) clearTimeout(saveTimer);
@@ -1347,6 +1646,73 @@ console.log("Code blocks are highlighted");
 <svelte:head>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" />
 </svelte:head>
+
+{#snippet fileKindIcon(kind: FilePreviewKind, className: string)}
+  {#if kind === "image"}
+    <FileImage class={className} />
+  {:else if kind === "video"}
+    <FileVideo class={className} />
+  {:else if kind === "audio"}
+    <FileAudio class={className} />
+  {:else if kind === "archive"}
+    <FileArchive class={className} />
+  {:else if kind === "text" || kind === "pdf" || kind === "document"}
+    <FileText class={className} />
+  {:else}
+    <FileQuestion class={className} />
+  {/if}
+{/snippet}
+
+{#snippet fileDetails(node: NodeMeta, kind: FilePreviewKind, issue: string)}
+  <div class="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-1 py-8 sm:px-6">
+    <div class="border-y border-(--color-border) py-6 sm:py-8">
+      <div class="flex items-start gap-4 sm:gap-6">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) sm:h-14 sm:w-14">
+          {@render fileKindIcon(kind, "h-6 w-6 sm:h-7 sm:w-7")}
+        </div>
+        <div class="min-w-0 flex-1">
+          <h2 class="break-words text-lg font-semibold leading-tight text-(--color-text)" title={node.name}>{node.name}</h2>
+          <p class="mt-1 text-sm text-(--color-text-muted)">{fileTypeLabel(node)}</p>
+          {#if issue}
+            <p role="alert" class="mt-3 border border-(--color-error-border) bg-(--color-error-bg) px-3 py-2 text-sm text-(--color-error-text)">
+              {issue}
+            </p>
+          {/if}
+          <dl class="mt-5 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm tabular-nums">
+            <dt class="text-(--color-text-light)">Size</dt>
+            <dd class="text-(--color-text-muted)">{formatBytes(node.size)}</dd>
+            <dt class="text-(--color-text-light)">Format</dt>
+            <dd class="min-w-0 break-all text-(--color-text-muted)">{effectiveMimeType(node)}</dd>
+            <dt class="text-(--color-text-light)">Storage</dt>
+            <dd class="text-(--color-text-muted)">This browser only</dd>
+          </dl>
+          <div class="mt-6 flex flex-wrap gap-2">
+            <button
+              onclick={showRawFile}
+              disabled={!activeFileBlob}
+              class="inline-flex items-center gap-2 border border-(--color-border) px-3 py-2 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-bg) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent) disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Binary class="h-4 w-4" />
+              Inspect raw bytes
+            </button>
+            <button
+              onclick={downloadActiveNode}
+              class="inline-flex items-center gap-2 bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-btn-text) transition-colors hover:bg-(--color-accent-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent)"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 10.5L12 15m0 0l4.5-4.5M12 15V3" />
+              </svg>
+              Download file
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mt-4 max-w-xl text-xs leading-5 text-(--color-text-light)">
+      The original bytes stay in IndexedDB and are never uploaded. Clearing this site's browser data removes this file.
+    </p>
+  </div>
+{/snippet}
 
 {#snippet treeNode(node: NodeMeta, depth: number)}
   <div
@@ -1389,7 +1755,9 @@ console.log("Code blocks are highlighted");
       <span class="shrink-0" aria-hidden="true">📄</span>
     {:else}
       <span class="w-3 shrink-0"></span>
-      <span class="shrink-0" aria-hidden="true">📦</span>
+      <span class="shrink-0" aria-hidden="true">
+        {@render fileKindIcon(filePreviewKind(node), "h-4 w-4")}
+      </span>
     {/if}
 
     {#if editingId === node.id}
@@ -1529,6 +1897,7 @@ console.log("Code blocks are highlighted");
             <input
               value={activeNode.name}
               oninput={onTitleInput}
+              onfocus={onTitleFocus}
               onblur={onTitleBlur}
               class="flex-1 min-w-0 px-2 py-1 text-sm font-medium bg-transparent text-(--color-text) border border-transparent hover:border-(--color-border) focus:border-(--color-accent) focus:bg-(--color-bg) focus:outline-none transition-colors"
               placeholder="Untitled"
@@ -1541,7 +1910,7 @@ console.log("Code blocks are highlighted");
                 {saveStatus === "saving" ? "Saving…" : "Saved"}
               </span>
             {:else if activeFile}
-              <span class="shrink-0 text-xs text-(--color-text-muted)" title="Stored locally in this browser">
+              <span class="hidden shrink-0 text-xs text-(--color-text-muted) sm:inline" title="Stored locally in this browser">
                 {formatBytes(activeFile.size)}
               </span>
             {/if}
@@ -1563,17 +1932,45 @@ console.log("Code blocks are highlighted");
                 </button>
               {/each}
             </div>
+          {:else if activeFile}
+            <div class="flex shrink-0 items-center border border-(--color-border)">
+              <button
+                onclick={showFilePreview}
+                disabled={fileLoadStatus !== "ready"}
+                aria-pressed={fileViewMode === "preview"}
+                class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-(--color-accent) disabled:opacity-40 {fileViewMode === 'preview'
+                  ? 'bg-(--color-text) text-(--color-btn-text)'
+                  : 'text-(--color-text-muted) hover:bg-(--color-bg) hover:text-(--color-text)'}"
+                title="File preview"
+              >
+                <Eye class="h-3.5 w-3.5" />
+                <span class="hidden md:inline">Preview</span>
+              </button>
+              <button
+                onclick={showRawFile}
+                disabled={fileLoadStatus !== "ready"}
+                aria-pressed={fileViewMode === "raw"}
+                class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-(--color-accent) disabled:opacity-40 {fileViewMode === 'raw'
+                  ? 'bg-(--color-text) text-(--color-btn-text)'
+                  : 'text-(--color-text-muted) hover:bg-(--color-bg) hover:text-(--color-text)'}"
+                title="Inspect raw bytes"
+              >
+                <Binary class="h-3.5 w-3.5" />
+                <span class="hidden md:inline">Raw</span>
+              </button>
+            </div>
           {/if}
 
-          <button
-            onclick={beautify}
-            disabled={!activeNote}
-            class="p-1 text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 shrink-0"
-            title="Beautify (align tables, trim trailing spaces)"
-            aria-label="Beautify markdown"
-          >
-            <Sparkles class="w-4 h-4" />
-          </button>
+          {#if activeNote}
+            <button
+              onclick={beautify}
+              class="p-1 text-(--color-text-muted) hover:text-(--color-text) transition-colors shrink-0"
+              title="Beautify (align tables, trim trailing spaces)"
+              aria-label="Beautify markdown"
+            >
+              <Sparkles class="w-4 h-4" />
+            </button>
+          {/if}
 
           <button
             onclick={downloadActiveNode}
@@ -1589,37 +1986,142 @@ console.log("Code blocks are highlighted");
         </div>
 
         {#if activeFile}
-          <div class="flex-1 min-h-0 overflow-auto bg-(--color-bg-alt) p-6 sm:p-10">
-            <div class="mx-auto flex min-h-full max-w-xl flex-col justify-center">
-              <div class="flex items-start gap-4 border-y border-(--color-border) py-6">
-                <svg class="mt-0.5 h-9 w-9 shrink-0 text-(--color-text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m5.25 0H6.375c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h11.25c.621 0 1.125-.504 1.125-1.125V7.5L13.5 2.25z" />
-                </svg>
-                <div class="min-w-0 flex-1">
-                  <h2 class="truncate text-base font-semibold text-(--color-text)" title={activeFile.name}>{activeFile.name}</h2>
-                  <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-                    <dt class="text-(--color-text-light)">Type</dt>
-                    <dd class="min-w-0 truncate text-(--color-text-muted)" title={activeFile.mimeType}>{activeFile.mimeType || "application/octet-stream"}</dd>
-                    <dt class="text-(--color-text-light)">Size</dt>
-                    <dd class="text-(--color-text-muted)">{formatBytes(activeFile.size)}</dd>
-                    <dt class="text-(--color-text-light)">Location</dt>
-                    <dd class="text-(--color-text-muted)">This browser only</dd>
-                  </dl>
+          <div class="flex-1 min-h-0 overflow-auto bg-(--color-bg-alt)">
+            {#if fileLoadStatus === "loading"}
+              <div role="status" class="flex min-h-full items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
+                <LoaderCircle class="h-4 w-4 animate-spin" />
+                Opening {activeFile.name}…
+              </div>
+            {:else if fileLoadStatus === "error"}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, fileLoadError)}
+              </div>
+            {:else if fileViewMode === "raw"}
+              <div class="flex min-h-full flex-col bg-(--color-bg)">
+                <div class="sticky top-0 z-10 flex items-center gap-3 border-b border-(--color-border) bg-(--color-bg-alt) px-3 py-2 sm:px-4">
+                  <Binary class="h-4 w-4 shrink-0 text-(--color-text-muted)" />
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-semibold text-(--color-text)">Raw bytes</p>
+                    <p class="truncate text-[11px] text-(--color-text-light)">
+                      {rawPreviewTruncated ? "Showing the first 64 KB" : formatBytes(activeFile.size)} · hexadecimal + ASCII
+                    </p>
+                  </div>
                   <button
-                    onclick={downloadActiveNode}
-                    class="mt-5 inline-flex items-center gap-2 bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-btn-text) hover:bg-(--color-accent-hover) transition-colors"
+                    onclick={showFilePreview}
+                    class="inline-flex shrink-0 items-center gap-1.5 border border-(--color-border) px-2.5 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--color-bg) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent)"
                   >
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 10.5L12 15m0 0l4.5-4.5M12 15V3" />
-                    </svg>
-                    Download file
+                    <Eye class="h-3.5 w-3.5" />
+                    Preview
                   </button>
                 </div>
+                {#if rawLoadStatus === "loading"}
+                  <div role="status" class="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
+                    <LoaderCircle class="h-4 w-4 animate-spin" />
+                    Reading raw bytes…
+                  </div>
+                {:else if rawLoadStatus === "error"}
+                  <div role="alert" class="m-auto border border-(--color-error-border) bg-(--color-error-bg) px-4 py-3 text-sm text-(--color-error-text)">
+                    Raw bytes could not be read. Download the file to inspect it locally.
+                  </div>
+                {:else}
+                  <pre class="raw-file-viewer flex-1 overflow-auto p-3 text-xs leading-5 text-(--color-text) sm:p-4">{rawPreview}</pre>
+                {/if}
               </div>
-              <p class="mt-4 text-xs leading-5 text-(--color-text-light)">
-                The original bytes are stored in IndexedDB and never uploaded. Clearing this site's browser data removes this file.
-              </p>
-            </div>
+            {:else if mediaPreviewError}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, "This browser cannot preview the file's encoding. The original file is still available.")}
+              </div>
+            {:else if activeFileKind === "image"}
+              <div class="file-media-stage flex min-h-full items-center justify-center bg-[#111111] p-3 sm:p-6">
+                <img
+                  src={activeFileUrl}
+                  alt={activeFile.name}
+                  class="max-h-full max-w-full object-contain"
+                  onerror={handleMediaPreviewError}
+                />
+              </div>
+            {:else if activeFileKind === "video"}
+              <div class="file-media-stage flex min-h-full items-center justify-center bg-black p-2 sm:p-5">
+                <video
+                  src={activeFileUrl}
+                  controls
+                  playsinline
+                  preload="metadata"
+                  class="max-h-full max-w-full"
+                  onerror={handleMediaPreviewError}
+                ></video>
+              </div>
+            {:else if activeFileKind === "audio"}
+              <div class="flex min-h-full items-center justify-center p-5 sm:p-10">
+                <div class="w-full max-w-2xl border-y border-(--color-border) py-8 sm:py-10">
+                  <div class="flex items-center gap-4 sm:gap-6">
+                    <div class="flex h-14 w-14 shrink-0 items-center justify-center border border-(--color-border) bg-(--color-bg) text-(--color-text-muted) sm:h-20 sm:w-20">
+                      <FileAudio class="h-7 w-7 sm:h-9 sm:w-9" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <h2 class="truncate text-base font-semibold text-(--color-text)" title={activeFile.name}>{activeFile.name}</h2>
+                      <p class="mt-1 text-sm text-(--color-text-muted)">{formatBytes(activeFile.size)} · {activeFileMime}</p>
+                    </div>
+                  </div>
+                  <audio
+                    src={activeFileUrl}
+                    controls
+                    preload="metadata"
+                    class="mt-6 w-full"
+                    onerror={handleMediaPreviewError}
+                  ></audio>
+                </div>
+              </div>
+            {:else if activeFileKind === "pdf"}
+              <div class="flex h-full min-h-[30rem] flex-col">
+                <div class="flex items-center gap-3 border-b border-(--color-border) bg-(--color-bg-alt) px-3 py-2 sm:px-4">
+                  <FileText class="h-4 w-4 shrink-0 text-(--color-text-muted)" />
+                  <p class="min-w-0 flex-1 truncate text-xs text-(--color-text-muted)">
+                    Browser PDF preview · If the page stays blank, download the original file.
+                  </p>
+                  <button
+                    onclick={downloadActiveNode}
+                    class="shrink-0 border border-(--color-border) px-2.5 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--color-bg) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent)"
+                  >
+                    Download
+                  </button>
+                </div>
+                <iframe
+                  src={activeFileUrl}
+                  title={`Preview of ${activeFile.name}`}
+                  sandbox=""
+                  class="min-h-[26rem] w-full flex-1 border-0 bg-white"
+                ></iframe>
+              </div>
+            {:else if activeFileKind === "text"}
+              <div class="flex min-h-full flex-col bg-(--color-bg)">
+                <div class="sticky top-0 z-10 flex items-center gap-3 border-b border-(--color-border) bg-(--color-bg-alt) px-3 py-2 sm:px-4">
+                  <FileText class="h-4 w-4 shrink-0 text-(--color-text-muted)" />
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-semibold text-(--color-text)">Text preview</p>
+                    <p class="truncate text-[11px] text-(--color-text-light)">
+                      {fileTextTruncated ? "Showing the first 1 MB" : formatBytes(activeFile.size)} · {activeFileMime}
+                    </p>
+                  </div>
+                </div>
+                {#if fileTextStatus === "loading"}
+                  <div role="status" class="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-(--color-text-muted)">
+                    <LoaderCircle class="h-4 w-4 animate-spin" />
+                    Reading text…
+                  </div>
+                {:else if fileTextStatus === "error"}
+                  <div role="alert" class="m-auto border border-(--color-error-border) bg-(--color-error-bg) px-4 py-3 text-sm text-(--color-error-text)">
+                    This text file could not be decoded. Use Raw to inspect its bytes.
+                  </div>
+                {:else}
+                  <pre class="text-file-viewer flex-1 overflow-auto p-3 text-sm leading-6 text-(--color-text) sm:p-5">{fileText || "(empty file)"}</pre>
+                {/if}
+              </div>
+            {:else}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, "")}
+              </div>
+            {/if}
           </div>
         {/if}
         <div
@@ -1669,9 +2171,9 @@ console.log("Code blocks are highlighted");
 
         <div class="shrink-0 flex items-center gap-3 px-3 py-1 text-xs text-(--color-text-light) border-t border-(--color-border)">
           {#if activeFile}
-            <span>{activeFile.mimeType || "application/octet-stream"}</span>
+            <span class="truncate" title={activeFileMime}>{activeFileTypeLabel} · {activeFileMime}</span>
             <div class="flex-1"></div>
-            <span>{formatBytes(activeFile.size)}</span>
+            <span class="shrink-0 tabular-nums">{formatBytes(activeFile.size)}</span>
           {:else}
             <span>Ln {cursorLine}, Col {cursorColumn}</span>
             {#if selectionLength > 0}
@@ -1792,6 +2294,24 @@ console.log("Code blocks are highlighted");
 </div>
 
 <style>
+  .file-media-stage {
+    height: 100%;
+  }
+
+  .raw-file-viewer,
+  .text-file-viewer {
+    margin: 0;
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    tab-size: 2;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-text-light) transparent;
+  }
+
+  .raw-file-viewer {
+    min-width: max-content;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* GitHub-like markdown body styling */
   :global(.markdown-body) {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
