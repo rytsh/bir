@@ -33,7 +33,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
 ---
 
 <!doctype html>
-<html lang="en" class="loading">
+<html lang="en" class="loading" transition:animate="none">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -120,7 +120,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
       })();
     </script>
     <!-- Client-side navigation -->
-    <ClientRouter transition:animate="none" />
+    <ClientRouter />
     <!-- Apply theme before page swap during client-side navigation -->
     <script is:inline>
       document.addEventListener("astro:before-swap", (event) => {
@@ -147,6 +147,39 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
     </script>
   </head>
   <body class="h-full bg-(--color-bg) flex flex-col">
+    <!-- Navigation progress: immediate feedback between click and page swap -->
+    <div id="nav-progress" aria-hidden="true" transition:persist></div>
+    <script is:inline>
+      (function () {
+        if (window.__navProgressReady) return;
+        window.__navProgressReady = true;
+
+        var resetTimer;
+        var getBar = function () {
+          return document.getElementById("nav-progress");
+        };
+
+        document.addEventListener("astro:before-preparation", function () {
+          var bar = getBar();
+          if (!bar) return;
+          clearTimeout(resetTimer);
+          bar.classList.remove("is-done", "is-loading");
+          void bar.offsetWidth; // restart the transition
+          bar.classList.add("is-loading");
+        });
+
+        document.addEventListener("astro:page-load", function () {
+          var bar = getBar();
+          if (!bar || !bar.classList.contains("is-loading")) return;
+          bar.classList.remove("is-loading");
+          bar.classList.add("is-done");
+          resetTimer = setTimeout(function () {
+            bar.classList.remove("is-done");
+          }, 400);
+        });
+      })();
+    </script>
+
     <!-- Overlay -->
     <div
       id="overlay"

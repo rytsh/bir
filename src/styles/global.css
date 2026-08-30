@@ -127,6 +127,46 @@
   --color-diff-removed-text: #fca5a5;
 }
 
+/* Navigation progress bar: shows the click registered before the page swaps */
+#nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  height: 2px;
+  width: 0;
+  background-color: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#nav-progress.is-loading {
+  width: 75%;
+  opacity: 1;
+  transition:
+    width 3s cubic-bezier(0.05, 0.8, 0.25, 1),
+    opacity 80ms linear;
+}
+
+#nav-progress.is-done {
+  width: 100%;
+  opacity: 0;
+  transition:
+    width 150ms ease-out,
+    opacity 250ms ease-out 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #nav-progress.is-loading {
+    width: 75%;
+    transition: opacity 80ms linear;
+  }
+
+  #nav-progress.is-done {
+    transition: opacity 150ms linear;
+  }
+}
+
 /* Prevent flash of unstyled content during initialization */
 html.loading {
   visibility: hidden;

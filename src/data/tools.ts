@@ -991,11 +991,11 @@ const rawCategories: Category[] = [
       },
       {
         id: "browser-info",
-        name: "Browser Info",
-        description: "View browser capabilities, supported APIs, storage, and system features",
-        icon: "🌐",
+        name: "Hardware & Browser",
+        description: "Inspect browser-visible hardware including CPU architecture and logical cores, approximate RAM, GPU renderer, display, storage quota, connected devices, operating system, and supported web APIs",
+        icon: "🖥️",
         path: "/tester/browser",
-        keywords: "browser info, browser capabilities, web api support, feature detection, browser test, webgl, service worker, local storage, cookies, user agent",
+        keywords: "hardware info, system information, computer specs, device specs, cpu, processor, logical cores, cpu architecture, ram, memory, gpu, graphics card, webgpu, webgl, storage, display, screen, operating system, browser info, browser capabilities, web api support, feature detection, browser test, service worker, local storage, cookies, user agent",
       },
       {
         id: "typing-speed-test",
