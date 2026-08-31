@@ -1,70 +1,115 @@
 /**
- * Helper for publishing a tool page's own MCP tools to the mcp-page-bridge
- * browser extension via `window.mcp`.
+ * Helper for publishing a tool page's own MCP tools with
+ * [WebMCP](https://github.com/webmachinelearning/webmcp) — the standard
+ * `document.modelContext` API for handing client-side functionality to AI
+ * agents.
  *
- * When the extension is installed and the tab is enabled, the tools declared
- * here are tunnelled to a local MCP bridge and become callable by a coding
- * agent (namespaced as `<label>__<tool>`). When the extension is NOT installed,
- * `window.mcp` is just inert page data, so this is safe to ship in production.
+ * `document.modelContext` is native in the Chrome 149 / Edge 150 origin trials,
+ * and the mcp-page-bridge browser extension polyfills it everywhere else. When
+ * neither is present this module is a no-op, so it is safe to ship in
+ * production.
  *
- * Each tool page registers its OWN `label` + `tools` (page-scoped). Because the
- * site uses Astro's ClientRouter (client-side navigation swaps the DOM without a
- * full reload), `window.mcp` would otherwise leak from one tool to the next, so
+ * With the extension installed and the tab enabled, the tools registered here
+ * are tunnelled to a local MCP bridge and become callable by a coding agent,
+ * namespaced as `<label>__<tool>`.
+ *
+ * Each tool page registers its OWN label + tools (page-scoped). Because the site
+ * uses Astro's ClientRouter (client-side navigation swaps the DOM without a full
+ * reload), tools would otherwise leak from one tool page to the next, so
  * `registerPageMcp` returns a cleanup that must run on component unmount.
  */
 
-export type ToolHandler = (
+/**
+ * A WebMCP execute callback. `signal` is aborted if the agent cancels the call.
+ */
+export type ToolExecute = (
   args: Record<string, any>,
+  options: { signal: AbortSignal },
 ) => unknown | Promise<unknown>;
 
-export interface ToolDefinition {
+export interface PageTool {
+  /** 1-128 characters of `[A-Za-z0-9_.-]`. */
+  name: string;
+  /** Human-readable label for UI. */
   title?: string;
-  description?: string;
+  /** Required by WebMCP: what the tool does, in natural language. */
+  description: string;
+  /** JSON Schema for `args`. */
   inputSchema?: Record<string, unknown>;
-  handler: ToolHandler;
+  /** `readOnlyHint: true` tells the agent the tool does not mutate state. */
+  annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
+  execute: ToolExecute;
 }
 
-export type ToolManifest = ToolHandler | ToolDefinition;
-
-export interface McpManifest {
-  label?: string;
-  tools?: Record<string, ToolManifest>;
-  [key: string]: unknown;
-}
-
+/** Bridge-only knobs, present only when the mcp-page-bridge extension is installed. */
 declare global {
   interface Window {
-    mcp?: McpManifest;
+    mcpPageBridge?: {
+      setLabel(value: string): void;
+      readonly connected: boolean;
+      readonly nativeWebMcp: boolean;
+    };
   }
 }
 
-function isBrowser(): boolean {
-  return typeof window !== "undefined";
-}
+const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
 /**
- * Publish a page's tools on `window.mcp`. Returns a cleanup function that clears
- * the registered tools so a stale provider does not linger after navigation.
- *
- * Tool handlers should be stable references (defined once) because the
- * extension diffs tools by handler identity on a ~1s rescan; recreating handler
- * closures on every render would churn re-registration.
+ * The registration currently owning `document.modelContext`. ClientRouter can
+ * mount the next page's island before unmounting the previous one, so we tear
+ * the old set down explicitly instead of relying on cleanup ordering.
  */
-export function registerPageMcp(
-  label: string,
-  tools: Record<string, ToolManifest>,
-): () => void {
-  if (!isBrowser()) return () => {};
+let active: { label: string; controller: AbortController } | undefined;
 
-  // The extension installs a getter/setter on window.mcp that merges its own API
-  // methods onto whatever we assign, so a plain object assignment is enough and
-  // also triggers a live re-sync.
-  window.mcp = { label, tools };
+/**
+ * Register a page's tools with WebMCP. Returns a cleanup function that
+ * unregisters them so a stale provider does not linger after navigation.
+ */
+export function registerPageMcp(label: string, tools: PageTool[]): () => void {
+  if (typeof document === "undefined") return () => {};
+
+  const modelContext = document.modelContext;
+  if (!modelContext) {
+    // No native WebMCP and no mcp-page-bridge extension — nothing to do.
+    return () => {};
+  }
+
+  active?.controller.abort();
+
+  const controller = new AbortController();
+  const registration = { label, controller };
+  active = registration;
+
+  // Namespaces the tools for the agent, e.g. `notepad__listNotes`.
+  window.mcpPageBridge?.setLabel(label);
+
+  for (const { name, title, description, inputSchema, annotations, execute } of tools) {
+    if (!TOOL_NAME_PATTERN.test(name)) {
+      console.warn(`[mcp] skipping tool with invalid name: ${name}`);
+      continue;
+    }
+    modelContext
+      .registerTool(
+        {
+          name,
+          ...(title === undefined ? {} : { title }),
+          description,
+          ...(inputSchema === undefined ? {} : { inputSchema }),
+          ...(annotations === undefined ? {} : { annotations }),
+          execute,
+        },
+        { signal: controller.signal },
+      )
+      .catch((error: unknown) => {
+        // Aborting the signal rejects the pending promise — that is the normal
+        // unregister path, not a failure.
+        if (controller.signal.aborted) return;
+        console.warn(`[mcp] could not register "${label}__${name}":`, error);
+      });
+  }
 
   return () => {
-    // Only clear if we still own the manifest for this label.
-    if (window.mcp && window.mcp.label === label) {
-      window.mcp = { label, tools: {} };
-    }
+    controller.abort();
+    if (active === registration) active = undefined;
   };
 }

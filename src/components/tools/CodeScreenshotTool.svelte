@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { toPng, toSvg } from "html-to-image";
   import hljs from "highlight.js";
-  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
+  import { registerPageMcp, type PageTool } from "../../lib/pageMcp.js";
 
   type WindowStyle = "macos" | "windows" | "none";
 
@@ -306,10 +306,11 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
   onMount(() => {
     const themeIds = Object.keys(themes);
     const backgroundNames = ["transparent", ...backgrounds.map((item) => item.name)];
-    const tools: Record<string, ToolManifest> = {
-      listOptions: {
+    const tools: PageTool[] = [
+      {
+        name: "listOptions",
         description: "List supported languages, themes, backgrounds, window styles, and numeric setting ranges.",
-        handler: () => ({
+        execute: () => ({
           languages,
           themes: Object.entries(themes).map(([id, item]) => ({ id, name: item.name })),
           backgrounds: backgroundNames,
@@ -322,11 +323,13 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
           },
         }),
       },
-      getState: {
+      {
+        name: "getState",
         description: "Return the current code and all Code Screenshot preview settings.",
-        handler: () => screenshotState(),
+        execute: () => screenshotState(),
       },
-      setCode: {
+      {
+        name: "setCode",
         description: "Set the source code and optionally its syntax-highlighting language.",
         inputSchema: {
           type: "object",
@@ -336,7 +339,7 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
           },
           required: ["code"],
         },
-        handler: (args) => {
+        execute: (args) => {
           if (args.language != null) {
             const nextLanguage = String(args.language);
             if (!languages.includes(nextLanguage)) throw new Error(`Unknown language: ${nextLanguage}`);
@@ -346,7 +349,8 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
           return screenshotState();
         },
       },
-      configure: {
+      {
+        name: "configure",
         description: "Configure the screenshot theme, background, window chrome, spacing, font, and line numbers.",
         inputSchema: {
           type: "object",
@@ -360,13 +364,14 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
             showLineNumbers: { type: "boolean" },
           },
         },
-        handler: async (args) => {
+        execute: async (args) => {
           configureScreenshot(args);
           await tick();
           return screenshotState();
         },
       },
-      exportScreenshot: {
+      {
+        name: "exportScreenshot",
         description: "Render the current preview and download it as a PNG or SVG file in the browser.",
         inputSchema: {
           type: "object",
@@ -377,7 +382,7 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
           },
           required: ["format"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const format = String(args.format) as "png" | "svg";
           if (format !== "png" && format !== "svg") throw new Error(`Unknown format: ${format}`);
           const pixelRatio = args.pixelRatio == null
@@ -397,7 +402,7 @@ console.log(\`Fibonacci(10) = \${result}\`);`;
           }
         },
       },
-    };
+    ];
 
     return registerPageMcp("code-screenshot", tools);
   });

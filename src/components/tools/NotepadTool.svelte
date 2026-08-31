@@ -21,7 +21,7 @@
     type DarkModeCleanup,
     type SelectionInfo,
   } from "../../lib/codemirror.js";
-  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
+  import { registerPageMcp, type PageTool } from "../../lib/pageMcp.js";
   import { buildZip } from "./pdf/shared/zip-store";
 
   type NodeType = "folder" | "note" | "file";
@@ -1443,41 +1443,45 @@ console.log("Code blocks are highlighted");
       anyOf: [{ type: "string" }, { type: "null" }],
       description: "Folder id, or null for the notebook root",
     };
-    const tools: Record<string, ToolManifest> = {
-      listNotes: {
+    const tools: PageTool[] = [
+      {
+        name: "listNotes",
         description:
           "List every note and folder in tree order. Returns ids and paths for use with the other Notepad tools.",
-        handler: () => ({
+        execute: () => ({
           activeId,
           nodes: orderedNodes().map(nodeSummary),
         }),
       },
-      readNote: {
+      {
+        name: "readNote",
         description: "Read a Markdown note by id without changing the active note.",
         inputSchema: {
           type: "object",
           properties: { id: { type: "string", description: "Note id from listNotes" } },
           required: ["id"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id, "note");
           return { ...nodeSummary(node), content: await noteContent(node.id) };
         },
       },
-      openNote: {
+      {
+        name: "openNote",
         description: "Open a note by id in the visible Notepad editor and return its content.",
         inputSchema: {
           type: "object",
           properties: { id: { type: "string", description: "Note id from listNotes" } },
           required: ["id"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id, "note");
           await openNote(node.id);
           return { ...nodeSummary(node), content: currentContent };
         },
       },
-      createNote: {
+      {
+        name: "createNote",
         description: "Create and open a Markdown note. Names are made unique within the destination folder.",
         inputSchema: {
           type: "object",
@@ -1488,7 +1492,7 @@ console.log("Code blocks are highlighted");
           },
           required: ["name"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const parentId = parentFolderId(args.parentId);
           const node = addNote(parentId, String(args.name || "Untitled"), String(args.content ?? ""));
           expandFolder(parentId);
@@ -1500,7 +1504,8 @@ console.log("Code blocks are highlighted");
           return { ...nodeSummary(node), content: currentContent };
         },
       },
-      updateNote: {
+      {
+        name: "updateNote",
         description: "Replace a note's complete Markdown content by id.",
         inputSchema: {
           type: "object",
@@ -1510,13 +1515,14 @@ console.log("Code blocks are highlighted");
           },
           required: ["id", "content"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id, "note");
           await writeNoteContent(node, String(args.content ?? ""));
           return { ...nodeSummary(node), content: await noteContent(node.id) };
         },
       },
-      appendNote: {
+      {
+        name: "appendNote",
         description: "Append Markdown text to a note by id.",
         inputSchema: {
           type: "object",
@@ -1526,14 +1532,15 @@ console.log("Code blocks are highlighted");
           },
           required: ["id", "text"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id, "note");
           const content = (await noteContent(node.id)) + String(args.text ?? "");
           await writeNoteContent(node, content);
           return { ...nodeSummary(node), content };
         },
       },
-      createFolder: {
+      {
+        name: "createFolder",
         description: "Create a folder in the notebook. Names are made unique within the parent folder.",
         inputSchema: {
           type: "object",
@@ -1543,7 +1550,7 @@ console.log("Code blocks are highlighted");
           },
           required: ["name"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const parentId = parentFolderId(args.parentId);
           const node = addFolder(parentId, String(args.name || "New Folder"));
           expandFolder(parentId);
@@ -1552,7 +1559,8 @@ console.log("Code blocks are highlighted");
           return nodeSummary(node);
         },
       },
-      renameNode: {
+      {
+        name: "renameNode",
         description: "Rename a note, file, or folder by id. The final name is made unique among its siblings.",
         inputSchema: {
           type: "object",
@@ -1562,7 +1570,7 @@ console.log("Code blocks are highlighted");
           },
           required: ["id", "name"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id);
           const previousName = node.name;
           const fallback = node.type === "folder" ? "New Folder" : "Untitled";
@@ -1574,7 +1582,8 @@ console.log("Code blocks are highlighted");
           return nodeSummary(node);
         },
       },
-      moveNode: {
+      {
+        name: "moveNode",
         description: "Move a note or folder into another folder, or to the notebook root.",
         inputSchema: {
           type: "object",
@@ -1584,7 +1593,7 @@ console.log("Code blocks are highlighted");
           },
           required: ["id", "parentId"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id);
           const parentId = parentFolderId(args.parentId);
           if (node.type === "folder" && parentId && (parentId === node.id || isDescendant(node.id, parentId))) {
@@ -1598,7 +1607,8 @@ console.log("Code blocks are highlighted");
           return nodeSummary(node);
         },
       },
-      deleteNode: {
+      {
+        name: "deleteNode",
         description:
           "Permanently delete a note or folder and all notes inside it. Requires confirm=true; this cannot be undone.",
         inputSchema: {
@@ -1609,7 +1619,7 @@ console.log("Code blocks are highlighted");
           },
           required: ["id", "confirm"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const node = requireNode(args.id);
           if (args.confirm !== true) throw new Error("Set confirm=true to permanently delete this node.");
           const deleted = nodeSummary(node);
@@ -1617,7 +1627,7 @@ console.log("Code blocks are highlighted");
           return { deleted };
         },
       },
-    };
+    ];
 
     return registerPageMcp("notepad", tools);
   }
@@ -1846,7 +1856,7 @@ console.log("Code blocks are highlighted");
   {/if}
 {/snippet}
 
-<div class="relative h-full min-h-[75vh] overflow-hidden lg:min-h-0">
+<div class="relative min-h-[calc(100dvh-2.25rem)] overflow-hidden lg:h-full lg:min-h-0">
   <div class="absolute inset-0 flex flex-col">
     <div class="flex-1 min-h-0 flex border border-(--color-border)">
       <!-- Sidebar: file tree -->

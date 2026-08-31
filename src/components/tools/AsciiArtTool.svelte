@@ -3,7 +3,7 @@
 
   import figlet from "figlet";
 
-  import { registerPageMcp, type ToolManifest } from "../../lib/pageMcp.js";
+  import { registerPageMcp, type PageTool } from "../../lib/pageMcp.js";
   import {
     allAnsiColors,
     ansiEscapeFormats,
@@ -1801,10 +1801,11 @@
     error = "";
   };
 
-  // ---- MCP tools (mcp-page-bridge) ---------------------------------------
-  // Published on window.mcp so a coding agent can drive this page when the
-  // mcp-page-bridge extension is enabled on the tab. Inert without it. Handlers
-  // mutate the live $state, so the on-screen preview updates as the agent works.
+  // ---- MCP tools (WebMCP / document.modelContext) -------------------------
+  // Registered with WebMCP so a coding agent can drive this page. Inert unless
+  // the browser supports it or the mcp-page-bridge extension is enabled on the
+  // tab. The callbacks mutate the live $state, so the on-screen preview updates
+  // as the agent works.
   function ensurePaintGrid() {
     if (paintGrid.length === 0) syncPaintFromEditor();
   }
@@ -1812,12 +1813,14 @@
   onMount(() => {
     const tabs: Tab[] = ["generator", "editor", "paint"];
 
-    const tools: Record<string, ToolManifest> = {
-      listFonts: {
+    const tools: PageTool[] = [
+      {
+        name: "listFonts",
         description: "List the available FIGlet banner fonts.",
-        handler: () => availableFonts,
+        execute: () => availableFonts,
       },
-      generateBanner: {
+      {
+        name: "generateBanner",
         description:
           "Generate a FIGlet ASCII-art banner from text. Updates the Generator tab and returns the banner.",
         inputSchema: {
@@ -1838,7 +1841,7 @@
           },
           required: ["text"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           if (args.text != null) inputText = String(args.text);
           if (args.font != null) selectedFont = String(args.font);
           if (args.horizontalLayout != null) horizontalLayout = args.horizontalLayout as LayoutOption;
@@ -1853,36 +1856,40 @@
           return error ? `Error: ${error}` : output;
         },
       },
-      setBannerText: {
+      {
+        name: "setBannerText",
         description: "Set the Generator input text and return the regenerated banner.",
         inputSchema: {
           type: "object",
           properties: { text: { type: "string" } },
           required: ["text"],
         },
-        handler: async (args) => {
+        execute: async (args) => {
           inputText = String(args.text ?? "");
           activeTab = "generator";
           await generateArt();
           return error ? `Error: ${error}` : output;
         },
       },
-      getBannerOutput: {
+      {
+        name: "getBannerOutput",
         description: "Return the current Generator banner output.",
-        handler: () => output,
+        execute: () => output,
       },
-      getEditorText: {
+      {
+        name: "getEditorText",
         description: "Return the current Editor text (textarea or grid).",
-        handler: () => getCurrentEditorText(),
+        execute: () => getCurrentEditorText(),
       },
-      setEditorText: {
+      {
+        name: "setEditorText",
         description: "Replace the Editor content with the given text.",
         inputSchema: {
           type: "object",
           properties: { text: { type: "string" } },
           required: ["text"],
         },
-        handler: (args) => {
+        execute: (args) => {
           editorContent = String(args.text ?? "");
           if (editorMode === "grid") textToGrid(editorContent);
           cursorLine = 1;
@@ -1891,14 +1898,15 @@
           return "ok";
         },
       },
-      appendEditorText: {
+      {
+        name: "appendEditorText",
         description: "Append text to the end of the Editor content.",
         inputSchema: {
           type: "object",
           properties: { text: { type: "string" } },
           required: ["text"],
         },
-        handler: (args) => {
+        execute: (args) => {
           const text = String(args.text ?? "");
           editorContent = editorContent + text;
           if (editorMode === "grid") textToGrid(editorContent);
@@ -1906,15 +1914,17 @@
           return getCurrentEditorText();
         },
       },
-      clearEditor: {
+      {
+        name: "clearEditor",
         description: "Clear the Editor content.",
-        handler: () => {
+        execute: () => {
           clearEditor();
           if (editorMode === "grid") clearGrid();
           return "ok";
         },
       },
-      imageToAscii: {
+      {
+        name: "imageToAscii",
         description:
           "Convert an image into ASCII or Braille art and load it into the Editor. Provide a data URL (recommended) or an http(s) image URL (subject to CORS).",
         inputSchema: {
@@ -1934,7 +1944,7 @@
             threshold: { type: "number", description: "Braille on/off threshold 0-255 (default 128)" },
           },
         },
-        handler: async (args) => {
+        execute: async (args) => {
           const source = args.dataUrl ?? args.imageUrl;
           if (!source || typeof source !== "string") {
             throw new Error("Provide dataUrl or imageUrl.");
@@ -1957,7 +1967,8 @@
           return await convertImageToAscii(source);
         },
       },
-      getPaintAnsi: {
+      {
+        name: "getPaintAnsi",
         description:
           "Return the Paint canvas as an ANSI-colored escape string in the requested format.",
         inputSchema: {
@@ -1966,22 +1977,24 @@
             format: { type: "string", enum: ansiEscapeFormats.map((f) => f.id) },
           },
         },
-        handler: (args) => {
+        execute: (args) => {
           ensurePaintGrid();
           const format = (args.format as AnsiEscapeFormat) ?? paintCopyFormat;
           return formatAnsiEscapes(paintAnsiText(), format);
         },
       },
-      getPaintPlain: {
+      {
+        name: "getPaintPlain",
         description: "Return the Paint canvas as plain text (no ANSI codes).",
-        handler: () => {
+        execute: () => {
           ensurePaintGrid();
           return paintPlainText();
         },
       },
-      getState: {
+      {
+        name: "getState",
         description: "Return a snapshot of the ASCII Art tool state.",
-        handler: () => ({
+        execute: () => ({
           activeTab,
           generator: { text: inputText, font: selectedFont, output },
           editor: { mode: editorMode, text: getCurrentEditorText() },
@@ -1992,21 +2005,22 @@
           },
         }),
       },
-      setActiveTab: {
+      {
+        name: "setActiveTab",
         description: "Switch the active tab.",
         inputSchema: {
           type: "object",
           properties: { tab: { type: "string", enum: tabs } },
           required: ["tab"],
         },
-        handler: (args) => {
+        execute: (args) => {
           const tab = String(args.tab) as Tab;
           if (!tabs.includes(tab)) throw new Error(`Unknown tab: ${args.tab}`);
           setActiveTab(tab);
           return tab;
         },
       },
-    };
+    ];
 
     return registerPageMcp("ascii-art", tools);
   });
