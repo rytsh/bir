@@ -1943,6 +1943,7 @@
             background: { type: "string", description: "Background fill char (single char)" },
             threshold: { type: "number", description: "Braille on/off threshold 0-255 (default 128)" },
           },
+          anyOf: [{ required: ["dataUrl"] }, { required: ["imageUrl"] }],
         },
         execute: async (args) => {
           const source = args.dataUrl ?? args.imageUrl;

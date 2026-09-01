@@ -34,7 +34,7 @@ export interface PageTool {
   title?: string;
   /** Required by WebMCP: what the tool does, in natural language. */
   description: string;
-  /** JSON Schema for `args`. */
+  /** JSON Schema for `args`. Defaults to an empty object schema. */
   inputSchema?: Record<string, unknown>;
   /** `readOnlyHint: true` tells the agent the tool does not mutate state. */
   annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
@@ -53,6 +53,7 @@ declare global {
 }
 
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
+const EMPTY_INPUT_SCHEMA = { type: "object", properties: {} };
 
 /**
  * The registration currently owning `document.modelContext`. ClientRouter can
@@ -94,7 +95,7 @@ export function registerPageMcp(label: string, tools: PageTool[]): () => void {
           name,
           ...(title === undefined ? {} : { title }),
           description,
-          ...(inputSchema === undefined ? {} : { inputSchema }),
+          inputSchema: inputSchema ?? EMPTY_INPUT_SCHEMA,
           ...(annotations === undefined ? {} : { annotations }),
           execute,
         },

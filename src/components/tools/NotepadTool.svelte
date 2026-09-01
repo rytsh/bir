@@ -1448,6 +1448,7 @@ console.log("Code blocks are highlighted");
         name: "listNotes",
         description:
           "List every note and folder in tree order. Returns ids and paths for use with the other Notepad tools.",
+        inputSchema: { type: "object", properties: {} },
         execute: () => ({
           activeId,
           nodes: orderedNodes().map(nodeSummary),
