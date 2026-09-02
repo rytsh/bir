@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createChart, AreaSeries, type IChartApi, type ISeriesApi, ColorType } from "lightweight-charts";
+  import { createChart, AreaSeries, type IChartApi, type ISeriesApi, type MouseEventParams, type Time, ColorType } from "lightweight-charts";
 
   // --- Types ---
   interface CurrencyMap {
@@ -21,6 +21,13 @@
 
   interface ChartPoint {
     time: string;
+    value: number;
+  }
+
+  interface ChartTooltip {
+    x: number;
+    y: number;
+    date: string;
     value: number;
   }
 
@@ -70,6 +77,7 @@
   let toSearch = $state("");
   let fromDropdownOpen = $state(false);
   let toDropdownOpen = $state(false);
+  let chartTooltip = $state<ChartTooltip | null>(null);
 
   // --- Derived ---
   let numericAmount = $derived(parseFloat(amount) || 0);
@@ -169,6 +177,7 @@
 
     chartLoading = true;
     chartError = "";
+    chartTooltip = null;
 
     const days = PERIOD_DAYS[selectedPeriod];
     const endDate = selectedDate ? new Date(selectedDate) : new Date();
@@ -258,6 +267,7 @@
 
     // First time: create chart
     if (chart) {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.remove();
       chart = null;
       areaSeries = null;
@@ -303,6 +313,32 @@
 
     areaSeries.setData(points as any);
     chart.timeScale().fitContent();
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+  }
+
+  function handleCrosshairMove(param: MouseEventParams<Time>): void {
+    if (!param.point || !param.time || !areaSeries || !chartContainer) {
+      chartTooltip = null;
+      return;
+    }
+
+    const pointData = param.seriesData.get(areaSeries);
+    if (!pointData || !("value" in pointData)) {
+      chartTooltip = null;
+      return;
+    }
+
+    const tooltipWidth = 176;
+    const x = param.point.x > chartContainer.clientWidth - tooltipWidth - 16
+      ? param.point.x - tooltipWidth - 12
+      : param.point.x + 12;
+
+    chartTooltip = {
+      x,
+      y: Math.max(12, param.point.y - 58),
+      date: typeof param.time === "string" ? param.time : String(param.time),
+      value: pointData.value,
+    };
   }
 
   function swapCurrencies(): void {
@@ -421,6 +457,7 @@
     return () => {
       document.removeEventListener("click", handleClickOutside);
       if (chart) {
+        chart.unsubscribeCrosshairMove(handleCrosshairMove);
         chart.remove();
         chart = null;
       }
@@ -444,7 +481,7 @@
   });
 </script>
 
-<div class="h-full flex flex-col overflow-y-auto">
+<div class="min-h-full flex flex-col">
   <header class="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
     <p class="text-sm text-(--color-text-muted)">
       Convert between currencies using live exchange rates from the European Central Bank.
@@ -669,6 +706,18 @@
         <div class="p-8 text-center text-sm text-(--color-error-text)">{chartError}</div>
       {/if}
       <div bind:this={chartContainer} class="w-full" style="height: 350px;"></div>
+      {#if chartTooltip}
+        <div
+          class="pointer-events-none absolute z-20 min-w-44 border border-(--color-border) bg-(--color-bg) px-3 py-2 text-(--color-text) shadow-lg"
+          style:left={`${chartTooltip.x}px`}
+          style:top={`${chartTooltip.y}px`}
+        >
+          <div class="mb-1 text-xs text-(--color-text-muted)">{chartTooltip.date}</div>
+          <div class="font-mono text-sm font-semibold">
+            1 {fromCurrency} = {formatNumber(chartTooltip.value)} {toCurrency}
+          </div>
+        </div>
+      {/if}
     </div>
 
     <div class="mt-1 text-xs text-(--color-text-light)">
