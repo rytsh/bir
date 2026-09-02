@@ -3,8 +3,8 @@
   import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
   import { EditorView } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
+  import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Binary from "@lucide/svelte/icons/binary";
-  import Eye from "@lucide/svelte/icons/eye";
   import FileArchive from "@lucide/svelte/icons/file-archive";
   import FileAudio from "@lucide/svelte/icons/file-audio";
   import FileImage from "@lucide/svelte/icons/file-image";
@@ -26,8 +26,8 @@
 
   type NodeType = "folder" | "note" | "file";
   type ViewMode = "split" | "editor" | "preview";
-  type FileViewMode = "preview" | "raw";
-  type FilePreviewKind = "image" | "video" | "audio" | "pdf" | "text" | "archive" | "document" | "unknown";
+  type FileViewMode = "content" | "raw";
+  type FilePreviewKind = "image" | "video" | "audio" | "pdf" | "text" | "archive" | "document" | "raw" | "unknown";
   type LoadStatus = "idle" | "loading" | "ready" | "error";
 
   interface NodeMeta {
@@ -50,7 +50,7 @@
   const TEXT_PREVIEW_LIMIT = 1024 * 1024;
   const RAW_PREVIEW_LIMIT = 64 * 1024;
 
-  const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "ico", "jfif", "jpeg", "jpg", "png", "svg", "webp"]);
+  const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "heic", "heif", "ico", "jfif", "jpeg", "jpg", "png", "svg", "webp"]);
   const VIDEO_EXTENSIONS = new Set(["3gp", "avi", "m4v", "mkv", "mov", "mp4", "ogv", "webm"]);
   const AUDIO_EXTENSIONS = new Set(["aac", "aif", "aiff", "flac", "m4a", "mid", "midi", "mp3", "oga", "ogg", "opus", "wav", "weba"]);
   const TEXT_EXTENSIONS = new Set([
@@ -60,11 +60,19 @@
   ]);
   const ARCHIVE_EXTENSIONS = new Set(["7z", "bz2", "gz", "rar", "tar", "tgz", "txz", "xz", "zip"]);
   const DOCUMENT_EXTENSIONS = new Set(["doc", "docx", "epub", "odp", "ods", "odt", "pages", "ppt", "pptx", "rtf", "xls", "xlsx"]);
+  const RAW_EXTENSIONS = new Set(["3fr", "arw", "cr2", "cr3", "dcr", "dng", "erf", "kdc", "mos", "mrw", "nef", "nrw", "orf", "pef", "raf", "raw", "rw2", "sr2", "srf", "x3f"]);
+  const RAW_MIME_TYPES = new Set([
+    "image/x-adobe-dng", "image/x-canon-cr2", "image/x-canon-cr3", "image/x-fuji-raf", "image/x-nikon-nef",
+    "image/x-nikon-nrw", "image/x-olympus-orf", "image/x-panasonic-rw2", "image/x-pentax-pef", "image/x-raw",
+    "image/x-sony-arw", "image/x-sony-sr2", "image/x-sigma-x3f",
+  ]);
 
   const MIME_BY_EXTENSION: Record<string, string> = {
     avif: "image/avif",
     bmp: "image/bmp",
     gif: "image/gif",
+    heic: "image/heic",
+    heif: "image/heif",
     ico: "image/x-icon",
     jfif: "image/jpeg",
     jpeg: "image/jpeg",
@@ -149,6 +157,19 @@
     yaml: "application/yaml",
     yml: "application/yaml",
     zip: "application/zip",
+    arw: "image/x-sony-arw",
+    cr2: "image/x-canon-cr2",
+    cr3: "image/x-canon-cr3",
+    dng: "image/x-adobe-dng",
+    nef: "image/x-nikon-nef",
+    nrw: "image/x-nikon-nrw",
+    orf: "image/x-olympus-orf",
+    pef: "image/x-pentax-pef",
+    raf: "image/x-fuji-raf",
+    raw: "image/x-raw",
+    rw2: "image/x-panasonic-rw2",
+    sr2: "image/x-sony-sr2",
+    x3f: "image/x-sigma-x3f",
   };
 
   const WELCOME = `# Welcome to Notepad
@@ -159,7 +180,7 @@ This is your personal **markdown notebook**. Everything you type is saved automa
 
 - Use **+ Note** and **+ Folder** in the sidebar to organize your notes.
 - Notes go inside the **selected folder** (or the root if none is selected).
-- Import any file to keep a local copy alongside your notes. Text and Markdown files remain editable.
+- Import any file to keep a local copy alongside your notes. Markdown files become editable notes; text, images, audio, video, and PDFs open in their native viewers.
 - **Drag and drop** notes and folders to move or reorder them.
 - Double-click a name to rename it.
 - Toggle **Split / Editor / Preview** to control the live preview.
@@ -215,7 +236,7 @@ console.log("Code blocks are highlighted");
 
   let activeFileBlob = $state<Blob | null>(null);
   let activeFileUrl = $state("");
-  let fileViewMode = $state<FileViewMode>("preview");
+  let fileViewMode = $state<FileViewMode>("content");
   let fileLoadStatus = $state<LoadStatus>("idle");
   let fileLoadError = $state("");
   let fileText = $state("");
@@ -279,28 +300,28 @@ console.log("Code blocks are highlighted");
 
   function filePreviewKind(node: NodeMeta): FilePreviewKind {
     const storedMime = (node.mimeType || "").split(";", 1)[0].trim().toLowerCase();
-    const canInferFromExtension = !storedMime || storedMime === "application/octet-stream";
     const mime = effectiveMimeType(node);
     const extension = fileExtension(node.name);
-    if (mime.startsWith("image/") || (canInferFromExtension && IMAGE_EXTENSIONS.has(extension))) return "image";
-    if (mime.startsWith("video/") || (canInferFromExtension && VIDEO_EXTENSIONS.has(extension))) return "video";
-    if (mime.startsWith("audio/") || (canInferFromExtension && AUDIO_EXTENSIONS.has(extension))) return "audio";
-    if (mime === "application/pdf" || (canInferFromExtension && extension === "pdf")) return "pdf";
+    if (RAW_EXTENSIONS.has(extension) || RAW_MIME_TYPES.has(storedMime) || RAW_MIME_TYPES.has(mime)) return "raw";
+    if (IMAGE_EXTENSIONS.has(extension) || mime.startsWith("image/")) return "image";
+    if (VIDEO_EXTENSIONS.has(extension) || mime.startsWith("video/")) return "video";
+    if (AUDIO_EXTENSIONS.has(extension) || mime.startsWith("audio/")) return "audio";
+    if (extension === "pdf" || mime === "application/pdf") return "pdf";
     if (
       mime.startsWith("text/") ||
       ["application/json", "application/ld+json", "application/toml", "application/xml", "application/x-yaml", "application/yaml"].includes(mime) ||
       mime.endsWith("+json") ||
       mime.endsWith("+xml") ||
-      (canInferFromExtension && TEXT_EXTENSIONS.has(extension))
+      TEXT_EXTENSIONS.has(extension)
     ) return "text";
     if (
       ["application/zip", "application/x-7z-compressed", "application/x-bzip2", "application/x-rar-compressed", "application/x-tar", "application/x-zip-compressed", "application/gzip", "application/vnd.rar"].includes(mime) ||
-      (canInferFromExtension && ARCHIVE_EXTENSIONS.has(extension))
+      ARCHIVE_EXTENSIONS.has(extension)
     ) return "archive";
     if (
       ["application/epub+zip", "application/msword", "application/rtf", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.oasis.opendocument.presentation", "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.oasis.opendocument.text"].includes(mime) ||
       mime.includes("officedocument") ||
-      (canInferFromExtension && DOCUMENT_EXTENSIONS.has(extension))
+      DOCUMENT_EXTENSIONS.has(extension)
     ) return "document";
     return "unknown";
   }
@@ -315,6 +336,7 @@ console.log("Code blocks are highlighted");
       text: "Text / code",
       archive: "Archive",
       document: "Document",
+      raw: "Camera RAW image",
       unknown: extension ? `${extension.toUpperCase()} file` : "Unknown file",
     };
     return labels[filePreviewKind(node)];
@@ -325,7 +347,7 @@ console.log("Code blocks are highlighted");
     if (activeFileUrl) URL.revokeObjectURL(activeFileUrl);
     activeFileBlob = null;
     activeFileUrl = "";
-    fileViewMode = "preview";
+    fileViewMode = "content";
     fileLoadStatus = "idle";
     fileLoadError = "";
     fileText = "";
@@ -388,8 +410,8 @@ console.log("Code blocks are highlighted");
     }
   }
 
-  function showFilePreview(): void {
-    fileViewMode = "preview";
+  function showFileContent(): void {
+    fileViewMode = "content";
   }
 
   function handleMediaPreviewError(event: Event): void {
@@ -1194,9 +1216,9 @@ console.log("Code blocks are highlighted");
     for (const file of Array.from(files)) {
       let node: NodeMeta | null = null;
       try {
-        if (/\.(md|markdown|txt)$/i.test(file.name)) {
+        if (/\.(md|markdown)$/i.test(file.name)) {
           const text = await file.text();
-          const name = file.name.replace(/\.(md|markdown|txt)$/i, "");
+          const name = file.name.replace(/\.(md|markdown)$/i, "");
           node = addNote(parentId, name || "Untitled", text);
           await idbSet(noteKey(node.id), text);
         } else {
@@ -1682,7 +1704,7 @@ console.log("Code blocks are highlighted");
 </svelte:head>
 
 {#snippet fileKindIcon(kind: FilePreviewKind, className: string)}
-  {#if kind === "image"}
+  {#if kind === "image" || kind === "raw"}
     <FileImage class={className} />
   {:else if kind === "video"}
     <FileVideo class={className} />
@@ -1727,7 +1749,7 @@ console.log("Code blocks are highlighted");
               class="inline-flex items-center gap-2 border border-(--color-border) px-3 py-2 text-sm font-medium text-(--color-text) transition-colors hover:bg-(--color-bg) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent) disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Binary class="h-4 w-4" />
-              Inspect raw bytes
+              Show first {formatBytes(Math.min(node.size ?? 0, RAW_PREVIEW_LIMIT))}
             </button>
             <button
               onclick={downloadActiveNode}
@@ -1966,33 +1988,6 @@ console.log("Code blocks are highlighted");
                 </button>
               {/each}
             </div>
-          {:else if activeFile}
-            <div class="flex shrink-0 items-center border border-(--color-border)">
-              <button
-                onclick={showFilePreview}
-                disabled={fileLoadStatus !== "ready"}
-                aria-pressed={fileViewMode === "preview"}
-                class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-(--color-accent) disabled:opacity-40 {fileViewMode === 'preview'
-                  ? 'bg-(--color-text) text-(--color-btn-text)'
-                  : 'text-(--color-text-muted) hover:bg-(--color-bg) hover:text-(--color-text)'}"
-                title="File preview"
-              >
-                <Eye class="h-3.5 w-3.5" />
-                <span class="hidden md:inline">Preview</span>
-              </button>
-              <button
-                onclick={showRawFile}
-                disabled={fileLoadStatus !== "ready"}
-                aria-pressed={fileViewMode === "raw"}
-                class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium transition-colors focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-(--color-accent) disabled:opacity-40 {fileViewMode === 'raw'
-                  ? 'bg-(--color-text) text-(--color-btn-text)'
-                  : 'text-(--color-text-muted) hover:bg-(--color-bg) hover:text-(--color-text)'}"
-                title="Inspect raw bytes"
-              >
-                <Binary class="h-3.5 w-3.5" />
-                <span class="hidden md:inline">Raw</span>
-              </button>
-            </div>
           {/if}
 
           {#if activeNote}
@@ -2041,11 +2036,11 @@ console.log("Code blocks are highlighted");
                     </p>
                   </div>
                   <button
-                    onclick={showFilePreview}
+                    onclick={showFileContent}
                     class="inline-flex shrink-0 items-center gap-1.5 border border-(--color-border) px-2.5 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--color-bg) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-accent)"
                   >
-                    <Eye class="h-3.5 w-3.5" />
-                    Preview
+                    <ArrowLeft class="h-3.5 w-3.5" />
+                    Back to file
                   </button>
                 </div>
                 {#if rawLoadStatus === "loading"}
@@ -2151,9 +2146,21 @@ console.log("Code blocks are highlighted");
                   <pre class="text-file-viewer grow overflow-auto p-3 text-sm leading-6 text-(--color-text) sm:p-5">{fileText || "(empty file)"}</pre>
                 {/if}
               </div>
+            {:else if activeFileKind === "raw"}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, "This is a camera RAW file. Browsers cannot safely render its sensor data directly. You can inspect a limited byte sample below or download the original.")}
+              </div>
+            {:else if activeFileKind === "archive"}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, "Archive contents are not opened inside Notepad. Download the original file to extract it.")}
+              </div>
+            {:else if activeFileKind === "document"}
+              <div class="min-h-full p-5 sm:p-8">
+                {@render fileDetails(activeFile, activeFileKind, "This document format does not have a reliable browser viewer here. Download the original file to open it in a compatible app.")}
+              </div>
             {:else}
               <div class="min-h-full p-5 sm:p-8">
-                {@render fileDetails(activeFile, activeFileKind, "")}
+                {@render fileDetails(activeFile, activeFileKind, "Notepad does not recognize this file format. You can inspect a limited byte sample without loading the whole file, or download the original.")}
               </div>
             {/if}
           </div>
