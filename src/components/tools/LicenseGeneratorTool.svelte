@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { additionalLicenses } from "../../data/additional-licenses.ts";
+  import { fullLicenseTemplates } from "../../data/full-license-templates.ts";
+
   interface LicenseMeta {
     id: string;
     name: string;
@@ -8,6 +11,7 @@
     conditions: string[];
     limitations: string[];
     needsProject: boolean;
+    hasSummary?: boolean;
     template: (year: string, fullname: string, project: string) => string;
   }
 
@@ -32,46 +36,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-`;
-
-  const APACHE_TEXT = (year: string, fullname: string): string => `                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   Copyright ${year} ${fullname}
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-   Full license text: https://www.apache.org/licenses/LICENSE-2.0.txt
-`;
-
-  const GPL3_TEXT = (year: string, fullname: string, project: string): string => `${project || "This program"}
-Copyright (C) ${year} ${fullname}
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-Full license text: https://www.gnu.org/licenses/gpl-3.0.txt
 `;
 
   const BSD3_TEXT = (year: string, fullname: string): string => `BSD 3-Clause License
@@ -205,32 +169,6 @@ For more information, please refer to <https://unlicense.org/>
   0. You just DO WHAT THE FUCK YOU WANT TO.
 `;
 
-  const CC0_TEXT = (): string => `Creative Commons Legal Code
-
-CC0 1.0 Universal
-
-    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
-    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
-    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
-    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
-    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
-    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
-    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
-    HEREUNDER.
-
-Statement of Purpose
-
-The person who associated a work with this deed has dedicated the work to
-the public domain by waiving all of his or her rights to the work worldwide
-under copyright law, including all related and neighboring rights, to the
-extent allowed by law.
-
-You can copy, modify, distribute and perform the work, even for commercial
-purposes, all without asking permission.
-
-Full license text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
-`;
-
   const BOOST_TEXT = (): string => `Boost Software License - Version 1.0 - August 17th, 2003
 
 Permission is hereby granted, free of charge, to any person or organization
@@ -254,44 +192,6 @@ SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
 FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
-`;
-
-  const AGPL_TEXT = (year: string, fullname: string, project: string): string => `${project || "This program"}
-Copyright (C) ${year} ${fullname}
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-Full license text: https://www.gnu.org/licenses/agpl-3.0.txt
-`;
-
-  const LGPL_TEXT = (year: string, fullname: string, project: string): string => `${project || "This library"}
-Copyright (C) ${year} ${fullname}
-
-This library is free software; you can redistribute it and/or
-modify it under the terms of the GNU Lesser General Public
-License as published by the Free Software Foundation; either
-version 3 of the License, or (at your option) any later version.
-
-This library is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public
-License along with this library. If not, see <https://www.gnu.org/licenses/>.
-
-Full license text: https://www.gnu.org/licenses/lgpl-3.0.txt
 `;
 
   const JSON_TEXT = (year: string, fullname: string): string => `Copyright (c) ${year} ${fullname}
@@ -406,16 +306,6 @@ can do whatever you want with this stuff. If we meet some day, and you
 think this stuff is worth it, you can buy me a beer in return.
 `;
 
-  const MPL_TEXT = (): string => `Mozilla Public License Version 2.0
-==================================
-
-This Source Code Form is subject to the terms of the Mozilla Public License,
-v. 2.0. If a copy of the MPL was not distributed with this file, You can
-obtain one at https://mozilla.org/MPL/2.0/.
-
-Full license text: https://www.mozilla.org/en-US/MPL/2.0/
-`;
-
   const licenses: LicenseMeta[] = [
     {
       id: "mit",
@@ -439,11 +329,11 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: ["License and copyright notice", "State changes"],
       limitations: ["Liability", "Warranty", "Trademark use"],
       needsProject: false,
-      template: (y, f) => APACHE_TEXT(y, f),
+      template: fullLicenseTemplates["Apache-2.0"],
     },
     {
       id: "gpl-3.0",
-      name: "GPL 3.0",
+      name: "GPL 3.0 only (legacy ID)",
       spdx: "GPL-3.0",
       description:
         "Strong copyleft license — derivatives must also be open source under the same license. Explicit patent grant.",
@@ -451,7 +341,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: ["License and copyright notice", "State changes", "Disclose source", "Same license"],
       limitations: ["Liability", "Warranty"],
       needsProject: true,
-      template: (y, f, p) => GPL3_TEXT(y, f, p),
+      template: fullLicenseTemplates["GPL-3.0"],
     },
     {
       id: "bsd-3-clause",
@@ -511,11 +401,11 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: ["License and copyright notice", "Disclose source", "Same license (file)"],
       limitations: ["Liability", "Warranty", "Trademark use"],
       needsProject: false,
-      template: () => MPL_TEXT(),
+      template: fullLicenseTemplates["MPL-2.0"],
     },
     {
       id: "agpl-3.0",
-      name: "AGPL 3.0",
+      name: "AGPL 3.0 only (legacy ID)",
       spdx: "AGPL-3.0",
       description:
         "Strongest copyleft — like GPL 3.0 but also requires source disclosure for network-based use (SaaS). Ideal for server-side apps you want to keep open.",
@@ -523,11 +413,11 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: ["License and copyright notice", "State changes", "Disclose source", "Network use is distribution", "Same license"],
       limitations: ["Liability", "Warranty"],
       needsProject: true,
-      template: (y, f, p) => AGPL_TEXT(y, f, p),
+      template: fullLicenseTemplates["AGPL-3.0"],
     },
     {
       id: "lgpl-3.0",
-      name: "LGPL 3.0",
+      name: "LGPL 3.0 only (legacy ID)",
       spdx: "LGPL-3.0",
       description:
         "Weaker copyleft — libraries can be linked into proprietary software, but modifications to the library itself must stay open.",
@@ -535,7 +425,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: ["License and copyright notice", "State changes", "Disclose source", "Same license (library)"],
       limitations: ["Liability", "Warranty"],
       needsProject: true,
-      template: (y, f, p) => LGPL_TEXT(y, f, p),
+      template: fullLicenseTemplates["LGPL-3.0"],
     },
     {
       id: "boost-1.0",
@@ -559,7 +449,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       conditions: [],
       limitations: ["Liability", "Warranty", "Trademark use", "Patent use"],
       needsProject: false,
-      template: () => CC0_TEXT(),
+      template: fullLicenseTemplates["CC0-1.0"],
     },
     {
       id: "wtfpl",
@@ -669,6 +559,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       needsProject: false,
       template: () => UNLICENSE_TEXT(),
     },
+    ...additionalLicenses,
   ];
 
   let selectedId = $state<string>("mit");
@@ -732,6 +623,11 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
             <option value={lic.id}>{lic.name} ({lic.spdx})</option>
           {/each}
         </optgroup>
+        <optgroup label="Additional SPDX Licenses">
+          {#each licenses.filter((l) => l.hasSummary === false) as lic}
+            <option value={lic.id}>{lic.spdx} - {lic.name}</option>
+          {/each}
+        </optgroup>
       </select>
     </div>
 
@@ -784,6 +680,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
       </div>
       <p class="text-sm text-(--color-text-muted) mb-3">{selected.description}</p>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {#if selected.hasSummary !== false}
         <div>
           <div class="text-xs uppercase tracking-wider text-green-500 font-semibold mb-1">Permissions</div>
           {#if selected.permissions.length === 0}
@@ -820,6 +717,7 @@ Full license text: https://www.mozilla.org/en-US/MPL/2.0/
             </ul>
           {/if}
         </div>
+        {/if}
       </div>
     </div>
   </div>

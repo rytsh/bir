@@ -91,6 +91,7 @@
     "simple-icons": "^16.9.0",
     "smol-toml": "^1.6.0",
     "sortablejs": "^1.15.6",
+    "spdx-license-list": "6.12.0",
     "sql.js": "^1.14.2",
     "svelte": "^5.46.1",
     "svelte-codemirror-editor": "^2.1.0",
