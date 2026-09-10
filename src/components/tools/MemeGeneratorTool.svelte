@@ -22,6 +22,7 @@
     bold: boolean;
     italic: boolean;
     uppercase: boolean;
+    locale?: "tr";
   }
 
   interface Template {
@@ -49,8 +50,10 @@
   // can still be downloaded / copied. Each entry includes canonical text-box
   // positions so the template loads ready to caption.
   interface OnlineTemplate {
-    id: string; // memegen template slug
+    id: string; // memegen slug or a custom catalog ID
     name: string;
+    imageUrl?: string;
+    language?: "tr";
     boxes?: Partial<TextBox>[];
   }
 
@@ -80,6 +83,15 @@
   // memegen.link serves blank PNGs at `images/<slug>.png` with CORS headers,
   // so they double as thumbnails AND the canvas background.
   const ONLINE_TEMPLATES: OnlineTemplate[] = [
+    // Blank templates from Imgflip; its image CDN allows anonymous CORS loads.
+    // Source pages: https://imgflip.com/meme/322403683 and /580680463.
+    { id: "tr-sener-sen", name: "Şener Şen", language: "tr", imageUrl: "https://i.imgflip.com/5by89v.jpg", boxes: TB("Küçük bir değişiklik dediler", "Üç gündür buradayım") },
+    { id: "tr-arog-kaleci", name: "A.R.O.G. — Kaleci", language: "tr", imageUrl: "https://i.imgflip.com/9lpzwv.png", boxes: TB("Bütün hataları yakaladım", "Bir tanesi canlıya kaçtı") },
+    // Source: https://imgflip.com/meme/516100525/Dwight-Liar-Sign
+    { id: "office-dwight-liar", name: "The Office — Dwight Liar Sign / Michael Scott", imageUrl: "https://i.imgflip.com/8j9tpp.jpg", boxes: [
+      { text: "I TESTED EVERYTHING", x: 0.5, y: 0.44, align: "center", size: 28, outlineWidth: 3 },
+      { text: "THE CODE REVIEWER", x: 0.5, y: 0.94, align: "center", size: 28, outlineWidth: 3 },
+    ]},
     { id: "drake", name: "Drake Hotline Bling", boxes: [
       { text: "OLD WAY", x: 0.72, y: 0.25, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 56 },
       { text: "NEW WAY", x: 0.72, y: 0.75, align: "center", color: "#1a1a1a", outlineColor: "transparent", outlineWidth: 0, size: 56 },
@@ -379,27 +391,51 @@
       { text: "STEP 7", x: 0.28, y: 0.85, align: "center", size: 22 },
       { text: "RESULT", x: 0.72, y: 0.85, align: "center", size: 22 },
     ]},
+    // Local film stills; provenance is recorded in public/memes/SOURCES.md.
+    { id: "tr-vizontele-methetme", name: "Vizontele — Cem Yılmaz: Beni Methetme", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-methetme.png`, boxes: [
+      { text: "Beni methetme kardeşim", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },
+      { text: "Bana para ver", x: 0.5, y: 0.92, align: "center", size: 80, outlineWidth: 6 },
+    ]},
+    { id: "tr-vizontele-halay", name: "Vizontele — Halay", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-halay.png`, boxes: [
+      { text: "Son hata da çözülünce", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },
+      { text: "Bütün ekip", x: 0.5, y: 0.92, align: "center", size: 80, outlineWidth: 6 },
+    ]},
+    { id: "tr-vizontele-ne-dedi", name: "Vizontele — Cem Yılmaz: Ne Dedi, Ne Dedi?", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-ne-dedi.png`, boxes: [
+      { text: "Ne dedi, ne dedi?", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },
+      { text: "İncinmişsin dedi", x: 0.5, y: 0.92, align: "center", size: 80, outlineWidth: 6 },
+    ]},
+    { id: "tr-vizontele-karpuzcu", name: "Vizontele — Karpuzcu Şehmuz", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-karpuzcu.png`, boxes: [
+      { text: "Müşteri indirim isteyince", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },
+      { text: "Zaten gelişine veriyoruz", x: 0.5, y: 0.92, align: "center", size: 80, outlineWidth: 6 },
+    ]},
   ];
 
   // Currently selected online template ID
   let selectedOnlineId = $state("");
   let onlineLoading = $state(false);
   let memeSearch = $state("");
+  let memeLanguage = $state<"all" | "tr">("all");
   let memeViewMode = $state<"grid" | "large-grid" | "list">("grid");
   let sourceCollapsed = $state(false);
   let sourceSummary = $state("Placeholder: Blank (white)");
 
   function memegenThumb(id: string): string {
+    const template = ONLINE_TEMPLATES.find((t) => t.id === id);
+    if (template?.imageUrl) return template.imageUrl;
     // Tiny preview — request a smaller variant by adding a width hint.
     // memegen.link supports `?width=` query param.
     return `${MEMEGEN_BASE}/${id}.png?width=200`;
   }
 
+  function normalizeSearch(value: string): string {
+    return value.toLocaleLowerCase("tr").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  }
+
   const filteredOnlineTemplates = $derived.by(() => {
-    const q = memeSearch.trim().toLowerCase();
-    if (!q) return ONLINE_TEMPLATES;
+    const q = normalizeSearch(memeSearch);
     return ONLINE_TEMPLATES.filter(
-      (t) => t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q),
+      (t) => (memeLanguage === "all" || t.language === memeLanguage)
+        && (normalizeSearch(t.name).includes(q) || normalizeSearch(t.id).includes(q)),
     );
   });
 
@@ -474,7 +510,7 @@
     onlineLoading = true;
     activeTemplate = null;
     isTainted = false;
-    const url = `${MEMEGEN_BASE}/${t.id}.png`;
+    const url = t.imageUrl ?? `${MEMEGEN_BASE}/${t.id}.png`;
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = url;
@@ -488,7 +524,7 @@
         { text: "TOP TEXT", y: 0.08, align: "center" },
         { text: "BOTTOM TEXT", y: 0.92, align: "center" },
       ];
-      textBoxes = proto.map((b) => defaultBox(b));
+      textBoxes = proto.map((b) => defaultBox({ ...b, locale: t.language }));
       selectedBoxId = textBoxes[0]?.id ?? null;
       sourceSummary = `Online: ${t.name}`;
     } catch (e) {
@@ -817,7 +853,7 @@
   }
 
   function addBox() {
-    const b = defaultBox({ text: "NEW TEXT", y: 0.5 });
+    const b = defaultBox({ text: "NEW TEXT", y: 0.5, locale: textBoxes[0]?.locale });
     textBoxes = [...textBoxes, b];
     selectedBoxId = b.id;
   }
@@ -872,7 +908,7 @@
   function drawText(ctx: CanvasRenderingContext2D, b: TextBox) {
     const x = b.x * canvasWidth;
     const y = b.y * canvasHeight;
-    const text = b.uppercase ? b.text.toUpperCase() : b.text;
+    const text = b.uppercase ? b.text.toLocaleUpperCase(b.locale ?? "en") : b.text;
     const weight = b.bold ? "bold" : "normal";
     const style = b.italic ? "italic" : "normal";
     ctx.font = `${style} ${weight} ${b.size}px ${b.font}`;
@@ -1107,6 +1143,14 @@
           <div class="flex flex-col gap-2 min-w-0">
           <div class="flex flex-wrap gap-2 items-center">
             <span class="text-xs text-(--color-text-light)">Popular memes ({ONLINE_TEMPLATES.length}):</span>
+            <select
+              bind:value={memeLanguage}
+              aria-label="Template collection"
+              class="px-2 py-1 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-xs focus-visible:outline-2 focus-visible:outline-(--color-accent)"
+            >
+              <option value="all">All templates</option>
+              <option value="tr">Türkçe</option>
+            </select>
             <input
               type="text"
               bind:value={memeSearch}
