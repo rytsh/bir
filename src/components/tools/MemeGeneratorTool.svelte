@@ -402,7 +402,6 @@
     ]},
     { id: "tr-vizontele-ne-dedi", name: "Vizontele — Cem Yılmaz: Ne Dedi, Ne Dedi?", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-ne-dedi.png`, boxes: [
       { text: "Ne dedi, ne dedi?", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },
-      { text: "İncinmişsin dedi", x: 0.5, y: 0.92, align: "center", size: 80, outlineWidth: 6 },
     ]},
     { id: "tr-vizontele-karpuzcu", name: "Vizontele — Karpuzcu Şehmuz", language: "tr", imageUrl: `${import.meta.env.BASE_URL}memes/vizontele-karpuzcu.png`, boxes: [
       { text: "Müşteri indirim isteyince", x: 0.5, y: 0.08, align: "center", size: 80, outlineWidth: 6 },

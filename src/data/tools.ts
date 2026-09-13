@@ -1065,7 +1065,7 @@ const rawCategories: Category[] = [
       {
         id: "color-vision-tester",
         name: "Color Vision",
-        description: "Ishihara-style color vision screening test with multiple colored-dot plates. Educational only — for screening fun, not medical diagnosis.",
+        description: "Explore color vision with number plates, color matching, and hue ordering. Review red–green and blue–yellow task results and learn about color vision types. Educational, not diagnostic.",
         icon: "👁️",
         path: "/tester/color-vision",
         keywords: "color vision test, ishihara test, color blindness test, color blind, protanopia, deuteranopia, tritanopia, red green color blind, color deficiency, color vision screening, daltonism",

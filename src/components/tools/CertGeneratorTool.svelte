@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as x509 from "@peculiar/x509";
+  import { privateKeyDer, encryptKeyDer, pkcs12MacKey, signingAlgorithm, validateCa, validateKeyPair, validateChain, validityEnd, isIp, validateSan, serverFullchain } from "./cert-crypto.ts";
 
   // ── Types ──────────────────────────────────────────────────────────────
 
@@ -23,6 +24,17 @@
   // Global settings
   let keyAlgorithm = $state<KeyAlgorithm>("ECDSA-P256");
   let validityDays = $state(365);
+  let rootValidityDays = $state(3650);
+  let interValidityDays = $state(1825);
+  let keyPassphrase = $state("");
+  let clientAuth = $state(false);
+  let importPassphrase = $state("");
+  let importChainPem = $state("");
+  let importedParents = $state<x509.X509Certificate[]>([]);
+  let resultParents = $state<x509.X509Certificate[]>([]);
+  let resultSans = $state<SanEntry[]>([]);
+  let exporting = $state(false);
+  let resultFullchain = $state("");
 
   // Root CA mode: "generate" or "import"
   type CaMode = "generate" | "import";
@@ -158,15 +170,14 @@
 
   async function exportPrivateKeyPem(key: CryptoKey): Promise<string> {
     const exported = await crypto.subtle.exportKey("pkcs8", key);
+    if (keyPassphrase) return x509.PemConverter.encode(encryptKeyDer(exported, keyPassphrase), "ENCRYPTED PRIVATE KEY");
     return x509.PemConverter.encode(exported, "PRIVATE KEY");
   }
 
   function buildSubjectName(cn: string, o: string, c: string): string {
-    const parts: string[] = [];
-    if (c.trim()) parts.push(`C=${c.trim()}`);
-    if (o.trim()) parts.push(`O=${o.trim()}`);
-    if (cn.trim()) parts.push(`CN=${cn.trim()}`);
-    return parts.join(", ");
+    if (!cn.trim()) throw new Error("Common Name is required.");
+    if (c.trim() && !/^[a-z]{2}$/i.test(c.trim())) throw new Error("Country must be a two-letter code.");
+    return new x509.Name([...(c.trim() ? [{ C: [c.trim().toUpperCase()] }] : []), ...(o.trim() ? [{ O: [o.trim()] }] : []), { CN: [cn.trim()] }]).toString();
   }
 
   function getNotBefore(): Date {
@@ -174,30 +185,18 @@
   }
 
   function getNotAfter(days: number): Date {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d;
+    return validityEnd(days);
   }
 
   function randomSerialNumber(): string {
     const arr = new Uint8Array(16);
     crypto.getRandomValues(arr);
     // Ensure first byte is positive (no leading zero issues)
-    arr[0] = arr[0] | 0x01;
+    arr[0] = (arr[0] & 0x7f) | 0x01;
     return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   // ── CA Import ───────────────────────────────────────────────────────────
-
-  function detectKeyAlgorithm(pemContent: string): { name: string; hash?: string; namedCurve?: string } | null {
-    // Try to detect algorithm from PEM content structure
-    // EC keys contain OID 1.2.840.10045.2.1, RSA keys contain OID 1.2.840.113549.1.1.1
-    if (pemContent.includes("EC") || pemContent.length < 500) {
-      // Short keys are likely EC
-      return null; // Will try both
-    }
-    return null; // Will try both
-  }
 
   async function tryImportPrivateKey(keyDer: ArrayBuffer): Promise<{ key: CryptoKey; algorithm: KeyAlgorithm }> {
     // Try ECDSA P-256
@@ -237,6 +236,8 @@
 
   async function importCa() {
     importError = "";
+    importedCa = null;
+    importedParents = [];
     importing = true;
 
     try {
@@ -270,30 +271,15 @@
         throw new Error("The imported certificate does not have CA:TRUE in Basic Constraints. It cannot be used as a CA certificate.");
       }
 
-      // Parse and import private key
-      let keyDer: ArrayBuffer;
-      try {
-        const pemTrimmed = importKeyPem.trim();
-        const derArrays = x509.PemConverter.decode(pemTrimmed);
-        if (derArrays.length === 0) {
-          throw new Error("No key data found");
-        }
-        keyDer = derArrays[0];
-      } catch {
-        throw new Error("Invalid private key PEM. Expected a PEM block starting with -----BEGIN PRIVATE KEY-----.");
-      }
-
-      const { key: privateKey, algorithm: detectedAlg } = await tryImportPrivateKey(keyDer);
+      validateCa(cert);
+      const { key: privateKey } = await tryImportPrivateKey(privateKeyDer(importKeyPem.trim(), importPassphrase));
 
       // Derive the public key from the certificate
-      const publicKey = await cert.publicKey.export();
-
-      // Verify the key matches the certificate by checking the public key
-      // We do this by comparing the public key from cert with exported public key info
-      const certKeyAlgorithm = cert.publicKey.algorithm;
+      const publicKey = await validateKeyPair(cert, privateKey);
+      const parents = await validateChain(cert, importChainPem);
 
       importedCa = {
-        label: "Root CA (Imported)",
+        label: "Signing CA (Imported)",
         cert,
         keyPair: { privateKey, publicKey } as CryptoKeyPair,
         pem: cert.toString("pem"),
@@ -301,7 +287,9 @@
       };
 
       // Auto-set the key algorithm to match the imported key
-      keyAlgorithm = detectedAlg;
+      importedParents = parents;
+      skipIntermediate = true;
+      importPassphrase = "";
 
     } catch (err) {
       if (err instanceof Error) {
@@ -319,9 +307,12 @@
     importCertPem = "";
     importKeyPem = "";
     importError = "";
+    importPassphrase = "";
+    importChainPem = "";
+    importedParents = [];
   }
 
-  function handleFileUpload(event: Event, target: "cert" | "key") {
+  function handleFileUpload(event: Event, target: "cert" | "key" | "chain") {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -331,6 +322,8 @@
       const content = reader.result as string;
       if (target === "cert") {
         importCertPem = content;
+      } else if (target === "chain") {
+        importChainPem = content;
       } else {
         importKeyPem = content;
       }
@@ -348,8 +341,14 @@
     rootCert = null;
     interCert = null;
     serverCert = null;
+    resultParents = [];
 
     try {
+      validityEnd(validityDays);
+      if (newSanValue.trim()) throw new Error("Add or clear the pending SAN before generating.");
+      for (const san of sanEntries) validateSan(san.type, san.value.trim());
+      validateSan(isIp(serverCN.trim()) ? "ip" : "dns", serverCN.trim());
+      if (rootCaMode === "import" && !importedCa) throw new Error("Import and validate a signing CA first.");
       let rootEntry: CertEntry;
 
       if (rootCaMode === "import" && importedCa) {
@@ -357,6 +356,9 @@
         currentStep = "Using imported CA certificate...";
         rootEntry = importedCa;
         rootCert = importedCa;
+        validateCa(importedCa.cert);
+        for (const parent of importedParents) validateCa(parent);
+        resultParents = [...importedParents];
       } else {
         // Step 1: Generate Root CA
         currentStep = "Generating Root CA key pair...";
@@ -368,7 +370,7 @@
           serialNumber: randomSerialNumber(),
           name: rootSubject,
           notBefore: getNotBefore(),
-          notAfter: getNotAfter(validityDays * 2), // Root CA gets double validity
+          notAfter: getNotAfter(rootValidityDays),
           keys: rootKeys,
           signingAlgorithm: getSigningAlgorithm(keyAlgorithm),
           extensions: [
@@ -397,6 +399,11 @@
       // Step 2: Intermediate CA (optional)
       let signingCert = rootEntry;
       if (!skipIntermediate) {
+        const limit = rootEntry.cert.getExtension(x509.BasicConstraintsExtension)?.pathLength;
+        if (limit === 0 || resultParents.some((parent, i) => {
+          const pathLength = parent.getExtension(x509.BasicConstraintsExtension)?.pathLength;
+          return pathLength !== undefined && pathLength < i + 2;
+        })) throw new Error("The CA path length does not allow another intermediate. Enable direct signing.");
         currentStep = "Generating Intermediate CA key pair...";
         const interKeys = await generateKeyPair(keyAlgorithm);
 
@@ -407,8 +414,8 @@
           subject: interSubject,
           issuer: rootEntry.cert.subject,
           notBefore: getNotBefore(),
-          notAfter: getNotAfter(validityDays),
-          signingAlgorithm: getSigningAlgorithm(keyAlgorithm),
+          notAfter: validityEnd(interValidityDays, rootEntry.cert),
+          signingAlgorithm: signingAlgorithm(rootEntry.keyPair.privateKey),
           publicKey: interKeys.publicKey,
           signingKey: rootEntry.keyPair.privateKey,
           extensions: [
@@ -450,10 +457,10 @@
 
       // Ensure CN is in SANs if not already
       const cnInSans = sanItems.some(
-        (s) => s.type === "dns" && s.value.toLowerCase() === serverCN.trim().toLowerCase(),
+        (s) => s.type === (isIp(serverCN.trim()) ? "ip" : "dns") && s.value.toLowerCase() === serverCN.trim().toLowerCase(),
       );
       if (!cnInSans && serverCN.trim()) {
-        sanItems.unshift({ type: "dns", value: serverCN.trim() });
+        sanItems.unshift({ type: isIp(serverCN.trim()) ? "ip" : "dns", value: serverCN.trim() });
       }
 
       const serverX509 = await x509.X509CertificateGenerator.create({
@@ -461,18 +468,18 @@
         subject: serverSubject,
         issuer: signingCert.cert.subject,
         notBefore: getNotBefore(),
-        notAfter: getNotAfter(validityDays),
-        signingAlgorithm: getSigningAlgorithm(keyAlgorithm),
+        notAfter: validityEnd(validityDays, signingCert.cert),
+        signingAlgorithm: signingAlgorithm(signingCert.keyPair.privateKey),
         publicKey: serverKeys.publicKey,
         signingKey: signingCert.keyPair.privateKey,
         extensions: [
           new x509.BasicConstraintsExtension(false, undefined, true),
           new x509.KeyUsagesExtension(
-            x509.KeyUsageFlags.digitalSignature | x509.KeyUsageFlags.keyEncipherment,
+            x509.KeyUsageFlags.digitalSignature | (keyAlgorithm.startsWith("RSA") ? x509.KeyUsageFlags.keyEncipherment : 0),
             true,
           ),
           new x509.ExtendedKeyUsageExtension(
-            [x509.ExtendedKeyUsage.serverAuth, x509.ExtendedKeyUsage.clientAuth],
+            [x509.ExtendedKeyUsage.serverAuth, ...(clientAuth ? [x509.ExtendedKeyUsage.clientAuth] : [])],
             false,
           ),
           new x509.SubjectAlternativeNameExtension(sanItems, false),
@@ -483,6 +490,8 @@
 
       const serverPem = serverX509.toString("pem");
       const serverKeyPem = await exportPrivateKeyPem(serverKeys.privateKey);
+      resultSans = sanItems as SanEntry[];
+      resultFullchain = await serverFullchain([serverX509, ...(interCert ? [interCert.cert] : []), rootEntry.cert, ...resultParents]);
 
       serverCert = {
         label: "Server",
@@ -494,6 +503,9 @@
 
       currentStep = "";
     } catch (err) {
+      rootCert = null;
+      interCert = null;
+      serverCert = null;
       if (err instanceof Error) {
         error = err.message;
       } else {
@@ -511,15 +523,7 @@
     const val = newSanValue.trim();
     if (!val) return;
 
-    // Basic IP validation if type is IP
-    if (newSanType === "ip") {
-      const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
-      const ipv6 = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
-      if (!ipv4.test(val) && !ipv6.test(val) && val !== "::1") {
-        error = "Invalid IP address format";
-        return;
-      }
-    }
+    try { validateSan(newSanType, val); } catch (err) { error = (err as Error).message; return; }
 
     // Avoid duplicates
     const exists = sanEntries.some((s) => s.type === newSanType && s.value === val);
@@ -546,12 +550,12 @@
 
   // ── Copy / Download ────────────────────────────────────────────────────
 
-  function handleCopy(field: string, value: string) {
-    navigator.clipboard.writeText(value);
-    copiedField = field;
-    setTimeout(() => {
-      copiedField = null;
-    }, 2000);
+  async function handleCopy(field: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      copiedField = field;
+      setTimeout(() => { copiedField = null; }, 2000);
+    } catch { error = "Clipboard access failed. Download the PEM file instead."; }
   }
 
   function downloadFile(content: string, filename: string, mimeType: string = "application/x-pem-file") {
@@ -583,7 +587,22 @@
     let chain = serverCert.pem + "\n";
     if (interCert) chain += interCert.pem + "\n";
     if (rootCert) chain += rootCert.pem + "\n";
+    chain += resultParents.map((cert) => cert.toString("pem")).join("\n");
     downloadFile(chain, "certificate-chain.pem");
+  }
+
+  function fullchainPem(): string {
+    return resultFullchain;
+  }
+
+  function clearGeneratedResults() {
+    rootCert = null;
+    interCert = null;
+    serverCert = null;
+    resultFullchain = "";
+    resultParents = [];
+    resultSans = [];
+    expandedSection = null;
   }
 
   function downloadFullBundle() {
@@ -591,11 +610,13 @@
     let bundle = serverCert.privateKeyPem + "\n" + serverCert.pem + "\n";
     if (interCert) bundle += interCert.pem + "\n";
     if (rootCert) bundle += rootCert.pem + "\n";
+    bundle += resultParents.map((cert) => cert.toString("pem")).join("\n");
     downloadFile(bundle, "server-bundle.pem");
   }
 
   async function downloadPkcs12() {
-    if (!serverCert) return;
+    if (!serverCert || exporting) return;
+    exporting = true;
 
     try {
       // Build PKCS#12 / PFX using manual ASN.1 construction
@@ -614,12 +635,12 @@
       } else {
         error = "PKCS#12 export failed";
       }
-    }
+    } finally { exporting = false; }
   }
 
   // ── PKCS#12 Builder ────────────────────────────────────────────────────
   // Minimal PKCS#12/PFX builder using raw ASN.1 DER encoding.
-  // Produces unencrypted PKCS#12 files (password used only for MAC integrity).
+  // Encrypts the PKCS#8 key when a password is supplied; MAC uses the PKCS#12 KDF.
   // Compatible with: openssl pkcs12 -in server.p12 -nodes
 
   function encodeLength(len: number): Uint8Array {
@@ -705,17 +726,6 @@
     return result;
   }
 
-  function asn1Utf8String(str: string): Uint8Array {
-    const encoder = new TextEncoder();
-    const encoded = encoder.encode(str);
-    const len = encodeLength(encoded.length);
-    const result = new Uint8Array(1 + len.length + encoded.length);
-    result[0] = 0x0c; // UTF8String tag
-    result.set(len, 1);
-    result.set(encoded, 1 + len.length);
-    return result;
-  }
-
   function concatArrays(...arrays: Uint8Array[]): Uint8Array {
     const totalLen = arrays.reduce((sum, a) => sum + a.length, 0);
     const result = new Uint8Array(totalLen);
@@ -735,7 +745,7 @@
   const OID_FRIENDLY_NAME = "1.2.840.113549.1.9.20";
   const OID_SHA256 = "2.16.840.1.101.3.4.2.1";
 
-  function buildCertBag(certDer: Uint8Array, friendlyName?: string): Uint8Array {
+  function buildCertBag(certDer: Uint8Array, friendlyName?: string, localKeyId?: Uint8Array): Uint8Array {
     // CertBag ::= SEQUENCE { certId, certValue [0] EXPLICIT OCTET STRING }
     const certBagContent = asn1Sequence(
       asn1ObjectIdentifier(OID_X509_CERT),
@@ -743,6 +753,7 @@
     );
 
     const bagAttrs: Uint8Array[] = [];
+    if (localKeyId) bagAttrs.push(asn1Sequence(asn1ObjectIdentifier("1.2.840.113549.1.9.21"), asn1Set(asn1OctetString(localKeyId))));
     if (friendlyName) {
       // friendlyName attribute
       const bmpString = encodeBmpString(friendlyName);
@@ -761,33 +772,6 @@
     );
 
     return safeBag;
-  }
-
-  function buildKeyBag(keyDer: Uint8Array, friendlyName?: string): Uint8Array {
-    const bagAttrs: Uint8Array[] = [];
-    if (friendlyName) {
-      const bmpString = encodeBmpString(friendlyName);
-      bagAttrs.push(
-        asn1Sequence(
-          asn1ObjectIdentifier(OID_FRIENDLY_NAME),
-          asn1Set(bmpString),
-        ),
-      );
-    }
-
-    const safeBag = asn1Sequence(
-      asn1ObjectIdentifier(OID_KEY_BAG),
-      asn1ContextConstructed(0, asn1Sequence(...parseDerSequenceContent(keyDer))),
-      ...(bagAttrs.length > 0 ? [asn1Set(...bagAttrs)] : []),
-    );
-
-    return safeBag;
-  }
-
-  function parseDerSequenceContent(der: Uint8Array): Uint8Array[] {
-    // Return the raw DER as-is inside a wrapper - the key bag wraps the PKCS#8 key
-    // Actually for keyBag, the value IS the PKCS#8 PrivateKeyInfo directly
-    return [der];
   }
 
   function encodeBmpString(str: string): Uint8Array {
@@ -820,15 +804,8 @@
   }
 
   async function deriveKeyFromPassword(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
-    // PKCS#12 key derivation (simplified - derive using PBKDF2 with SHA-256)
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-    const bits = await crypto.subtle.deriveBits(
-      { name: "PBKDF2", salt: salt.buffer as ArrayBuffer, iterations, hash: "SHA-256" },
-      keyMaterial,
-      256,
-    );
-    return new Uint8Array(bits);
+    // PKCS#12 diversifier 3, SHA-256 (not PBKDF2).
+    return pkcs12MacKey(password, salt, iterations);
   }
 
   async function buildPkcs12(
@@ -846,16 +823,25 @@
     const certBags: Uint8Array[] = [];
 
     // Server cert bag
-    certBags.push(buildCertBag(serverDer, "Server Certificate"));
+    const localKeyId = new Uint8Array(await crypto.subtle.digest("SHA-256", serverDer));
+    certBags.push(buildCertBag(serverDer, "Server Certificate", localKeyId));
     if (interCertObj) {
       certBags.push(buildCertBag(new Uint8Array(interCertObj.rawData), "Intermediate CA"));
     }
     if (rootCertObj) {
       certBags.push(buildCertBag(new Uint8Array(rootCertObj.rawData), "Root CA"));
     }
+    for (const parent of resultParents) certBags.push(buildCertBag(new Uint8Array(parent.rawData), "Parent CA"));
 
-    // Key bag (unencrypted)
-    const keyBag = buildKeyBag(keyDer, "Server Key");
+    // PKCS#8 shrouded key bag when password protected.
+    const keyBag = asn1Sequence(
+      asn1ObjectIdentifier(password ? "1.2.840.113549.1.12.10.1.2" : OID_KEY_BAG),
+      asn1ContextConstructed(0, password ? new Uint8Array(encryptKeyDer(keyDer.buffer, password)) : keyDer),
+      asn1Set(
+        asn1Sequence(asn1ObjectIdentifier("1.2.840.113549.1.9.21"), asn1Set(asn1OctetString(localKeyId))),
+        asn1Sequence(asn1ObjectIdentifier(OID_FRIENDLY_NAME), asn1Set(encodeBmpString("Server Certificate"))),
+      ),
+    );
 
     // Build SafeContents for certs
     const certSafeContents = asn1Sequence(...certBags);
@@ -908,6 +894,9 @@
     expandedSection = null;
     // Also clear import state
     clearImportedCa();
+    keyPassphrase = "";
+    pfxPassphrase = "";
+    resultParents = [];
   }
 
   // ── Computed ───────────────────────────────────────────────────────────
@@ -937,12 +926,13 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Generate a complete certificate chain (Root CA, Intermediate CA, Server) with custom DNS and IP SANs.
+      Generate a new certificate chain or issue a server certificate using your existing root or intermediate CA.
       All keys are generated client-side and never leave your browser.
     </p>
   </header>
 
   <!-- Global Settings -->
+  <fieldset disabled={generating || importing || exporting} class="min-w-0 border-0 p-0 m-0">
   <div class="mb-4 p-4 bg-(--color-bg-alt) border border-(--color-border)">
     <div class="flex justify-between items-center mb-3">
       <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
@@ -961,8 +951,9 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <!-- Key Algorithm -->
       <div>
-        <label class="text-xs text-(--color-text-muted) block mb-1.5">Key Algorithm</label>
+        <label for="key-algorithm" class="text-xs text-(--color-text-muted) block mb-1.5">New key algorithm</label>
         <select
+          id="key-algorithm"
           bind:value={keyAlgorithm}
           disabled={generating}
           class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm focus:border-(--color-text-light) outline-none"
@@ -975,15 +966,39 @@
 
       <!-- Validity -->
       <div>
-        <label class="text-xs text-(--color-text-muted) block mb-1.5">Validity (days)</label>
+        <label for="output-password" class="text-xs text-(--color-text-muted) block mb-1.5">New private key passphrase (optional)</label>
+        <input id="output-password" type="password" autocomplete="new-password" bind:value={keyPassphrase} oninput={clearGeneratedResults} class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm" />
+        <p class="mt-1.5 text-xs text-(--color-text-muted)">Encrypts generated PEM keys with AES-256. Empty exports unencrypted keys. Changing this clears results; generate again to apply it. PFX has its own passphrase below.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Certificate Configuration -->
+  <div class="mb-4 space-y-3">
+    <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
+      <h2 class="text-sm text-(--color-text-light) font-medium mb-3">Certificate lifetimes</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {#if rootCaMode === "generate"}
+          <label class="text-xs text-(--color-text-muted)">Root CA validity (days)
+            <input type="number" min="1" max="36500" step="1" bind:value={rootValidityDays} class="mt-1.5 w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm" />
+          </label>
+        {/if}
+        {#if !skipIntermediate}
+          <label class="text-xs text-(--color-text-muted)">New intermediate validity (days)
+            <input type="number" min="1" max="36500" step="1" bind:value={interValidityDays} class="mt-1.5 w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm" />
+          </label>
+        {/if}
+        <div>
+        <label for="server-validity" class="text-xs text-(--color-text-muted) block mb-1.5">Server validity (days)</label>
         <div class="flex gap-2">
           <input
             type="number"
+            id="server-validity"
             bind:value={validityDays}
             min="1"
             max="36500"
             disabled={generating}
-            class="flex-1 px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
+            class="min-w-0 w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-sm focus:border-(--color-text-light) outline-none"
           />
         </div>
         <div class="flex flex-wrap gap-1 mt-1.5">
@@ -999,15 +1014,13 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- Certificate Configuration -->
-  <div class="mb-4 space-y-3">
+      <p class="mt-3 text-xs text-(--color-text-muted)">Each child certificate is capped at its signing CA's expiry. The actual validity dates appear in the results.</p>
+    </div>
     <!-- Root CA Config -->
     <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-      <div class="flex items-center justify-between mb-3">
+      <div class="flex flex-wrap gap-2 items-center justify-between mb-3">
         <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
-          1. Root CA
+          1. {rootCaMode === "generate" ? "Root CA" : "Existing signing CA"}
         </h2>
         <div class="flex gap-1 bg-(--color-bg) border border-(--color-border) p-0.5">
           <button
@@ -1022,7 +1035,7 @@
             disabled={generating}
             class="px-2.5 py-1 text-xs transition-colors {rootCaMode === 'import' ? 'bg-(--color-accent) text-(--color-btn-text)' : 'text-(--color-text-muted) hover:text-(--color-text)'}"
           >
-            Import
+            Use existing CA
           </button>
         </div>
       </div>
@@ -1079,12 +1092,13 @@
                 Remove
               </button>
             </div>
-            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-(--color-text-muted)">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-(--color-text-muted) break-words">
               <div>Subject: <span class="text-(--color-text) font-mono">{importedCa.cert.subject}</span></div>
               <div>Issuer: <span class="text-(--color-text) font-mono">{importedCa.cert.issuer}</span></div>
               <div>Valid from: <span class="text-(--color-text)">{formatDate(importedCa.cert.notBefore)}</span></div>
               <div>Valid until: <span class="text-(--color-text)">{formatDate(importedCa.cert.notAfter)}</span></div>
-              <div>Algorithm: <span class="text-(--color-text)">{keyAlgorithm}</span></div>
+              <div>Algorithm: <span class="text-(--color-text)">{importedCa.keyPair.privateKey.algorithm.name}</span></div>
+              <div>Parent certificates: <span class="text-(--color-text)">{importedParents.length}</span></div>
             </div>
           </div>
         {:else}
@@ -1092,7 +1106,7 @@
           <div class="space-y-3">
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-xs text-(--color-text-muted)">CA Certificate PEM</label>
+                <label for="ca-cert" class="text-xs text-(--color-text-muted)">Signing CA certificate PEM (root or intermediate)</label>
                 <label class="text-xs text-(--color-text-muted) hover:text-(--color-text) cursor-pointer transition-colors">
                   Upload .crt
                   <input
@@ -1104,6 +1118,7 @@
                 </label>
               </div>
               <textarea
+                id="ca-cert"
                 bind:value={importCertPem}
                 disabled={importing}
                 placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
@@ -1113,7 +1128,7 @@
             </div>
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-xs text-(--color-text-muted)">CA Private Key PEM (PKCS#8)</label>
+                <label for="ca-key" class="text-xs text-(--color-text-muted)">Signing CA private key PEM</label>
                 <label class="text-xs text-(--color-text-muted) hover:text-(--color-text) cursor-pointer transition-colors">
                   Upload .key
                   <input
@@ -1125,6 +1140,7 @@
                 </label>
               </div>
               <textarea
+                id="ca-key"
                 bind:value={importKeyPem}
                 disabled={importing}
                 placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
@@ -1133,6 +1149,18 @@
               ></textarea>
             </div>
 
+            <label class="block text-xs text-(--color-text-muted)">CA private key passphrase (if encrypted)
+              <input type="password" autocomplete="off" bind:value={importPassphrase} class="mt-1.5 w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) text-sm" />
+            </label>
+            <div>
+              <div class="flex flex-wrap justify-between gap-2 mb-1">
+                <label for="parent-chain" class="text-xs text-(--color-text-muted)">Parent CA chain PEM (optional)</label>
+                <label class="text-xs text-(--color-text-muted) cursor-pointer">Upload chain
+                  <input type="file" accept=".crt,.pem,.cer" onchange={(e) => handleFileUpload(e, "chain")} class="block max-w-full mt-1 text-xs" />
+                </label>
+              </div>
+              <textarea id="parent-chain" bind:value={importChainPem} rows="4" placeholder="Paste parent intermediate certificate(s) and root certificate here" class="w-full px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text) font-mono text-xs resize-y"></textarea>
+            </div>
             {#if importError}
               <div class="p-2 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-xs">
                 {importError}
@@ -1148,9 +1176,9 @@
             </button>
 
             <p class="text-[10px] text-(--color-text-muted) leading-relaxed">
-              Import an existing CA certificate and private key to sign new intermediate/server certificates.
-              The certificate must have Basic Constraints CA:TRUE. The private key must be in PKCS#8 PEM format
-              (-----BEGIN PRIVATE KEY-----). Supported algorithms: RSA (2048/4096) and ECDSA (P-256/P-384).
+              Use the certificate and matching key of the CA that will sign the server certificate.
+              For an intermediate signer, parent certificates are enough; no root private key or root passphrase is needed.
+              Supports encrypted/unencrypted PKCS#8 (RSA, P-256, P-384) and RSA PEM keys. Parent certificates are verified and ordered automatically; omit the signing certificate from that field.
             </p>
           </div>
         {/if}
@@ -1159,7 +1187,7 @@
 
     <!-- Intermediate CA Config -->
     <div class="p-4 bg-(--color-bg-alt) border border-(--color-border)">
-      <div class="flex items-center justify-between mb-3">
+      <div class="flex flex-wrap gap-2 items-center justify-between mb-3">
         <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium">
           2. Intermediate CA
         </h2>
@@ -1170,7 +1198,7 @@
             disabled={generating}
             class="accent-(--color-accent)"
           />
-          Skip (sign directly with Root)
+          Sign server directly with selected CA
         </label>
       </div>
       {#if !skipIntermediate}
@@ -1209,7 +1237,7 @@
         </div>
       {:else}
         <p class="text-xs text-(--color-text-muted)">
-          Server certificate will be signed directly by the Root CA.
+          Server certificate will be signed directly by the selected root or intermediate CA.
         </p>
       {/if}
     </div>
@@ -1219,6 +1247,10 @@
       <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">
         3. Server Certificate
       </h2>
+      <label class="flex items-center gap-2 mb-4 text-xs text-(--color-text-muted)">
+        <input type="checkbox" bind:checked={clientAuth} class="accent-(--color-accent)" />
+        Also allow client authentication (mTLS)
+      </label>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div>
           <label class="text-xs text-(--color-text-muted) block mb-1">Common Name (CN)</label>
@@ -1340,8 +1372,9 @@
   </div>
 
   <!-- Error -->
+  </fieldset>
   {#if error}
-    <div class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">
+    <div role="alert" class="mb-4 p-3 bg-(--color-error-bg) border border-(--color-error-border) text-(--color-error-text) text-sm">
       {error}
     </div>
   {/if}
@@ -1357,13 +1390,13 @@
         <div class="space-y-2">
           <!-- Root CA -->
           {#if rootCert}
-            {@const isImported = rootCaMode === "import"}
+            {@const isImported = rootCert.label.includes("Imported")}
             <button
               onclick={() => toggleSection("root")}
               class="w-full p-3 bg-(--color-bg) border border-(--color-border) hover:border-(--color-text-light) transition-colors text-left"
             >
               <div class="flex items-center gap-2">
-                <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded shrink-0">Root CA{isImported ? " (Imported)" : ""}</span>
+                <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded shrink-0">{rootCert.label}</span>
                 <span class="text-sm font-medium text-(--color-text) truncate">{extractCN(rootCert.cert.subject)}</span>
                 <span class="ml-auto text-xs text-(--color-text-muted)">{expandedSection === "root" ? "▲" : "▼"}</span>
               </div>
@@ -1383,7 +1416,7 @@
                       {copiedField === "root-cert" ? "Copied!" : "Copy"}
                     </button>
                     <button
-                      onclick={() => downloadFile(rootCert?.pem || "", "root-ca.crt")}
+                      onclick={() => downloadFile(rootCert?.pem || "", isImported ? "signing-ca.crt" : "root-ca.crt")}
                       class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
                     >
                       Download .crt
@@ -1499,7 +1532,7 @@
                 <div>
                   <span class="text-xs text-(--color-text-muted) block mb-1">Subject Alternative Names</span>
                   <div class="flex flex-wrap gap-1">
-                    {#each sanEntries as san}
+                    {#each resultSans as san}
                       <span class="px-2 py-0.5 text-xs font-mono bg-(--color-bg-alt) border border-(--color-border) text-(--color-text)">
                         <span class="text-(--color-text-muted) uppercase text-[10px]">{san.type}:</span> {san.value}
                       </span>
@@ -1555,8 +1588,14 @@
         <h2 class="text-sm tracking-wider text-(--color-text-light) font-medium mb-3">
           Export
         </h2>
+        <p class="mb-3 text-xs text-(--color-text-muted)">Generated PEM keys: {serverCert?.privateKeyPem.includes("ENCRYPTED PRIVATE KEY") ? "encrypted with AES-256" : "unencrypted"}.</p>
         <div class="space-y-3">
           <!-- PEM Downloads -->
+          {#if resultParents.length}
+            <p class="text-xs text-(--color-text-muted)">Included parent chain: {resultParents.map((cert) => extractCN(cert.subject)).join(" → ")}</p>
+            <button onclick={() => downloadFile(resultParents.map((cert) => cert.toString("pem")).join("\n"), "parent-chain.pem")} class="px-3 py-2 text-sm border border-(--color-border) text-(--color-text)">Download parent CA chain</button>
+          {/if}
+          <button onclick={() => downloadFile(fullchainPem(), "fullchain.pem")} class="px-3 py-2 text-sm border border-(--color-border) text-(--color-text)">Server fullchain (.pem, excludes root)</button>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               onclick={downloadChainPem}
@@ -1583,25 +1622,29 @@
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-(--color-text-muted)">PKCS#12 / PFX Export</span>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-col sm:flex-row gap-2">
               <input
                 type="password"
+                aria-label="PFX passphrase"
+                autocomplete="new-password"
+                disabled={exporting}
                 bind:value={pfxPassphrase}
                 placeholder="Passphrase (optional)"
                 class="flex-1 px-3 py-2 bg-(--color-bg-alt) border border-(--color-border) text-(--color-text) text-sm focus:border-(--color-text-light) outline-none"
               />
               <button
                 onclick={downloadPkcs12}
+                disabled={exporting || generating}
                 class="flex items-center gap-2 px-3 py-2 bg-(--color-bg-alt) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:border-(--color-text-light) text-sm transition-colors shrink-0"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                Download .p12
+                {exporting ? "Exporting…" : "Download .p12"}
               </button>
             </div>
             <p class="text-[10px] text-(--color-text-muted) mt-1.5">
-              Bundles server key + certificate chain. Compatible with Java keystores, Windows, and macOS.
+              Bundles server key + certificate chain. A passphrase encrypts the key with AES-256; empty exports an unencrypted key.
             </p>
           </div>
 
@@ -1609,7 +1652,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               onclick={() => {
-                const chain = (serverCert?.pem || "") + "\n" + (interCert?.pem || "") + "\n" + (rootCert?.pem || "");
+                const chain = (serverCert?.pem || "") + "\n" + (interCert?.pem || "") + "\n" + (rootCert?.pem || "") + "\n" + resultParents.map((cert) => cert.toString("pem")).join("\n");
                 handleCopy("chain", chain);
               }}
               class="px-3 py-2 bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-(--color-text) hover:border-(--color-text-light) text-sm transition-colors text-center"
@@ -1635,13 +1678,13 @@
           <div>
             <strong class="text-(--color-text)">Node.js / Express:</strong>
             <code class="block mt-1 px-2 py-1 bg-(--color-bg) border border-(--color-border) rounded font-mono break-all">
-              https.createServer({"{"} key: fs.readFileSync("server.key"), cert: fs.readFileSync("server.crt"), ca: fs.readFileSync("certificate-chain.pem") {"}"}, app)
+              https.createServer({"{"} key: fs.readFileSync("server.key"), cert: fs.readFileSync("fullchain.pem"), passphrase: process.env.TLS_KEY_PASSPHRASE {"}"}, app)
             </code>
           </div>
           <div>
             <strong class="text-(--color-text)">nginx:</strong>
             <code class="block mt-1 px-2 py-1 bg-(--color-bg) border border-(--color-border) rounded font-mono break-all">
-              ssl_certificate server.crt; ssl_certificate_key server.key;
+              ssl_certificate fullchain.pem; ssl_certificate_key server.key;
             </code>
           </div>
           <div>
@@ -1670,8 +1713,16 @@
     <strong class="text-(--color-text)">About Certificate Generator:</strong>
     Generate self-signed certificate chains for development, testing, and internal PKI.
     Supports RSA and ECDSA key algorithms with configurable validity periods.
-    All cryptographic operations use the Web Crypto API and run entirely in your browser —
+    All cryptographic operations run entirely in your browser —
     private keys are never transmitted anywhere. Add the Root CA to your system trust store
     to avoid browser warnings during local development.
   </div>
 </div>
+
+<style>
+  input, select, textarea { min-width: 0; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+</style>
