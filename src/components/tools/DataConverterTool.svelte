@@ -314,13 +314,22 @@
     error = "";
   };
 
-  const handleSwap = () => {
-    if (outputValue) {
-      sourceValue = outputValue;
-      const temp = sourceFormat;
-      sourceFormat = outputFormat;
-      outputFormat = temp;
+  const handleSwap = (): void => {
+    if (convertTimeout) {
+      clearTimeout(convertTimeout);
+      convertTimeout = null;
     }
+
+    // Refresh first so a pending edit cannot swap in an outdated output.
+    convert();
+    if (error || (sourceValue.trim() && !outputValue)) return;
+
+    sourceValue = outputValue;
+    const temp = sourceFormat;
+    sourceFormat = outputFormat;
+    outputFormat = temp;
+    copied = false;
+    convert();
   };
 
   const dataToTable = (data: unknown): { columns: string[]; rows: string[][] } | null => {
@@ -614,7 +623,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="mb-4">
+  <header class="sr-only">
     <p class="text-sm text-(--color-text-muted)">
       Convert between JSON, YAML, TOML, TOON, XML, INI, CSV, and Properties formats with customizable indentation and key sorting.
     </p>
@@ -649,7 +658,16 @@
          </select>
       </div>
 
-      <span class="text-(--color-text-light)">→</span>
+      <button
+        type="button"
+        onclick={handleSwap}
+        disabled={!!sourceValue.trim() && (!!error || !outputValue)}
+        class="px-2 py-1 text-(--color-text-light) hover:text-(--color-primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-primary) transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Swap formats and use output as the new source"
+        aria-label="Swap source and output formats and use output as the new source"
+      >
+        <span aria-hidden="true">⇄</span>
+      </button>
 
       <!-- Output Format -->
       <div class="flex items-center gap-2">
@@ -800,8 +818,9 @@
         <div class="flex gap-3">
           <button
             onclick={handleSwap}
-            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors"
-            title="Use output as new source"
+            disabled={!!sourceValue.trim() && (!!error || !outputValue)}
+            class="text-xs text-(--color-text-muted) hover:text-(--color-text) transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Swap formats and use output as the new source"
           >
             Swap
           </button>

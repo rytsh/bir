@@ -784,7 +784,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="mb-4">
+  <header class="sr-only">
     <p class="text-sm text-(--color-text-muted)">
       Format and prettify JSON, YAML, TOML, Markdown, CSS, HTML, XML, and CSV with customizable indentation.
     </p>

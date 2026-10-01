@@ -69,7 +69,7 @@ test("new templates preserve full SPDX text and the selected variant", async () 
   }
 });
 
-test("previously abbreviated picker templates contain complete unmodified SPDX bodies", async () => {
+test("picker templates preserve complete license bodies and licensing choices", async () => {
   const component = await readFile(new URL("../components/tools/LicenseGeneratorTool.svelte", import.meta.url), "utf8");
   const script = component.match(/<script lang="ts">([\s\S]*?)<\/script>/)[1];
   // Exercise the actual picker metadata and callbacks without a browser or Svelte state.
@@ -93,9 +93,21 @@ test("previously abbreviated picker templates contain complete unmodified SPDX b
       const canonical = isGnu ? `${spdx}-only` : spdx;
       const original = require(`spdx-license-list/licenses/${canonical}.json`).licenseText;
       const output = license.template("2026", "Example Author", "Example Project");
-      assert.ok(output.includes(original), `${spdx}: entire SPDX body must be unchanged`);
+      if (spdx === "Apache-2.0") {
+        const template = await readFile(new URL("./apache-2.0.txt", import.meta.url), "utf8");
+        assert.equal(output, template.replace("Copyright [yyyy] [name of copyright owner]", "Copyright 2026 Example Author"));
+        assert.ok(output.trimStart().startsWith("Apache License\n"));
+        assert.ok(!output.includes("SPDX-License-Identifier:"));
+        const normalize = (text) => text.replace(/\s+/g, " ").trim();
+        assert.equal(normalize(template), normalize(original), "GitHub formatting preserves the full SPDX text");
+        const { apacheLicenseText } = await server.ssrLoadModule("/src/data/full-license-templates.ts");
+        assert.equal(apacheLicenseText("2026", "Example Author", true), `SPDX-License-Identifier: Apache-2.0\n\n${output}`);
+        assert.ok(apacheLicenseText("2031", "Other $& Holder").includes("Copyright 2031 Other $& Holder"));
+      } else {
+        assert.ok(output.includes(original), `${spdx}: entire SPDX body must be unchanged`);
+      }
       assert.ok(!output.includes("Full license text:"), `${spdx}: no abbreviated link-only notice`);
-      if (isGnu || spdx === "Apache-2.0") {
+      if (isGnu) {
         assert.ok(output.startsWith(`SPDX-License-Identifier: ${canonical}\n`));
         assert.ok(output.includes("2026 Example Author"));
         const customized = license.template("2031", "Other Holder", "Other Project");
@@ -118,6 +130,14 @@ test("previously abbreviated picker templates contain complete unmodified SPDX b
         assert.ok(output.indexOf(gpl) > output.indexOf(original));
       }
     }
+    for (const spdx of ["BSD-2-Clause", "BSD-3-Clause"]) {
+      const output = licenses.find((entry) => entry.spdx === spdx).template("2026", "Example Author");
+      assert.ok(output.includes("Copyright (c) 2026, Example Author"));
+      assert.ok(!output.includes("All rights reserved."));
+    }
+    const wtfpl = licenses.find((entry) => entry.spdx === "WTFPL").template("2026", "Example Author");
+    assert.ok(wtfpl.includes("Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>"));
+    assert.ok(!wtfpl.includes("Example Author"));
   } finally {
     await server.close();
   }

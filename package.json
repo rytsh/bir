@@ -6,7 +6,9 @@
     "dev": "astro dev",
     "build": "NODE_OPTIONS=--max-old-space-size=6144 astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "update:emojis": "node scripts/update-emojis.mjs",
+    "test:emojis": "node --test scripts/emoji.test.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.6",
