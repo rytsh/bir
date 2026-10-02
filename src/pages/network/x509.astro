@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import X509DecoderTool from "../../components/tools/X509DecoderTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/network/x509");
+---
+
+<Layout title="X.509 Certificate Decoder" description={tool?.description} keywords={tool?.keywords} currentPath="/network/x509">
+  <h1 slot="navbar-title">X.509 Decoder</h1>
+  <X509DecoderTool client:load />
+</Layout>

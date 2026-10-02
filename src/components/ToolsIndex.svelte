@@ -6,6 +6,12 @@
     FAVORITES_STORAGE_KEY,
     getFavoriteIds,
   } from "../lib/favorites";
+  import {
+    RECENT_CHANGED_EVENT,
+    RECENT_STORAGE_KEY,
+    clearRecentIds,
+    getRecentIds,
+  } from "../lib/recent";
 
   type Tool = BaseTool & {
     category: string;
@@ -17,10 +23,12 @@
   }
 
   const FAVORITES_CATEGORY = "Favorites";
+  const RECENT_CATEGORY = "Recently Used";
 
   let searchQuery = $state("");
   let selectedCategory = $state("");
   let favoriteIds = $state<string[]>([]);
+  let recentIds = $state<string[]>([]);
 
   // Get all unique categories
   const allCategories = [FAVORITES_CATEGORY, ...categories.map((cat) => cat.name)];
@@ -50,6 +58,7 @@
         (tool) =>
           tool.name.toLowerCase().includes(query) ||
           tool.description.toLowerCase().includes(query) ||
+          tool.keywords.toLowerCase().includes(query) ||
           tool.category.toLowerCase().includes(query),
       );
     }
@@ -78,11 +87,23 @@
     }
 
     if (!selectedCategory) {
-      const favoriteTools = tools.filter((tool) => isFavorite(tool));
+      const pinnedGroups: ToolGroup[] = [];
 
-      if (favoriteTools.length > 0) {
-        return [{ name: FAVORITES_CATEGORY, tools: favoriteTools }, ...categoryGroups];
+      if (!searchQuery.trim()) {
+        const recentTools = recentIds
+          .map((id) => tools.find((tool) => tool.id === id))
+          .filter((tool): tool is Tool => tool !== undefined);
+        if (recentTools.length > 0) {
+          pinnedGroups.push({ name: RECENT_CATEGORY, tools: recentTools });
+        }
       }
+
+      const favoriteTools = tools.filter((tool) => isFavorite(tool));
+      if (favoriteTools.length > 0) {
+        pinnedGroups.push({ name: FAVORITES_CATEGORY, tools: favoriteTools });
+      }
+
+      return [...pinnedGroups, ...categoryGroups];
     }
 
     return categoryGroups;
@@ -101,20 +122,30 @@
     favoriteIds = detail?.favoriteIds ?? getFavoriteIds();
   }
 
+  function handleRecentChanged(event: Event): void {
+    const detail = (event as CustomEvent<{ recentIds?: string[] }>).detail;
+    recentIds = detail?.recentIds ?? getRecentIds();
+  }
+
   function handleStorage(event: StorageEvent): void {
     if (event.key === FAVORITES_STORAGE_KEY) {
       loadFavorites();
+    } else if (event.key === RECENT_STORAGE_KEY) {
+      recentIds = getRecentIds();
     }
   }
 
   $effect(() => {
     loadFavorites();
+    recentIds = getRecentIds();
 
     window.addEventListener(FAVORITES_CHANGED_EVENT, handleFavoritesChanged);
+    window.addEventListener(RECENT_CHANGED_EVENT, handleRecentChanged);
     window.addEventListener("storage", handleStorage);
 
     return () => {
       window.removeEventListener(FAVORITES_CHANGED_EVENT, handleFavoritesChanged);
+      window.removeEventListener(RECENT_CHANGED_EVENT, handleRecentChanged);
       window.removeEventListener("storage", handleStorage);
     };
   });
@@ -223,13 +254,23 @@
 
   <!-- Tools Grid -->
   {#if groupedTools.length > 0}
-    {#each groupedTools as category}
+    {#each groupedTools as category (category.name)}
       <section class="mb-4">
-        <h2
-          class="text-xs uppercase tracking-wider text-(--color-text-light) mb-3 font-medium"
-        >
-          {category.name}
-        </h2>
+        <div class="flex items-baseline justify-between mb-3">
+          <h2
+            class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          >
+            {category.name}
+          </h2>
+          {#if category.name === RECENT_CATEGORY}
+            <button
+              onclick={() => (recentIds = clearRecentIds())}
+              class="text-xs text-(--color-text-light) hover:text-(--color-text) transition-colors"
+            >
+              Clear
+            </button>
+          {/if}
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {#each category.tools as tool}

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import JsonToolkitTool from "../../components/tools/JsonToolkitTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/json");
+---
+
+<Layout title="JSON Toolkit - JSONPath, Schema, Types" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/json">
+  <h1 slot="navbar-title">JSON Toolkit</h1>
+  <JsonToolkitTool client:load />
+</Layout>

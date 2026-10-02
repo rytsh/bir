@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import LedResistorTool from "../../components/tools/LedResistorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/led-resistor");
+---
+
+<Layout title="LED Resistor Calculator" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/led-resistor">
+  <h1 slot="navbar-title">LED Resistor</h1>
+  <LedResistorTool client:load />
+</Layout>

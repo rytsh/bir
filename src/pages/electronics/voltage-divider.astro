@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import VoltageDividerTool from "../../components/tools/VoltageDividerTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/voltage-divider");
+---
+
+<Layout title="Voltage Divider Calculator" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/voltage-divider">
+  <h1 slot="navbar-title">Voltage Divider</h1>
+  <VoltageDividerTool client:load />
+</Layout>

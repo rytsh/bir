@@ -4,6 +4,7 @@
   import { XMLParser, XMLBuilder } from "fast-xml-parser";
   import Papa from "papaparse";
   import { format as formatCSSLib } from "@projectwallace/format-css";
+  import { format as formatSQLLib, type SqlLanguage } from "sql-formatter";
   import CodeMirror from "svelte-codemirror-editor";
   import { EditorView, keymap } from "@codemirror/view";
   import { redo } from "@codemirror/commands";
@@ -12,6 +13,7 @@
   import { html } from "@codemirror/lang-html";
   import { xml } from "@codemirror/lang-xml";
   import { css } from "@codemirror/lang-css";
+  import { sql } from "@codemirror/lang-sql";
   import {
     createDarkModeObserver,
     getInitialDarkMode,
@@ -19,12 +21,15 @@
     editorHeightExtension,
   } from "../../lib/codemirror.js";
 
-  type Format = "json" | "yaml" | "toml" | "markdown" | "css" | "html" | "xml" | "csv";
+  type Format = "json" | "yaml" | "toml" | "markdown" | "css" | "html" | "xml" | "csv" | "sql";
+  type KeywordCase = "upper" | "lower" | "preserve";
   type IndentType = "0" | "2" | "4" | "tab";
 
   let format = $state<Format>("json");
   let indentType = $state<IndentType>("2");
   let sortKeys = $state(false);
+  let sqlDialect = $state<SqlLanguage>("sql");
+  let sqlKeywordCase = $state<KeywordCase>("upper");
   let error = $state("");
   let copied = $state(false);
   let isDark = $state(getInitialDarkMode());
@@ -40,7 +45,27 @@
     html: "HTML",
     xml: "XML",
     csv: "CSV",
+    sql: "SQL",
   };
+
+  const sqlDialects: { value: SqlLanguage; label: string }[] = [
+    { value: "sql", label: "Standard SQL" },
+    { value: "postgresql", label: "PostgreSQL" },
+    { value: "mysql", label: "MySQL" },
+    { value: "mariadb", label: "MariaDB" },
+    { value: "sqlite", label: "SQLite" },
+    { value: "transactsql", label: "SQL Server (T-SQL)" },
+    { value: "plsql", label: "Oracle PL/SQL" },
+    { value: "bigquery", label: "BigQuery" },
+    { value: "snowflake", label: "Snowflake" },
+    { value: "redshift", label: "Redshift" },
+    { value: "clickhouse", label: "ClickHouse" },
+    { value: "duckdb", label: "DuckDB" },
+    { value: "trino", label: "Trino / Presto" },
+    { value: "spark", label: "Spark SQL" },
+    { value: "hive", label: "Hive" },
+    { value: "db2", label: "IBM Db2" },
+  ];
 
   const getIndent = (): string | number | undefined => {
     if (indentType === "tab") return "\t";
@@ -564,6 +589,30 @@
     return formattedRows.join("\n") + "\n";
   };
 
+  const minifySQL = (text: string): string => {
+    const normalized = formatSQLLib(text, { language: sqlDialect, keywordCase: sqlKeywordCase });
+    return normalized
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\(\s+/g, "(")
+      .replace(/\s+\)/g, ")")
+      .replace(/\s*;\s*/g, "; ")
+      .trim();
+  };
+
+  const formatSQL = (text: string): string => {
+    const indent = getIndent();
+    if (indent === undefined) return minifySQL(text);
+    return formatSQLLib(text, {
+      language: sqlDialect,
+      keywordCase: sqlKeywordCase,
+      useTabs: indent === "\t",
+      tabWidth: typeof indent === "number" ? indent : 2,
+    }) + "\n";
+  };
+
   // Validation functions
   const validateFormat = (text: string, fmt: Format): boolean => {
     if (!text.trim()) return true; // Empty is considered valid
@@ -613,6 +662,9 @@
           formatCSSLib(text);
           return true;
         }
+        case "sql":
+          formatSQLLib(text, { language: sqlDialect });
+          return true;
         case "markdown":
           return true; // Markdown is always valid
         default:
@@ -687,6 +739,9 @@
         case "csv":
           formatted = formatCSV(value);
           break;
+        case "sql":
+          formatted = formatSQL(value);
+          break;
         default:
           return;
       }
@@ -729,6 +784,8 @@
       case "csv":
         // No specific CSV language, use plain text
         return [];
+      case "sql":
+        return sql();
     }
   };
 
@@ -760,9 +817,12 @@
     return cleanup;
   });
 
+  const supportsMinify = (fmt: Format): boolean =>
+    fmt === "json" || fmt === "css" || fmt === "html" || fmt === "sql";
+
   // Reset indent to "2" if switching away from JSON/CSS/HTML while "0" is selected
   $effect(() => {
-    if (format !== "json" && format !== "css" && format !== "html" && indentType === "0") {
+    if (!supportsMinify(format) && indentType === "0") {
       indentType = "2";
     }
   });
@@ -786,7 +846,7 @@
 <div class="h-full flex flex-col">
   <header class="sr-only">
     <p class="text-sm text-(--color-text-muted)">
-      Format and prettify JSON, YAML, TOML, Markdown, CSS, HTML, XML, and CSV with customizable indentation.
+      Format and prettify JSON, YAML, TOML, Markdown, CSS, HTML, XML, CSV, and SQL with customizable indentation.
     </p>
   </header>
 
@@ -814,6 +874,7 @@
           <option value="html">HTML</option>
           <option value="xml">XML</option>
           <option value="csv">CSV</option>
+          <option value="sql">SQL</option>
         </select>
       </div>
 
@@ -832,7 +893,7 @@
           bind:value={indentType}
           class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
         >
-          {#if format === "json" || format === "css" || format === "html"}
+          {#if supportsMinify(format)}
             <option value="0">Minified</option>
           {/if}
           <option value="2">2 spaces</option>
@@ -840,6 +901,46 @@
           <option value="tab">Tabs</option>
         </select>
       </div>
+
+      {#if format === "sql"}
+        <div class="hidden sm:block w-px h-6 bg-(--color-border)"></div>
+
+        <div class="flex items-center gap-2">
+          <label
+            for="sql-dialect"
+            class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          >
+            Dialect
+          </label>
+          <select
+            id="sql-dialect"
+            bind:value={sqlDialect}
+            class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+          >
+            {#each sqlDialects as dialect (dialect.value)}
+              <option value={dialect.value}>{dialect.label}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label
+            for="sql-keyword-case"
+            class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
+          >
+            Keywords
+          </label>
+          <select
+            id="sql-keyword-case"
+            bind:value={sqlKeywordCase}
+            class="px-2 py-1 text-sm bg-(--color-bg) border border-(--color-border) text-(--color-text) focus:border-(--color-text-light) outline-none hover:cursor-pointer"
+          >
+            <option value="upper">UPPER</option>
+            <option value="lower">lower</option>
+            <option value="preserve">Preserve</option>
+          </select>
+        </div>
+      {/if}
 
       {#if format === "json" || format === "yaml" || format === "toml"}
         <div class="hidden sm:block w-px h-6 bg-(--color-border)"></div>

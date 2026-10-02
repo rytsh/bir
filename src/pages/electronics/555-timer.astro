@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Timer555Tool from "../../components/tools/Timer555Tool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/555-timer");
+---
+
+<Layout title="555 Timer Calculator" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/555-timer">
+  <h1 slot="navbar-title">555 Timer</h1>
+  <Timer555Tool client:load />
+</Layout>

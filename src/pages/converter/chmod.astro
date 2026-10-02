@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import ChmodTool from "../../components/tools/ChmodTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/chmod");
+---
+
+<Layout title="Chmod Calculator - Unix Permissions" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/chmod">
+  <h1 slot="navbar-title">Chmod Calculator</h1>
+  <ChmodTool client:load />
+</Layout>
