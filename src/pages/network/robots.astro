@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import RobotsTool from "../../components/tools/RobotsTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/network/robots");
+---
+
+<Layout title="Robots.txt Generator & Tester" description={tool?.description} keywords={tool?.keywords} currentPath="/network/robots">
+  <h1 slot="navbar-title">Robots.txt</h1>
+  <RobotsTool client:load />
+</Layout>

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CspTool from "../../components/tools/CspTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/network/csp");
+---
+
+<Layout title="CSP Generator & Validator - Content Security Policy" description={tool?.description} keywords={tool?.keywords} currentPath="/network/csp">
+  <h1 slot="navbar-title">CSP Builder</h1>
+  <CspTool client:load />
+</Layout>

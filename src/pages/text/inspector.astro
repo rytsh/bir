@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import StringInspectorTool from "../../components/tools/StringInspectorTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/text/inspector");
+---
+
+<Layout title="String Inspector - Hidden Unicode Characters" description={tool?.description} keywords={tool?.keywords} currentPath="/text/inspector">
+  <h1 slot="navbar-title">String Inspector</h1>
+  <StringInspectorTool client:load />
+</Layout>

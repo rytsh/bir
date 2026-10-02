@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PcbTraceTool from "../../components/tools/PcbTraceTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/pcb-trace");
+---
+
+<Layout title="PCB Trace Width Calculator (IPC-2221)" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/pcb-trace">
+  <h1 slot="navbar-title">PCB Trace Width</h1>
+  <PcbTraceTool client:load />
+</Layout>

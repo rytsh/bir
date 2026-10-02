@@ -144,3 +144,79 @@ export const formatPowerRating = (watts: number): string => {
   const fractions: Record<number, string> = { 0.125: "1/8", 0.25: "1/4", 0.5: "1/2" };
   return fractions[watts] ? `${fractions[watts]} W` : `${watts} W`;
 };
+
+const CAPACITOR_TOLERANCE: Record<string, string> = {
+  B: "±0.1 pF",
+  C: "±0.25 pF",
+  D: "±0.5 pF",
+  F: "±1%",
+  G: "±2%",
+  J: "±5%",
+  K: "±10%",
+  M: "±20%",
+  Z: "+80% / −20%",
+};
+
+export interface CapacitorCode {
+  farads: number;
+  tolerance?: string;
+  voltage?: string;
+}
+
+const VOLTAGE_CODES: Record<string, number> = {
+  "0G": 4, "0L": 5.5, "0J": 6.3, "1A": 10, "1C": 16, "1E": 25, "1V": 35, "1H": 50, "1J": 63, "1K": 80,
+  "2A": 100, "2Q": 110, "2B": 125, "2C": 160, "2Z": 180, "2D": 200, "2P": 220, "2E": 250, "2F": 315,
+  "2V": 350, "2G": 400, "2W": 450, "2J": 630, "3A": 1000,
+};
+
+/** Decodes capacitor markings: "104" → 100 nF, "4R7" → 4.7 pF, "104K" → 100 nF ±10%, "2A104J" → 100 V. */
+export const decodeCapacitorCode = (code: string): CapacitorCode | null => {
+  let text = code.trim().toUpperCase().replace(/\s+/g, "");
+  if (!text) return null;
+  let voltage: string | undefined;
+  const voltagePrefix = text.match(/^([0-3][A-Z])(?=\d)/);
+  if (voltagePrefix && VOLTAGE_CODES[voltagePrefix[1]] !== undefined) {
+    voltage = `${VOLTAGE_CODES[voltagePrefix[1]]} V`;
+    text = text.slice(2);
+  }
+  let tolerance: string | undefined;
+  const toleranceSuffix = text.match(/([BCDFGJKMZ])$/);
+  if (toleranceSuffix && /\d[BCDFGJKMZ]$/.test(text)) {
+    tolerance = CAPACITOR_TOLERANCE[toleranceSuffix[1]];
+    text = text.slice(0, -1);
+  }
+
+  if (/^\d+R\d+$|^R\d+$/.test(text)) {
+    return { farads: parseFloat(text.replace("R", ".")) * 1e-12, tolerance, voltage };
+  }
+  const prefixed = text.match(/^(\d*)([PNU])(\d*)$/);
+  if (prefixed && (prefixed[1] || prefixed[3])) {
+    const multiplier = prefixed[2] === "P" ? 1e-12 : prefixed[2] === "N" ? 1e-9 : 1e-6;
+    return { farads: parseFloat(`${prefixed[1] || "0"}.${prefixed[3] || "0"}`) * multiplier, tolerance, voltage };
+  }
+  if (/^\d{3}$/.test(text)) {
+    const digits = parseInt(text.slice(0, 2), 10);
+    const exponent = parseInt(text[2], 10);
+    if (exponent === 9) return { farads: digits * 0.1 * 1e-12, tolerance, voltage };
+    if (exponent === 8) return { farads: digits * 0.01 * 1e-12, tolerance, voltage };
+    if (exponent > 6) return null;
+    return { farads: digits * Math.pow(10, exponent) * 1e-12, tolerance, voltage };
+  }
+  if (/^\d{1,2}$/.test(text)) return { farads: parseInt(text, 10) * 1e-12, tolerance, voltage };
+  return null;
+};
+
+/** Encodes a capacitance into the 3-digit EIA code. Values below 10 pF use R notation. */
+export const encodeCapacitorCode = (farads: number): string | null => {
+  const picofarads = farads / 1e-12;
+  if (!(picofarads > 0) || picofarads >= 1e11) return null;
+  if (picofarads < 10) return picofarads.toFixed(1).replace(".", "R").replace(/R0$/, "R0");
+  const exponent = Math.floor(Math.log10(picofarads)) - 1;
+  const digits = Math.round(picofarads / Math.pow(10, exponent));
+  if (digits >= 100) return `${String(digits / 10).padStart(2, "0")}${exponent + 1}`;
+  if (exponent > 6) return null;
+  return `${String(digits).padStart(2, "0")}${exponent}`;
+};
+
+export const CAPACITOR_TOLERANCE_CODES = CAPACITOR_TOLERANCE;
+export const CAPACITOR_VOLTAGE_CODES = VOLTAGE_CODES;

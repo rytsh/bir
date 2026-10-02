@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import CapacitorCodeTool from "../../components/tools/CapacitorCodeTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/electronics/capacitor-code");
+---
+
+<Layout title="Capacitor Code Calculator" description={tool?.description} keywords={tool?.keywords} currentPath="/electronics/capacitor-code">
+  <h1 slot="navbar-title">Capacitor Code</h1>
+  <CapacitorCodeTool client:load />
+</Layout>

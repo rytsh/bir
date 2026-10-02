@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import SemverTool from "../../components/tools/SemverTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/converter/semver");
+---
+
+<Layout title="Semver Calculator - Range Checker" description={tool?.description} keywords={tool?.keywords} currentPath="/converter/semver">
+  <h1 slot="navbar-title">Semver</h1>
+  <SemverTool client:load />
+</Layout>
