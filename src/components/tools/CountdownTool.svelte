@@ -18,6 +18,7 @@
     selectedFont: string;
     fontSize: number;
     enableSound: boolean;
+    enableNotification: boolean;
     enableFlashing: boolean;
     showProgressBar: boolean;
   }
@@ -35,6 +36,7 @@
     selectedFont: "Quantico",
     fontSize: 8,
     enableSound: true,
+    enableNotification: false,
     enableFlashing: true,
     showProgressBar: true,
   };
@@ -239,6 +241,10 @@
 
   // End of time settings
   let enableSound = $state(defaults.enableSound);
+  let enableNotification = $state(defaults.enableNotification);
+  let notificationPermission = $state<NotificationPermission | "unsupported">(
+    "default",
+  );
   let enableFlashing = $state(defaults.enableFlashing);
   let showProgressBar = $state(defaults.showProgressBar);
   let isFlashing = $state(false);
@@ -847,6 +853,8 @@
         if (settings.fontSize !== undefined) fontSize = settings.fontSize;
         if (settings.enableSound !== undefined)
           enableSound = settings.enableSound;
+        if (settings.enableNotification !== undefined)
+          enableNotification = settings.enableNotification;
         if (settings.enableFlashing !== undefined)
           enableFlashing = settings.enableFlashing;
         if (settings.showProgressBar !== undefined)
@@ -872,6 +880,7 @@
         selectedFont,
         fontSize,
         enableSound,
+        enableNotification,
         enableFlashing,
         showProgressBar,
       };
@@ -899,6 +908,7 @@
     selectedFont = defaults.selectedFont;
     fontSize = defaults.fontSize;
     enableSound = defaults.enableSound;
+    enableNotification = defaults.enableNotification;
     enableFlashing = defaults.enableFlashing;
     showProgressBar = defaults.showProgressBar;
   };
@@ -906,6 +916,8 @@
   // Load settings on mount
   $effect(() => {
     loadSettings();
+    notificationPermission =
+      "Notification" in window ? Notification.permission : "unsupported";
   });
 
   // Auto-save settings when they change
@@ -920,6 +932,7 @@
     selectedFont;
     fontSize;
     enableSound;
+    enableNotification;
     enableFlashing;
     showProgressBar;
 
@@ -998,6 +1011,55 @@
     }
   };
 
+  const handleNotificationToggle = async (e: Event) => {
+    const input = e.currentTarget as HTMLInputElement;
+    if (!input.checked) {
+      enableNotification = false;
+      return;
+    }
+    if (!("Notification" in window)) {
+      notificationPermission = "unsupported";
+      input.checked = false;
+      return;
+    }
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    notificationPermission = permission;
+    enableNotification = permission === "granted";
+    input.checked = enableNotification;
+  };
+
+  const sendNotification = async () => {
+    if (!enableNotification || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    const title = "Time's up!";
+    const options: NotificationOptions = {
+      body: `Your ${formatTime(getTotalMs())} countdown has finished.`,
+      icon: "/pwa-192x192.png",
+      tag: "countdown-timer",
+      requireInteraction: true,
+    };
+
+    try {
+      const notification = new Notification(title, options);
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch {
+      // Android Chrome only allows notifications through a service worker
+      try {
+        const registration = await navigator.serviceWorker?.getRegistration();
+        await registration?.showNotification(title, options);
+      } catch (err) {
+        console.warn("Notification failed:", err);
+      }
+    }
+  };
+
   const startFlashing = () => {
     if (!enableFlashing) return;
 
@@ -1029,6 +1091,7 @@
     }
 
     playBeep();
+    sendNotification();
     startFlashing();
   };
 
@@ -1726,6 +1789,27 @@
             />
             <span class="text-sm text-(--color-text)">Sound Alert</span>
           </label>
+          {#if notificationPermission !== "unsupported"}
+            <label
+              class="flex items-center gap-2 cursor-pointer"
+              title={notificationPermission === "denied"
+                ? "Notifications are blocked. Allow them in your browser's site settings."
+                : "Get a browser notification when the timer ends, even if this tab is in the background."}
+            >
+              <input
+                type="checkbox"
+                checked={enableNotification &&
+                  notificationPermission === "granted"}
+                onchange={handleNotificationToggle}
+                disabled={notificationPermission === "denied"}
+                class="w-4 h-4 accent-(--color-accent) disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <span class="text-sm text-(--color-text)">Notification</span>
+              {#if notificationPermission === "denied"}
+                <span class="text-xs text-(--color-text-muted)">(blocked)</span>
+              {/if}
+            </label>
+          {/if}
           <label class="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"

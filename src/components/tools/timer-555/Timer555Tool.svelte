@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { E_SERIES, formatSI, nearestStandard, parseSI, type ESeries } from "../../lib/electronics.js";
+  import { E_SERIES, formatSI, nearestStandard, parseSI, type ESeries } from "../../../lib/electronics.js";
+  import Timer555Simulation from "./Timer555Simulation.svelte";
 
   type Mode = "astable" | "monostable" | "design";
 
@@ -87,19 +88,6 @@
     mode = "astable";
   };
 
-  const waveformPath = (dutyPercent: number): string => {
-    const width = 300;
-    const cycles = 3;
-    const cycleWidth = width / cycles;
-    const highWidth = cycleWidth * (dutyPercent / 100);
-    let path = "M 0 60";
-    for (let index = 0; index < cycles; index++) {
-      const x = index * cycleWidth;
-      path += ` L ${x} 10 L ${x + highWidth} 10 L ${x + highWidth} 60 L ${x + cycleWidth} 60`;
-    }
-    return path;
-  };
-
   const MODES: { id: Mode; label: string }[] = [
     { id: "astable", label: "Astable" },
     { id: "monostable", label: "Monostable" },
@@ -178,11 +166,7 @@
           </div>
         {/each}
       </div>
-      <div class="border border-(--color-border) bg-(--color-bg-alt) p-4 mb-3">
-        <svg viewBox="-5 0 310 70" class="w-full h-20 text-(--color-text)" aria-label="Output waveform">
-          <path d={waveformPath(astable.duty)} stroke="currentColor" stroke-width="2" fill="none" />
-        </svg>
-      </div>
+      <Timer555Simulation mode="astable" tauCharge={(useDiode ? r1! : r1! + r2!) * c!} tauDischarge={r2! * c!} {useDiode} />
       <p class="text-xs font-mono text-(--color-text-light)">
         t₁ = 0.693 × ({useDiode ? "R1" : "R1 + R2"}) × C · t₂ = 0.693 × R2 × C · f = 1 / (t₁ + t₂)
       </p>
@@ -205,6 +189,7 @@
         <div class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium mb-1">Output Pulse Width</div>
         <div class="text-3xl font-mono text-(--color-text)">{formatTime(monostable.width)}</div>
       </div>
+      <Timer555Simulation mode="monostable" tauCharge={rMono! * cMono!} />
       <p class="text-xs font-mono text-(--color-text-light)">t = 1.1 × R × C</p>
     {:else}
       <p class="text-sm text-(--color-text-muted)">Enter R and C.</p>
