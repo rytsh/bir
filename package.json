@@ -8,7 +8,9 @@
     "preview": "astro preview",
     "astro": "astro",
     "update:emojis": "node scripts/update-emojis.mjs",
-    "test:emojis": "node --test scripts/emoji.test.mjs"
+    "test:emojis": "node --test scripts/emoji.test.mjs",
+    "test:seo": "node --experimental-strip-types --test scripts/seo-paths.test.mjs",
+    "check:seo": "node scripts/check-seo.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.6",

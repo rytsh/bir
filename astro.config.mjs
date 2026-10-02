@@ -11,10 +11,13 @@ import AstroPWA from "@vite-pwa/astro";
 // https://astro.build/config
 export default defineConfig({
   site: "https://1.tools",
+  trailingSlash: "always",
   integrations: [
     svelte(),
     react(),
-    sitemap(),
+    sitemap({
+      filter: (page) => !["/404", "/404/", "/404.html"].includes(new URL(page).pathname),
+    }),
     AstroPWA({
       registerType: "autoUpdate",
       injectRegister: "inline",

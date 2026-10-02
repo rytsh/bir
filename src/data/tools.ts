@@ -1,3 +1,5 @@
+import { normalizePagePath } from "../lib/paths.ts";
+
 export interface Tool {
   id: string;
   name: string;
@@ -1237,7 +1239,9 @@ const rawCategories: Category[] = [
 export const categories: Category[] = rawCategories
   .map((category) => ({
     ...category,
-    tools: [...category.tools].sort((a, b) => a.name.localeCompare(b.name)),
+    tools: category.tools
+      .map((tool) => ({ ...tool, path: normalizePagePath(tool.path) }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -1254,5 +1258,5 @@ export function getCategoryByToolId(toolId: string): Category | undefined {
 }
 
 export function getToolByPath(path: string): Tool | undefined {
-  return getAllTools().find((tool) => tool.path === path);
+  return getAllTools().find((tool) => tool.path === normalizePagePath(path));
 }

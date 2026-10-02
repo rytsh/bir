@@ -6,6 +6,7 @@ import FavoriteButton from "../components/FavoriteButton.svelte";
 import Sidebar from "../components/Sidebar.astro";
 import ThemeToggle from "../components/ThemeToggle.svelte";
 import { getToolByPath } from "../data/tools";
+import { normalizePagePath } from "../lib/paths.ts";
 
 interface Props {
   title: string;
@@ -13,9 +14,11 @@ interface Props {
   keywords?: string;
   currentPath?: string;
   fullBleed?: boolean;
+  noindex?: boolean;
 }
 
-const { title, description, keywords, currentPath, fullBleed } = Astro.props;
+const { title, description, keywords, currentPath, fullBleed, noindex = false } = Astro.props;
+const currentTool = getToolByPath(currentPath || Astro.url.pathname);
 const gaId = import.meta.env.PUBLIC_GA_ID;
 
 const siteName = "1.tools - Collection of Useful Tools";
@@ -23,14 +26,13 @@ const defaultDescription =
   "A collection of open-source tools for everyday tasks - encoders, decoders, generators, converters, and more.";
 const defaultKeywords =
   "tools, developer tools, web tools, encoder, decoder, generator, converter, base64, url encoding, hash, jwt, barcode, password generator, text tools, hex viewer, data converter, julian date, luhn algorithm";
-const metaDescription = description || defaultDescription;
-const metaKeywords = keywords || defaultKeywords;
+const metaDescription = description || currentTool?.description || defaultDescription;
+const metaKeywords = keywords || currentTool?.keywords || defaultKeywords;
 const pageTitle = `${title ? title : siteName}`;
-const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const canonicalURL = new URL(normalizePagePath(Astro.url.pathname), Astro.site);
 const ogImage = new URL("/og.jpg", Astro.site);
 const twitterImage = new URL("/og.jpg", Astro.site);
 const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
-const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
 ---
 
 <!doctype html>
@@ -48,6 +50,10 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
     <meta name="theme-color" content="#1a1a1a" />
     <link rel="dns-prefetch" href="//fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Asap+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;700;900&display=swap"
+    />
 
     <meta name="generator" content={Astro.generator} />
     <title>{pageTitle}</title>
@@ -57,14 +63,14 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
     <meta name="keywords" content={metaKeywords} />
     <meta
       name="robots"
-      content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"
+      content={noindex ? "noindex, follow" : "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"}
     />
     <meta name="author" content="rytsh" />
     <meta name="publisher" content="rytsh" />
     <meta name="copyright" content="© 2025 rytsh" />
     <meta name="language" content="English" />
     <meta name="geo.region" content="US" />
-    <link rel="canonical" href={canonicalURL} />
+    {!noindex && <link rel="canonical" href={canonicalURL} />}
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
@@ -95,9 +101,8 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
         </script>
       </>
     )}
-    <!-- Critical: Hide page, set theme and sidebar state before any paint -->
+    <!-- Set theme before paint, but keep server-rendered content visible without JS. -->
     <style is:inline>
-      html.loading { visibility: hidden; }
       /* Disable transitions during initial load */
       html.loading * { transition: none !important; }
     </style>
@@ -287,6 +292,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
     <script>
       import { getToolByPath } from "../data/tools";
       import { addRecentId } from "../lib/recent";
+      import { normalizePagePath } from "../lib/paths.ts";
 
       let sidebarScrollTop = 0;
 
@@ -310,7 +316,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
       }
 
       function updateActiveLink() {
-        const currentPath = window.location.pathname;
+        const currentPath = normalizePagePath(window.location.pathname);
         const sidebar = document.getElementById("sidebar-content");
         if (!sidebar) return;
 
@@ -318,8 +324,7 @@ const currentTool = currentPath ? getToolByPath(currentPath) : undefined;
         links.forEach((link) => {
           const href = link.getAttribute("href");
           const isActive =
-            href === currentPath ||
-            (href && currentPath.startsWith(href + "/"));
+            href && normalizePagePath(href) === currentPath;
 
           if (isActive) {
             link.classList.remove(

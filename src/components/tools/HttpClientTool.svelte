@@ -501,7 +501,7 @@
   <header>
     <p class="text-sm text-(--color-text-muted)">
       Postman-style HTTP client. Send any request method with custom headers, body, and auth. Save requests in collections (IndexedDB), import/export as JSON or cURL. Note: browser CORS will block some endpoints — see the
-      <a href="/network/cors" class="underline">CORS Checker</a>.
+      <a href="/network/cors/" class="underline">CORS Checker</a>.
     </p>
   </header>
 
