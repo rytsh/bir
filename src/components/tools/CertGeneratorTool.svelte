@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "@abraham/reflection";
   import * as x509 from "@peculiar/x509";
   import { privateKeyDer, encryptKeyDer, pkcs12MacKey, signingAlgorithm, validateCa, validateKeyPair, validateChain, validityEnd, isIp, validateSan, serverFullchain } from "./cert-crypto.ts";
 

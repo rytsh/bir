@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { stripTypeScriptTypes } from "node:module";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
+import "@abraham/reflection";
 import * as x509 from "@peculiar/x509";
 import * as helpers from "./cert-crypto.ts";
 

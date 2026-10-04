@@ -1,0 +1,55 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      block_feedback:
+        block:
+          regex_path: ^/api/feedback(/|$)
+      strip_api:
+        strip_prefix:
+          prefix: /api
+      service:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://127.0.0.1:9090"
+      compress:
+        compress:
+          min_length: 1024
+      site:
+        folder:
+          path: /dist
+          index: true
+          etag: weak
+          cache_regex:
+            - regex: \.html$
+              cache_control: no-cache
+            - regex: ^(sw|workbox-.*)\.js$
+              cache_control: no-cache
+            - regex: \.webmanifest$
+              cache_control: no-cache
+            - regex: .*
+              cache_control: public, max-age=3600
+    routers:
+      api:
+        path: /api/*
+        middlewares:
+          - block_feedback
+          - strip_api
+          - service
+      site:
+        path: /*
+        middlewares:
+          - compress
+          - site
+
+services:
+  - name: bir_api
+    path: "."
+    command: /bir_api
+    env:
+      BIR_API_MIDDLEWARE_ENABLED: "false"
+      BIR_API_ADDRESS: "127.0.0.1:9090"
+    inherit_env: true

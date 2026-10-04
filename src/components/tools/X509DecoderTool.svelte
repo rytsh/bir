@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "@abraham/reflection";
   import * as x509 from "@peculiar/x509";
 
   type ItemKind = "certificate" | "csr" | "publicKey";

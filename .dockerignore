@@ -1,0 +1,10 @@
+node_modules
+dist
+.astro
+.git
+.agents
+.claude
+.codex
+.vscode
+.env
+.env.production

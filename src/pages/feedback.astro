@@ -1,6 +1,10 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import FeedbackForm from "../components/FeedbackForm.svelte";
+
+if (import.meta.env.PUBLIC_DISABLE_FEEDBACK === "true") {
+  return Astro.redirect("/");
+}
 ---
 
 <Layout

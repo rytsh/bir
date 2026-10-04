@@ -8,6 +8,8 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import AstroPWA from "@vite-pwa/astro";
 // import basicSsl from "@vitejs/plugin-basic-ssl";
 
+const feedbackDisabled = process.env.PUBLIC_DISABLE_FEEDBACK === "true";
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://1.tools",
@@ -16,7 +18,12 @@ export default defineConfig({
     svelte(),
     react(),
     sitemap({
-      filter: (page) => !["/404", "/404/", "/404.html"].includes(new URL(page).pathname),
+      filter: (page) => {
+        const pathname = new URL(page).pathname;
+        if (["/404", "/404/", "/404.html"].includes(pathname)) return false;
+        if (feedbackDisabled && pathname.startsWith("/feedback")) return false;
+        return true;
+      },
     }),
     AstroPWA({
       registerType: "autoUpdate",
