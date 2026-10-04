@@ -765,6 +765,14 @@ const rawCategories: Category[] = [
         path: "/party/tournament",
         keywords: "tournament bracket, bracket generator, single elimination, double elimination, round robin, knockout, playoffs, tournament, sports bracket, league, match scheduler, fixture generator, esports bracket",
       },
+      {
+        id: "hangman",
+        name: "Hangman",
+        description: "Classic hangman word guessing game in English, Turkish, Dutch, German, French, Spanish, and Italian. Play with random words from categories (animals, food, countries, cities, tech and more) or enter a secret word with an optional hint for friends to guess. Keyboard support, fullscreen mode, and win/loss statistics.",
+        icon: "🪢",
+        path: "/party/hangman",
+        keywords: "hangman, adam asmaca, galgje, galgenmännchen, le pendu, el ahorcado, impiccato, word game, guess the word, word guessing game, party game, letter game, hangman online, secret word, kelime oyunu, woordspel, multiplayer word game",
+      },
     ],
   },
   {

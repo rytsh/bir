@@ -9,7 +9,7 @@ RUN sed '/http:\/\/localhost:4321/d' ./turna.yaml > /turna.yaml
 
 FROM ghcr.io/rytsh/dock/curl:latest AS external
 
-RUN curl -fSL https://github.com/rakunlabs/turna/releases/download/v0.8.26/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C / turna
+RUN curl -fSL https://github.com/rakunlabs/turna/releases/download/v0.9.12/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C / turna
 
 FROM gcr.io/distroless/static:nonroot
 

@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import HangmanTool from "../../components/tools/HangmanTool.svelte";
+import { getToolByPath } from "../../data/tools";
+
+const tool = getToolByPath("/party/hangman");
+---
+
+<Layout title="Hangman - Word Guessing Game" description={tool?.description} keywords={tool?.keywords} currentPath="/party/hangman">
+  <span slot="navbar-title">Hangman</span>
+  <HangmanTool client:load />
+</Layout>
