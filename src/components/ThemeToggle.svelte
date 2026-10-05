@@ -14,10 +14,14 @@
   };
 
   const updateTheme = () => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    const root = document.documentElement;
+    root.classList.add("theme-changing");
+    try {
+      root.classList.toggle("dark", isDark);
+      // Apply the new colors with transitions disabled before restoring hover effects.
+      void root.offsetHeight;
+    } finally {
+      root.classList.remove("theme-changing");
     }
   };
 

@@ -164,6 +164,14 @@
   }
 }
 
+/* Theme changes are instant throughout the site, including pseudo-elements. */
+html.theme-changing,
+html.theme-changing *,
+html.theme-changing *::before,
+html.theme-changing *::after {
+  transition: none !important;
+}
+
 /* Prevent flash of unstyled content during initialization */
 html.loading {
   visibility: hidden;
