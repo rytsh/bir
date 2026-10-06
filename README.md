@@ -36,6 +36,16 @@ __-__ **WebAssembly** -- Pandoc, FFmpeg, ImageMagick, Hugging Face Transformers,
 __-__ **[CodeMirror](https://codemirror.net)** -- code/text editor integration  
 __-__ **Go** -- lightweight API backend for DNS, WHOIS, SSL, IP lookup, and WebRTC signaling
 
+## Self-hosting
+
+Run the full app (frontend + API) as a single container, available for `linux/amd64` and `linux/arm64`:
+
+```sh
+docker run -d --name bir -p 8080:8080 ghcr.io/rytsh/bir/app:latest
+```
+
+Then open [http://localhost:8080](http://localhost:8080). The feedback endpoint is disabled in this image.
+
 ## Development
 
 ### Frontend
@@ -59,4 +69,5 @@ The API runs on `http://127.0.0.1:8080` by default. The frontend dev server is p
 ## Deployment
 
 __-__ **Frontend** -- triggered by git tags matching `v*`, built and deployed to GitHub Pages  
-__-__ **API** -- triggered by git tags matching `api/v*`, containerized and deployed to Google Cloud Run
+__-__ **API** -- triggered by git tags matching `api/v*`, containerized and deployed to Google Cloud Run  
+__-__ **App image** -- triggered by git tags matching `app/v*`, multi-arch image pushed to `ghcr.io/rytsh/bir/app`

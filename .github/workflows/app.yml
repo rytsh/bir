@@ -29,6 +29,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.app
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/rytsh/bir/app:${{ steps.version.outputs.VERSION }}
