@@ -987,7 +987,7 @@ const rawCategories: Category[] = [
       {
         id: "favicon-generator",
         name: "Favicon Generator",
-        description: "Create favicons from icons with customizable colors, shapes, and sizes. Browse Lucide and Simple Icons libraries with search, live preview, and export to PNG, ICO, and SVG",
+        description: "Create favicons from icons with customizable colors, shapes, and sizes. Browse Lucide and Simple Icons libraries or upload your own SVG, with search, live preview, and export to PNG, ICO, and SVG",
         icon: "🎯",
         path: "/graphics/favicon",
         keywords: "favicon generator, favicon maker, icon to favicon, favicon creator, ico generator, favicon design, app icon, website icon, lucide icons, simple icons, favicon converter, icon favicon, brand favicon",

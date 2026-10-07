@@ -4,18 +4,25 @@
     name: string;
     displayName: string;
     nameLower: string;
-    library: "lucide" | "simple-icons";
+    library: Library;
     svg: string;
     svgDataUrl: string;
     keywords: string[];
   }
 
+  interface StoredCustomIcon {
+    name: string;
+    displayName: string;
+    svg: string;
+  }
+
+  type Library = "lucide" | "simple-icons" | "custom";
   type Shape = "square" | "rounded" | "circle" | "squircle" | "hexagon" | "shield";
   type ExportFormat = "png" | "ico";
   type ExportSize = 16 | 32 | 48 | 64 | 128 | 192 | 256 | 512;
 
   // ── State ──────────────────────────────────────────────────────────
-  let activeLibrary = $state<"lucide" | "simple-icons">("lucide");
+  let activeLibrary = $state<Library>("lucide");
   let searchQuery = $state("");
   let debouncedQuery = $state("");
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,6 +46,16 @@
   let lucideLoaded = $state(false);
   let simpleIconsLoaded = $state(false);
 
+  // Custom SVG icons
+  const CUSTOM_STORAGE_KEY = "favicon-custom-icons";
+  let customIcons = $state<IconEntry[]>([]);
+  let customSvgInput = $state("");
+  let customNameInput = $state("");
+  let customError = $state<string | null>(null);
+  let customKeepColors = $state(false);
+  let customDragOver = $state(false);
+  let customFileInput: HTMLInputElement | undefined = $state();
+
   // ── Debounced search ──────────────────────────────────────────────
   function handleSearchInput(e: Event) {
     const value = (e.target as HTMLInputElement).value;
@@ -53,6 +70,158 @@
   // ── SVG to data URL helper ────────────────────────────────────────
   function svgToDataUrl(svg: string): string {
     return "data:image/svg+xml," + encodeURIComponent(svg);
+  }
+
+  function colorizeSvg(icon: IconEntry, color: string): string {
+    // Custom icons are normalized to currentColor on import
+    if (icon.library === "custom") return icon.svg.replace(/currentColor/g, color);
+    return icon.svg
+      .replace(/currentColor/g, color)
+      .replace(/stroke="[^"]*"/g, `stroke="${color}"`)
+      .replace(/fill="currentColor"/g, `fill="${color}"`);
+  }
+
+  // ── Custom SVG ────────────────────────────────────────────────────
+  const COLOR_PROPS = ["fill", "stroke"];
+
+  function isPaintable(value: string | null): boolean {
+    if (!value) return false;
+    const v = value.trim().toLowerCase();
+    return v !== "none" && v !== "transparent" && !v.startsWith("url(");
+  }
+
+  function normalizeCustomSvg(raw: string, keepColors: boolean): string {
+    const doc = new DOMParser().parseFromString(raw.trim(), "image/svg+xml");
+    const root = doc.documentElement;
+    if (doc.querySelector("parsererror") || root.nodeName.toLowerCase() !== "svg") {
+      throw new Error("Invalid SVG markup");
+    }
+
+    // Strip scripts, external content and event handlers
+    root.querySelectorAll("script, foreignObject").forEach((el) => el.remove());
+    for (const el of [root, ...Array.from(root.querySelectorAll("*"))]) {
+      for (const attr of Array.from(el.attributes)) {
+        const name = attr.name.toLowerCase();
+        const isHref = name === "href" || name === "xlink:href";
+        if (name.startsWith("on") || (isHref && !attr.value.trim().startsWith("#"))) {
+          el.removeAttribute(attr.name);
+        }
+      }
+
+      if (keepColors) continue;
+      for (const prop of COLOR_PROPS) {
+        if (isPaintable(el.getAttribute(prop))) el.setAttribute(prop, "currentColor");
+      }
+      const style = el.getAttribute("style");
+      if (style) {
+        el.setAttribute(
+          "style",
+          style.replace(/(^|;)\s*(fill|stroke)\s*:\s*([^;]+)/gi, (m, sep, prop, value) =>
+            isPaintable(value) ? `${sep}${prop}:currentColor` : m
+          )
+        );
+      }
+    }
+
+    // Ensure a viewBox so the icon scales correctly
+    if (!root.getAttribute("viewBox")) {
+      const w = parseFloat(root.getAttribute("width") || "");
+      const h = parseFloat(root.getAttribute("height") || "");
+      if (!w || !h) throw new Error("SVG needs a viewBox or width/height");
+      root.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    }
+    root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    root.setAttribute("width", "24");
+    root.setAttribute("height", "24");
+    if (!keepColors && !root.hasAttribute("fill")) root.setAttribute("fill", "currentColor");
+
+    return new XMLSerializer().serializeToString(root);
+  }
+
+  function createCustomEntry(stored: StoredCustomIcon): IconEntry {
+    return {
+      name: stored.name,
+      displayName: stored.displayName,
+      nameLower: stored.displayName.toLowerCase(),
+      library: "custom",
+      svg: stored.svg,
+      svgDataUrl: svgToDataUrl(stored.svg),
+      keywords: [],
+    };
+  }
+
+  function saveCustomIcons() {
+    const stored: StoredCustomIcon[] = customIcons.map((i) => ({
+      name: i.name,
+      displayName: i.displayName,
+      svg: i.svg,
+    }));
+    try {
+      localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(stored));
+    } catch (e) {
+      console.error("Failed to save custom icons:", e);
+    }
+  }
+
+  function loadCustomIcons() {
+    try {
+      const raw = localStorage.getItem(CUSTOM_STORAGE_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as StoredCustomIcon[];
+      customIcons = stored.filter((s) => s?.name && s?.svg).map(createCustomEntry);
+    } catch (e) {
+      console.error("Failed to load custom icons:", e);
+    }
+  }
+
+  function addCustomIcon(raw: string, displayName: string): boolean {
+    try {
+      const svg = normalizeCustomSvg(raw, customKeepColors);
+      const name = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const entry = createCustomEntry({ name, displayName: displayName.trim() || "Custom Icon", svg });
+      customIcons = [entry, ...customIcons];
+      selectedIcon = entry;
+      saveCustomIcons();
+      customError = null;
+      return true;
+    } catch (e) {
+      customError = e instanceof Error ? e.message : "Invalid SVG";
+      return false;
+    }
+  }
+
+  function handleAddPasted() {
+    if (!customSvgInput.trim()) return;
+    if (addCustomIcon(customSvgInput, customNameInput)) {
+      customSvgInput = "";
+      customNameInput = "";
+    }
+  }
+
+  async function handleCustomFiles(files: FileList | null) {
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (!file.name.toLowerCase().endsWith(".svg") && file.type !== "image/svg+xml") {
+        customError = `${file.name} is not an SVG file`;
+        continue;
+      }
+      addCustomIcon(await file.text(), file.name.replace(/\.svg$/i, ""));
+    }
+    if (customFileInput) customFileInput.value = "";
+  }
+
+  function handleCustomDrop(e: DragEvent) {
+    e.preventDefault();
+    customDragOver = false;
+    handleCustomFiles(e.dataTransfer?.files ?? null);
+  }
+
+  function removeCustomIcon(icon: IconEntry) {
+    customIcons = customIcons.filter((i) => i.name !== icon.name);
+    if (selectedIcon?.name === icon.name && selectedIcon.library === "custom") {
+      selectedIcon = customIcons[0] ?? lucideIcons.find((i) => i.name === "heart") ?? null;
+    }
+    saveCustomIcons();
   }
 
   // ── Shapes config ─────────────────────────────────────────────────
@@ -159,6 +328,7 @@
   // Load initial library
   $effect(() => {
     loadLucideIcons();
+    loadCustomIcons();
   });
 
   // Load library when tab switches
@@ -171,7 +341,7 @@
   // ── Derived ───────────────────────────────────────────────────────
 
   let currentIcons = $derived(
-    activeLibrary === "lucide" ? lucideIcons : simpleIcons
+    activeLibrary === "lucide" ? lucideIcons : activeLibrary === "simple-icons" ? simpleIcons : customIcons
   );
 
   let filteredIcons = $derived.by(() => {
@@ -304,11 +474,7 @@
       const offset = (size - iconPixelSize) / 2;
 
       // Parse SVG and draw on canvas using Image
-      const svgWithColor = icon.svg
-        .replace(/currentColor/g, options.iconColor)
-        .replace(/stroke="[^"]*"/g, `stroke="${options.iconColor}"`)
-        .replace(/fill="none"/g, 'fill="none"')
-        .replace(/fill="currentColor"/g, `fill="${options.iconColor}"`);
+      const svgWithColor = colorizeSvg(icon, options.iconColor);
 
       const img = new Image();
       const blob = new Blob([svgWithColor], { type: "image/svg+xml" });
@@ -365,11 +531,7 @@
     }
     ctx.clip();
 
-    const svgWithColor = selectedIcon.svg
-      .replace(/currentColor/g, iconColor)
-      .replace(/stroke="[^"]*"/g, `stroke="${iconColor}"`)
-      .replace(/fill="none"/g, 'fill="none"')
-      .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
+    const svgWithColor = colorizeSvg(selectedIcon, iconColor);
 
     const img = new Image();
     const blob = new Blob([svgWithColor], { type: "image/svg+xml" });
@@ -423,11 +585,7 @@
     ctx.clip();
 
     if (selectedIcon) {
-      const svgWithColor = selectedIcon.svg
-        .replace(/currentColor/g, iconColor)
-        .replace(/stroke="[^"]*"/g, `stroke="${iconColor}"`)
-        .replace(/fill="none"/g, 'fill="none"')
-        .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
+      const svgWithColor = colorizeSvg(selectedIcon, iconColor);
 
       const img = new Image();
       const blob = new Blob([svgWithColor], { type: "image/svg+xml" });
@@ -708,20 +866,18 @@
     if (!selectedIcon) return "";
 
     // Apply colors to the icon's own SVG
-    const iconSvg = selectedIcon.svg
-      .replace(/currentColor/g, iconColor)
-      .replace(/stroke="[^"]*"/g, `stroke="${iconColor}"`)
-      .replace(/fill="none"/g, 'fill="none"')
-      .replace(/fill="currentColor"/g, `fill="${iconColor}"`);
+    const iconSvg = colorizeSvg(selectedIcon, iconColor);
 
     // Remove xmlns and existing width/height from nested icon SVG, then set position and size
     const iconPixelSize = (iconSize / 100) * 24;
     const offset = (24 - iconPixelSize) / 2;
-    const nestedSvg = iconSvg
-      .replace(/\s*xmlns="[^"]*"/, "")
-      .replace(/\s*width="[^"]*"/, "")
-      .replace(/\s*height="[^"]*"/, "")
-      .replace(/<svg/, `<svg x="${offset}" y="${offset}" width="${iconPixelSize}" height="${iconPixelSize}"`);
+    const nestedSvg = iconSvg.replace(/<svg\b[^>]*>/, (openTag) =>
+      openTag
+        .replace(/\s+xmlns="[^"]*"/, "")
+        .replace(/\s+width="[^"]*"/, "")
+        .replace(/\s+height="[^"]*"/, "")
+        .replace(/<svg/, `<svg x="${offset}" y="${offset}" width="${iconPixelSize}" height="${iconPixelSize}"`)
+    );
 
     // Build background shape in viewBox 0 0 24 24
     let bg = "";
@@ -823,7 +979,7 @@
 <div class="h-full flex flex-col">
   <header class="mb-4">
     <p class="text-sm text-(--color-text-muted)">
-      Create favicons from icons with customizable colors, shapes, and sizes. Download as PNG or ICO.
+      Create favicons from icons or your own SVGs with customizable colors, shapes, and sizes. Download as PNG or ICO.
     </p>
   </header>
 
@@ -1089,7 +1245,73 @@
             <span class="text-xs opacity-60">({simpleIcons.length})</span>
           {/if}
         </button>
+        <button
+          onclick={() => { activeLibrary = "custom"; visibleCount = 150; }}
+          class="flex-1 px-4 py-2 text-sm font-medium transition-colors {activeLibrary === 'custom'
+            ? 'text-(--color-accent) border-b-2 border-(--color-accent) -mb-px'
+            : 'text-(--color-text-muted) hover:text-(--color-text)'}"
+        >
+          Custom SVG
+          {#if customIcons.length > 0}
+            <span class="text-xs opacity-60">({customIcons.length})</span>
+          {/if}
+        </button>
       </div>
+
+      {#if activeLibrary === "custom"}
+        <div class="p-3 border-b border-(--color-border) flex flex-col gap-2">
+          <div
+            role="button"
+            tabindex="0"
+            onclick={() => customFileInput?.click()}
+            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") customFileInput?.click(); }}
+            ondragover={(e) => { e.preventDefault(); customDragOver = true; }}
+            ondragleave={() => customDragOver = false}
+            ondrop={handleCustomDrop}
+            class="px-3 py-4 border border-dashed text-center text-xs cursor-pointer transition-colors {customDragOver
+              ? 'border-(--color-accent) text-(--color-accent) bg-(--color-bg)'
+              : 'border-(--color-border) text-(--color-text-muted) hover:bg-(--color-bg)'}"
+          >
+            Drop .svg files here or click to upload
+          </div>
+          <input
+            bind:this={customFileInput}
+            type="file"
+            accept=".svg,image/svg+xml"
+            multiple
+            class="hidden"
+            onchange={(e) => handleCustomFiles((e.target as HTMLInputElement).files)}
+          />
+          <textarea
+            bind:value={customSvgInput}
+            rows="3"
+            placeholder={'Or paste SVG markup: <svg viewBox="0 0 24 24">...</svg>'}
+            class="w-full px-3 py-2 border border-(--color-border) bg-(--color-bg) text-(--color-text) font-mono text-xs focus:outline-none focus:border-(--color-accent) resize-y"
+          ></textarea>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              bind:value={customNameInput}
+              placeholder="Name (optional)"
+              class="flex-1 min-w-0 px-3 py-1.5 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-xs focus:outline-none focus:border-(--color-accent)"
+            />
+            <button
+              onclick={handleAddPasted}
+              disabled={!customSvgInput.trim()}
+              class="px-4 py-1.5 bg-(--color-accent) text-(--color-btn-text) text-xs font-medium hover:bg-(--color-accent-hover) transition-colors disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" bind:checked={customKeepColors} class="accent-(--color-accent)" />
+            <span class="text-xs text-(--color-text-muted)">Keep original colors (ignore Icon Color)</span>
+          </label>
+          {#if customError}
+            <p class="text-xs text-red-500">{customError}</p>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Icon Count -->
       <div class="px-3 py-1.5 text-xs text-(--color-text-muted) border-b border-(--color-border)">
@@ -1115,9 +1337,10 @@
         {:else}
           <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6 gap-1">
             {#each filteredIcons.slice(0, visibleCount) as icon (icon.name + icon.library)}
+              <div class="relative group">
               <button
                 onclick={() => selectedIcon = icon}
-                class="flex flex-col items-center gap-1 p-2 transition-colors group {selectedIcon?.name === icon.name && selectedIcon?.library === icon.library
+                class="w-full flex flex-col items-center gap-1 p-2 transition-colors {selectedIcon?.name === icon.name && selectedIcon?.library === icon.library
                   ? 'bg-(--color-accent) text-(--color-btn-text)'
                   : 'hover:bg-(--color-bg) text-(--color-text)'}"
                 title={icon.displayName}
@@ -1135,6 +1358,17 @@
                   {icon.displayName}
                 </span>
               </button>
+              {#if icon.library === "custom"}
+                <button
+                  onclick={() => removeCustomIcon(icon)}
+                  class="absolute top-0 right-0 w-4 h-4 flex items-center justify-center text-[10px] leading-none bg-(--color-bg) border border-(--color-border) text-(--color-text-muted) hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                  title="Remove {icon.displayName}"
+                  aria-label="Remove {icon.displayName}"
+                >
+                  ×
+                </button>
+              {/if}
+              </div>
             {/each}
           </div>
           {#if filteredIcons.length > visibleCount}
@@ -1149,7 +1383,11 @@
           {/if}
           {#if filteredIcons.length === 0 && !loadingLibrary}
             <div class="flex items-center justify-center h-32 text-(--color-text-muted) text-sm">
-              No icons found matching "{debouncedQuery}"
+              {#if activeLibrary === "custom" && customIcons.length === 0}
+                No custom icons yet. Upload or paste an SVG above.
+              {:else}
+                No icons found matching "{debouncedQuery}"
+              {/if}
             </div>
           {/if}
         {/if}
