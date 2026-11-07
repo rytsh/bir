@@ -18,6 +18,7 @@
     "update:emojis": "node scripts/update-emojis.mjs",
     "test:emojis": "node --test scripts/emoji.test.mjs",
     "test:seo": "node --experimental-strip-types --test scripts/seo-paths.test.mjs",
+    "test:workbenches": "node --experimental-strip-types --test scripts/workbenches.test.mjs",
     "check:seo": "node scripts/check-seo.mjs"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "@comark/html": "^0.7.0",
     "@eigenpal/docx-editor-react": "^1.9.0",
     "@faker-js/faker": "^10.6.0",
+    "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@huggingface/transformers": "^4.3.0",
@@ -65,6 +67,7 @@
     "curlconverter": "^4.12.0",
     "docx-preview": "^0.4.1",
     "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
     "figlet": "^1.12.0",
     "ggwave": "^0.4.0",
     "hash-wasm": "^4.12.0",

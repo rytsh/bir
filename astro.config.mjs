@@ -65,7 +65,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,ico,png,svg,woff2,wasm,jpg}"],
-        globIgnores: ["**/pandoc.wasm"],
+        globIgnores: ["**/pandoc.wasm", "**/ffmpeg-core.wasm"],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024, // 30 MiB
         navigateFallback: null,
         cleanupOutdatedCaches: true,
@@ -129,6 +129,16 @@ export default defineConfig({
       tailwindcss(),
       viteStaticCopy({
         targets: [
+          {
+            src: "node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js",
+            dest: "wasm",
+            rename: { stripBase: true, name: "ffmpeg-core.js" },
+          },
+          {
+            src: "node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm",
+            dest: "wasm",
+            rename: { stripBase: true, name: "ffmpeg-core.wasm" },
+          },
           {
             src: "node_modules/cron-js-wasm/wasm/module.wasm",
             dest: "wasm",
