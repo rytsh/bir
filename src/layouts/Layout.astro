@@ -5,6 +5,8 @@ import CommandPalette from "../components/CommandPalette.svelte";
 import FavoriteButton from "../components/FavoriteButton.svelte";
 import Sidebar from "../components/Sidebar.astro";
 import ThemeToggle from "../components/ThemeToggle.svelte";
+import ToolHelp from "../components/ToolHelp.astro";
+import { getToolGuide } from "../data/toolGuides.ts";
 import { getToolByPath } from "../data/tools";
 import { normalizePagePath } from "../lib/paths.ts";
 
@@ -26,10 +28,42 @@ const defaultDescription =
   "A collection of open-source tools for everyday tasks - encoders, decoders, generators, converters, and more.";
 const defaultKeywords =
   "tools, developer tools, web tools, encoder, decoder, generator, converter, base64, url encoding, hash, jwt, barcode, password generator, text tools, hex viewer, data converter, julian date, luhn algorithm";
+const toolGuide = getToolGuide(currentTool?.id);
 const metaDescription = description || currentTool?.description || defaultDescription;
 const metaKeywords = keywords || currentTool?.keywords || defaultKeywords;
-const pageTitle = `${title ? title : siteName}`;
+const baseTitle = toolGuide?.title || title;
+const pageTitle = baseTitle ? (baseTitle.includes("1.tools") ? baseTitle : `${baseTitle} | 1.tools`) : siteName;
 const canonicalURL = new URL(normalizePagePath(Astro.url.pathname), Astro.site);
+const structuredData =
+  currentTool && !noindex
+    ? [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          name: currentTool.name,
+          headline: toolGuide?.title,
+          description: metaDescription,
+          url: canonicalURL.href,
+          applicationCategory: "DeveloperApplication",
+          operatingSystem: "Any (web browser)",
+          isAccessibleForFree: true,
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        },
+        ...(toolGuide
+          ? [
+              {
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                mainEntity: toolGuide.faq.map((item) => ({
+                  "@type": "Question",
+                  name: item.question,
+                  acceptedAnswer: { "@type": "Answer", text: item.answer },
+                })),
+              },
+            ]
+          : []),
+      ]
+    : [];
 const ogImage = new URL("/og.jpg", Astro.site);
 const twitterImage = new URL("/og.jpg", Astro.site);
 const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
@@ -90,6 +124,7 @@ const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
     <meta name="twitter:description" content={metaDescription} />
     <meta name="twitter:image" content={twitterImage} />
     <meta name="twitter:image:alt" content="Tools - Utilities Collection" />
+    {structuredData.map((data) => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
     {gaId && (
       <>
         <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}></script>
@@ -278,6 +313,7 @@ const isMainPage = Astro.url.pathname === "/" || Astro.url.pathname === "";
             <div id="navbar-tool-actions" class="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-1 overflow-x-auto lg:max-w-none">
               <slot name="navbar-actions" />
             </div>
+            {currentTool && toolGuide && <ToolHelp name={currentTool.name} guide={toolGuide} />}
             {currentTool && <FavoriteButton tool={currentTool} variant="navbar" showLabel={true} client:load />}
             <ThemeToggle client:load />
           </div>
