@@ -130,6 +130,11 @@ export default defineConfig({
       viteStaticCopy({
         targets: [
           {
+            src: "node_modules/7z-wasm/License.txt",
+            dest: "wasm",
+            rename: { stripBase: true, name: "7zip-LICENSE.txt" },
+          },
+          {
             src: "node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js",
             dest: "wasm",
             rename: { stripBase: true, name: "ffmpeg-core.js" },

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onDestroy, tick } from "svelte";
   import { Archive, Download, FilePlus, FolderPlus, Pencil, Trash2, X } from "@lucide/svelte";
   import FileDropZone from "../ui/FileDropZone.svelte";
   import ToolWorkbench from "../ui/ToolWorkbench.svelte";
   import { ARCHIVE_LIMIT, ENTRY_LIMIT, readArchive, safeArchivePath, writeArchive, type ArchiveEntry } from "../../lib/archive.ts";
   import { downloadBlob, errorMessage, formatBytes, isEditing } from "../../lib/workbench.ts";
+  import { ArchiveUnlockError, readExtendedArchive } from "../../lib/archive-engine-client.ts";
 
   type SortKey = "name" | "size";
   let entries = $state<ArchiveEntry[]>([]);
@@ -14,6 +16,11 @@
   let level = $state<number>(6);
   let archiveName = $state<string>("archive");
   let busy = $state<boolean>(false);
+  let enforceLimits = $state<boolean>(true);
+  let openingController = $state<AbortController | null>(null);
+  let lockedFile = $state<File | null>(null);
+  let password = $state<string>("");
+  let passwordInput = $state<HTMLInputElement>();
   let error = $state<string>("");
   let status = $state<string>("");
   let previewName = $state<string>("");
@@ -33,25 +40,42 @@
   });
   const extension = $derived(format === "tar.gz" ? "tar.gz" : format);
 
-  async function open(files: File[]): Promise<void> {
-    if (entries.length && !confirm("Opening an archive replaces the current workspace. Continue?")) return;
+  onDestroy(() => { openingController?.abort(); });
+
+  async function open(files: File[], retry: boolean = false): Promise<void> {
+    if (busy || !files.length) return;
+    if (!retry && entries.length && !confirm("Opening an archive replaces the current workspace. Continue?")) return;
+    if (!retry) { password = ""; lockedFile = null; }
     busy = true; error = ""; status = "Opening archive…";
+    const controller: AbortController = new AbortController();
+    openingController = controller;
     try {
       const file: File = files[0];
-      if (file.size > 128 * 1024 * 1024) throw new Error("Choose an archive smaller than 128 MB.");
-      const result: ArchiveEntry[] = await readArchive(new Uint8Array(await file.arrayBuffer()), file.name);
+      const signature: Uint8Array = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      const extended: boolean = /\.(zip|rar|7z)$/i.test(file.name) || (signature[0] === 0x50 && signature[1] === 0x4b) || (signature[0] === 0x52 && signature[1] === 0x61 && signature[2] === 0x72) || (signature[0] === 0x37 && signature[1] === 0x7a);
+      const result: ArchiveEntry[] = extended
+        ? await readExtendedArchive(file, password, { enforceLimits }, controller.signal)
+        : await readArchive(new Uint8Array(await file.arrayBuffer()), file.name, { enforceLimits });
+      if (controller.signal.aborted) return;
       entries = result; selected = []; previewName = ""; query = "";
-      archiveName = file.name.replace(/\.(tar\.gz|tgz|zip|tar|gz)$/i, "");
+      archiveName = file.name.replace(/\.(tar\.gz|tgz|zip|tar|gz|rar|7z)$/i, "");
+      lockedFile = null; password = "";
       status = `Opened ${file.name} · ${result.length} files.`;
-    } catch (issue) { error = errorMessage(issue); status = ""; }
-    finally { busy = false; }
+    } catch (issue) {
+      if (controller.signal.aborted) { status = "Opening cancelled."; return; }
+      error = errorMessage(issue); status = "";
+      if (issue instanceof ArchiveUnlockError) {
+        lockedFile = files[0]; password = "";
+      }
+    }
+    finally { busy = false; openingController = null; if (lockedFile) { await tick(); passwordInput?.focus(); } }
   }
 
   async function add(files: File[]): Promise<void> {
     if (!files.length) return;
     busy = true; error = "";
     try {
-      if (entries.length + files.length > ENTRY_LIMIT || total + files.reduce((sum, file) => sum + file.size, 0) > ARCHIVE_LIMIT) throw new Error("Workspace is limited to 5000 files and 256 MB.");
+      if (enforceLimits && (entries.length + files.length > ENTRY_LIMIT || total + files.reduce((sum, file) => sum + file.size, 0) > ARCHIVE_LIMIT)) throw new Error("Memory protection is enabled: 5000 files / 256 MB. Disable it above to work with larger archives.");
       const added: ArchiveEntry[] = [];
       const names: Set<string> = new Set(entries.map((entry) => entry.name));
       for (const file of files) {
@@ -69,7 +93,7 @@
     if (!files.length || busy) return;
     busy = true; error = ""; status = "Building archive locally…";
     try {
-      const bytes: Uint8Array = await writeArchive($state.snapshot(files), format, Number(level));
+      const bytes: Uint8Array = await writeArchive($state.snapshot(files), format, Number(level), { enforceLimits });
       downloadBlob(bytes, `${archiveName.trim().replace(/[\\/]/g, "_") || "archive"}.${extension}`);
       status = `Downloaded ${files.length} ${files.length === 1 ? "file" : "files"} · ${formatBytes(bytes.length)}.`;
     } catch (issue) { error = errorMessage(issue); status = ""; }
@@ -117,12 +141,25 @@
 </script>
 
 <svelte:window onkeydown={shortcut} />
-<ToolWorkbench description="Open archives, inspect their contents, or build a new one. ZIP, USTAR TAR, and GZIP are processed entirely on your device.">
-  <FileDropZone accept=".zip,.tar,.gz,.tgz" compact={entries.length > 0} title={entries.length ? "Open a different archive" : "Drop an archive to open it"} hint={entries.length ? "Replaces the current workspace after confirmation." : "ZIP · TAR · TAR.GZ · GZIP — up to 128 MB. Or start empty with Add files below. Encrypted ZIP, RAR and 7z are not supported."} disabled={busy} onfiles={open} />
+<ToolWorkbench description="Open, inspect, and create archives locally.">
+  <div class="memory-settings">
+    <label class="memory-toggle"><input type="checkbox" bind:checked={enforceLimits} disabled={busy} aria-describedby="archive-memory-hint" /> Memory protection</label>
+    <span id="archive-memory-hint" class="wb-small wb-muted">{enforceLimits ? "256 MB expanded data / 5,000 files. Turn off to remove limits." : "Limits disabled. Large archives may exhaust browser memory or freeze this tab."}</span>
+  </div>
+  <FileDropZone accept=".zip,.tar,.gz,.tgz,.rar,.7z" compact={entries.length > 0} title={entries.length ? "Open a different archive" : "Drop an archive to open it"} hint={entries.length ? "Replaces the current workspace after confirmation." : "ZIP · TAR · TAR.GZ · GZIP · RAR · 7z. Password-protected ZIP, RAR, and 7z can be unlocked locally. Export as ZIP, TAR, or TAR.GZ."} disabled={busy} onfiles={open} />
+  {#if lockedFile}
+    <form class="wb-toolbar" onsubmit={(event) => { event.preventDefault(); if (lockedFile) void open([lockedFile], true); }}>
+      <label class="wb-field">Archive password<input bind:this={passwordInput} type="password" bind:value={password} autocomplete="off" disabled={busy} aria-describedby="archive-password-hint" /></label>
+      <button type="submit" class="primary" disabled={busy || !password}>Unlock archive</button>
+      <button type="button" disabled={busy} onclick={() => { lockedFile = null; password = ""; error = ""; }}>Cancel</button>
+      <span id="archive-password-hint" class="wb-small wb-muted">For {lockedFile.name}. Passwords stay in this tab and are cleared after opening.</span>
+    </form>
+  {/if}
   <div class="wb-toolbar">
-    <label class="wb-button" class:disabled={busy}><FilePlus size={16} /> Add files<input class="wb-file-input" type="file" multiple disabled={busy} onchange={(event) => { void add(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} /></label>
+    <label class="wb-button" class:disabled={busy}><FilePlus size={16} /> {entries.length ? "Add files" : "Add files to pack"}<input class="wb-file-input" type="file" multiple disabled={busy} onchange={(event) => { void add(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} /></label>
     <label class="wb-button" class:disabled={busy}><FolderPlus size={16} /> Add folder<input class="wb-file-input" type="file" webkitdirectory multiple disabled={busy} onchange={(event) => { void add(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} /></label>
     {#if busy}<progress aria-label="Processing archive" style="width: 8rem;"></progress>{/if}
+    {#if openingController}<button onclick={() => openingController?.abort()}>Cancel opening</button>{/if}
     <span class="wb-small wb-muted" role="status">{status}</span>
     <span class="wb-spacer"></span>
     {#if entries.length}<button disabled={busy} onclick={clearWorkspace}>Clear workspace</button>{/if}
@@ -187,14 +224,18 @@
         <span class="wb-spacer"></span>
         <button class="primary" disabled={busy} onclick={() => exportArchive()}><Archive size={16} /> Export all {entries.length} files</button>
       </div>
+      <p class="wb-small wb-muted">Exports are unencrypted, even when the original archive required a password.</p>
     </section>
   {:else}
-    <p class="wb-small wb-muted">Tip: Add folder keeps directory structure. Everything stays in this tab until you download it.</p>
+    <p class="wb-small wb-muted">Choose multiple files with Add files to pack, then Export all to download one archive. Add folder keeps directory structure. Everything stays in this tab.</p>
   {/if}
   <div class="wb-shortcuts"><span><kbd>/</kbd> Filter</span><span><kbd>E</kbd> Export (selection if any)</span><span><kbd>Del</kbd> Remove selected</span><span><kbd>Esc</kbd> Clear selection / close preview</span></div>
+  <p class="wb-small wb-muted">ZIP, RAR, and 7z reader: 7-Zip WASM · <a href={`${import.meta.env.BASE_URL}wasm/7zip-LICENSE.txt`}>License</a> · <a href="https://github.com/use-strict/7z-wasm">Source and build instructions</a></p>
 </ToolWorkbench>
 
 <style>
+  .memory-settings { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+  .memory-toggle { display: inline-flex; align-items: center; gap: .5rem; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .sort-field { flex-direction: row; }
   .selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; padding: .5rem .5rem .5rem 1rem; background: var(--color-accent); color: var(--color-btn-text); }

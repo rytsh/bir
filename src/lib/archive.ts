@@ -5,6 +5,10 @@ export interface ArchiveEntry {
   data: Uint8Array;
 }
 
+export interface ArchiveOptions {
+  enforceLimits?: boolean;
+}
+
 export const ARCHIVE_LIMIT: number = 256 * 1024 * 1024;
 export const ENTRY_LIMIT: number = 5000;
 
@@ -18,9 +22,9 @@ export function safeArchivePath(name: string): string {
   return clean;
 }
 
-function verifyEntries(entries: ArchiveEntry[]): ArchiveEntry[] {
-  if (entries.length > ENTRY_LIMIT) throw new Error(`Archives are limited to ${ENTRY_LIMIT} files.`);
-  if (entries.reduce((sum, entry) => sum + entry.data.length, 0) > ARCHIVE_LIMIT) throw new Error("Expanded data exceeds the 256 MB safety limit.");
+function verifyEntries(entries: ArchiveEntry[], options: ArchiveOptions = {}): ArchiveEntry[] {
+  if (options.enforceLimits !== false && entries.length > ENTRY_LIMIT) throw new Error(`Archives are limited to ${ENTRY_LIMIT} files.`);
+  if (options.enforceLimits !== false && entries.reduce((sum, entry) => sum + entry.data.length, 0) > ARCHIVE_LIMIT) throw new Error("Expanded data exceeds the 256 MB safety limit.");
   const names: Set<string> = new Set();
   for (const entry of entries) {
     entry.name = safeArchivePath(entry.name);
@@ -30,10 +34,36 @@ function verifyEntries(entries: ArchiveEntry[]): ArchiveEntry[] {
   return entries;
 }
 
-export function parseTar(data: Uint8Array): ArchiveEntry[] {
+export function parseTar(data: Uint8Array, options: ArchiveOptions = {}): ArchiveEntry[] {
   const decoder: TextDecoder = new TextDecoder();
   const entries: ArchiveEntry[] = [];
   const text = (start: number, length: number): string => decoder.decode(data.subarray(start, start + length)).split("\0")[0];
+  const readPax = (payload: Uint8Array): Map<string, string> => {
+    const fields: Map<string, string> = new Map();
+    let at: number = 0;
+    while (at < payload.length) {
+      const space: number = payload.indexOf(32, at);
+      const lengthText: string = decoder.decode(payload.subarray(at, space < 0 ? at : space));
+      const length: number = Number(lengthText);
+      if (!/^\d+$/.test(lengthText) || !Number.isSafeInteger(length) || length <= space - at + 1 || at + length > payload.length || payload[at + length - 1] !== 10) {
+        throw new Error("Invalid PAX metadata record.");
+      }
+      const record: string = decoder.decode(payload.subarray(space + 1, at + length - 1));
+      const equals: number = record.indexOf("=");
+      if (equals <= 0) throw new Error("Invalid PAX metadata record.");
+      const key: string = record.slice(0, equals);
+      if (key.startsWith("GNU.sparse.") || (key === "SCHILY.filetype" && record.slice(equals + 1) === "sparse")) {
+        throw new Error("Sparse TAR files are not supported. Re-export without sparse entries.");
+      }
+      fields.set(key, record.slice(equals + 1));
+      at += length;
+    }
+    return fields;
+  };
+  const globalPax: Map<string, string> = new Map();
+  let localPax: Map<string, string> = new Map();
+  let longName: string | null = null;
+  let total: number = 0;
   let offset: number = 0;
   while (offset + 512 <= data.length) {
     const header: Uint8Array = data.subarray(offset, offset + 512);
@@ -41,27 +71,56 @@ export function parseTar(data: Uint8Array): ArchiveEntry[] {
     const expected: number = parseInt(text(offset + 148, 8).trim(), 8);
     const actual: number = header.reduce((sum, byte, index) => sum + (index >= 148 && index < 156 ? 32 : byte), 0);
     if (expected !== actual) throw new Error("Invalid TAR header checksum. The archive may be corrupted.");
-    const size: number = parseInt(text(offset + 124, 12).trim() || "0", 8);
-    if (!Number.isSafeInteger(size) || size < 0 || offset + 512 + size > data.length) throw new Error("Truncated or unsupported TAR entry.");
     const type: number = data[offset + 156];
-    const prefix: string = text(offset + 345, 155);
-    const name: string = `${prefix ? `${prefix}/` : ""}${text(offset, 100)}`;
-    if (type === 0 || type === 48) {
-      entries.push({ name: safeArchivePath(name), data: data.slice(offset + 512, offset + 512 + size) });
-      if (entries.length > ENTRY_LIMIT) throw new Error("Too many files in this archive.");
-    } else if (type !== 53) {
-      throw new Error("This TAR contains links, PAX, or GNU extended entries. Only regular USTAR files and folders are supported; re-export as ZIP or USTAR.");
+    const extended: boolean = type === 120 || type === 103 || type === 76 || type === 75;
+    const fields: Map<string, string> = new Map([...globalPax, ...localPax]);
+    const paxSize: string | undefined = extended ? undefined : fields.get("size");
+    if (paxSize && !/^\d+$/.test(paxSize)) throw new Error("Invalid PAX entry size.");
+    const size: number = paxSize ? Number(paxSize) : parseInt(text(offset + 124, 12).trim() || "0", 8);
+    if (!Number.isSafeInteger(size) || size < 0 || offset + 512 + size > data.length) throw new Error("Truncated or unsupported TAR entry.");
+    if (extended) {
+      if (type === 120 || type === 103) {
+        const parsed: Map<string, string> = readPax(data.subarray(offset + 512, offset + 512 + size));
+        if (type === 103) {
+          for (const [key, value] of parsed) {
+            if (value === "") globalPax.delete(key);
+            else globalPax.set(key, value);
+          }
+        } else {
+          for (const [key, value] of parsed) localPax.set(key, value);
+        }
+      } else if (type === 76) {
+        longName = text(offset + 512, size);
+      }
+      // GNU long-link targets (K) are metadata; actual links are rejected below.
+      offset += 512 + Math.ceil(size / 512) * 512;
+      continue;
     }
+    // GNU headers reuse the USTAR prefix area for other metadata.
+    const prefix: string = text(offset + 257, 6) === "ustar" && data[offset + 262] === 0 ? text(offset + 345, 155) : "";
+    const name: string = fields.get("path") || longName || `${prefix ? `${prefix}/` : ""}${text(offset, 100)}`;
+    if (type === 0 || type === 48) {
+      total += size;
+      if (options.enforceLimits !== false && total > ARCHIVE_LIMIT) throw new Error("Expanded data exceeds the 256 MB safety limit.");
+      entries.push({ name: safeArchivePath(name), data: data.slice(offset + 512, offset + 512 + size) });
+      if (options.enforceLimits !== false && entries.length > ENTRY_LIMIT) throw new Error("Too many files in this archive.");
+    } else if (type === 49 || type === 50) {
+      throw new Error("This TAR contains symbolic or hard links, which are not supported. Re-export with links dereferenced as regular files.");
+    } else if (type !== 53) {
+      throw new Error(`Unsupported TAR entry type ${JSON.stringify(String.fromCharCode(type))}. Only regular files and folders are supported.`);
+    }
+    localPax = new Map();
+    longName = null;
     offset += 512 + Math.ceil(size / 512) * 512;
   }
-  if (!entries.length) throw new Error("No regular files found. Choose a ZIP, USTAR TAR, or GZIP file.");
-  return verifyEntries(entries);
+  if (!entries.length) throw new Error("No regular files found. Choose a ZIP, TAR, or GZIP file.");
+  return verifyEntries(entries, options);
 }
 
-export function createTar(input: ArchiveEntry[]): Uint8Array {
-  const entries: ArchiveEntry[] = verifyEntries(input);
+export function createTar(input: ArchiveEntry[], options: ArchiveOptions = {}): Uint8Array {
+  const entries: ArchiveEntry[] = verifyEntries(input, options);
   const length: number = entries.reduce((sum, entry) => sum + 512 + Math.ceil(entry.data.length / 512) * 512, 1024);
-  if (length > ARCHIVE_LIMIT) throw new Error("TAR output exceeds 256 MB. Select fewer files.");
+  if (options.enforceLimits !== false && length > ARCHIVE_LIMIT) throw new Error("TAR output exceeds 256 MB. Select fewer files.");
   const output: Uint8Array = new Uint8Array(length);
   const encoder: TextEncoder = new TextEncoder();
   let offset: number = 0;
@@ -98,8 +157,7 @@ export function createTar(input: ArchiveEntry[]): Uint8Array {
   return output;
 }
 
-export async function readArchive(data: Uint8Array, name: string): Promise<ArchiveEntry[]> {
-  if (data.length > 128 * 1024 * 1024) throw new Error("Choose an archive smaller than 128 MB.");
+export async function readArchive(data: Uint8Array, name: string, options: ArchiveOptions = {}): Promise<ArchiveEntry[]> {
   if (data[0] === 0x50 && data[1] === 0x4b) {
     let size: number = 0;
     let count: number = 0;
@@ -110,17 +168,17 @@ export async function readArchive(data: Uint8Array, name: string): Promise<Archi
         if (file.name.endsWith("/")) return false;
         size += file.originalSize;
         count++;
-        if (size > ARCHIVE_LIMIT || count > ENTRY_LIMIT) { issue = "ZIP exceeds the 256 MB / 5000 file safety limit."; return false; }
+         if (options.enforceLimits !== false && (size > ARCHIVE_LIMIT || count > ENTRY_LIMIT)) { issue = "ZIP exceeds the 256 MB / 5000 file safety limit."; return false; }
         return true;
       },
     }, (error, result) => error ? reject(error) : resolve(result)));
     if (issue) throw new Error(issue);
-    return verifyEntries(Object.entries(files).map(([path, bytes]) => ({ name: path, data: bytes })));
+    return verifyEntries(Object.entries(files).map(([path, bytes]) => ({ name: path, data: bytes })), options);
   }
   if (data[0] === 0x1f && data[1] === 0x8b) {
     if (data.length < 18) throw new Error("Truncated GZIP file.");
     const expanded: number = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(data.length - 4, true);
-    if (expanded > ARCHIVE_LIMIT) throw new Error("GZIP expands beyond the 256 MB safety limit.");
+    if (options.enforceLimits !== false && expanded > ARCHIVE_LIMIT) throw new Error("GZIP expands beyond the 256 MB safety limit.");
     // Feed small compressed chunks to bound individual decompression allocations,
     // and enforce the cumulative limit independently of the untrusted trailer.
     const result: Uint8Array = await new Promise((resolve, reject) => {
@@ -130,7 +188,7 @@ export async function readArchive(data: Uint8Array, name: string): Promise<Archi
       const stream: AsyncGunzip = new AsyncGunzip((error, bytes, final) => {
         if (error) { stream.terminate(); reject(error); return; }
         total += bytes.length;
-        if (total > ARCHIVE_LIMIT) { stream.terminate(); reject(new Error("GZIP expands beyond the 256 MB safety limit.")); return; }
+        if (options.enforceLimits !== false && total > ARCHIVE_LIMIT) { stream.terminate(); reject(new Error("GZIP expands beyond the 256 MB safety limit.")); return; }
         chunks.push(bytes);
         if (final) {
           const output: Uint8Array = new Uint8Array(total);
@@ -147,20 +205,20 @@ export async function readArchive(data: Uint8Array, name: string): Promise<Archi
       stream.ondrain = (): void => { if (offset < data.length) feed(); };
       feed();
     });
-    if (/\.(tar\.gz|tgz)$/i.test(name)) return parseTar(result);
+    if (/\.(tar\.gz|tgz)$/i.test(name)) return parseTar(result, options);
     return [{ name: safeArchivePath(name.replace(/\.gz$/i, "") || "file"), data: result }];
   }
-  return parseTar(data);
+  return parseTar(data, options);
 }
 
-export async function writeArchive(entries: ArchiveEntry[], format: "zip" | "tar" | "tar.gz", level: number): Promise<Uint8Array> {
-  verifyEntries(entries);
+export async function writeArchive(entries: ArchiveEntry[], format: "zip" | "tar" | "tar.gz", level: number, options: ArchiveOptions = {}): Promise<Uint8Array> {
+  verifyEntries(entries, options);
   if (format === "zip") {
     const files: Record<string, Uint8Array> = Object.create(null);
     for (const entry of entries) files[entry.name] = entry.data;
     return new Promise((resolve, reject) => zip(files, { level: level as 0 | 6 | 9 }, (error, bytes) => error ? reject(error) : resolve(bytes)));
   }
-  const tar: Uint8Array = createTar(entries);
+  const tar: Uint8Array = createTar(entries, options);
   if (format === "tar") return tar;
   return new Promise((resolve, reject) => gzip(tar, { level: level as 0 | 6 | 9 }, (error, bytes) => error ? reject(error) : resolve(bytes)));
 }
