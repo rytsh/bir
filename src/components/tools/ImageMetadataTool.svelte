@@ -144,7 +144,7 @@
           { tag: "FileName", value: file.name, category: "File" },
           { tag: "FileSize", value: formatFileSize(file.size), category: "File" },
           { tag: "FileType", value: file.type || "Unknown", category: "File" },
-          { tag: "LastModified", value: new Date(file.lastModified).toLocaleString(), category: "File" },
+          { tag: "LastModified", value: formatFileDate(file.lastModified), category: "File" },
         ];
       }
 
@@ -153,7 +153,7 @@
         { tag: "FileName", value: file.name, category: "File" },
         { tag: "FileSize", value: formatFileSize(file.size), category: "File" },
         { tag: "FileType", value: file.type || "Unknown", category: "File" },
-        { tag: "LastModified", value: new Date(file.lastModified).toLocaleString(), category: "File" },
+        { tag: "LastModified", value: formatFileDate(file.lastModified), category: "File" },
       ];
       
       metadata = [...fileInfo, ...metadata];
@@ -163,6 +163,11 @@
     } finally {
       isLoading = false;
     }
+  }
+
+  // Use ISO 8601 with an explicit UTC timezone, independent of browser locale.
+  function formatFileDate(timestamp: number): string {
+    return new Date(timestamp).toISOString();
   }
 
   function isPng(dataView: DataView): boolean {
@@ -1149,7 +1154,12 @@
                       <span class="text-sm font-medium text-(--color-text) sm:w-48 shrink-0">
                         {entry.tag}
                       </span>
-                      <span class="text-sm text-(--color-text-muted) break-all">
+                      <span
+                        class="text-sm text-(--color-text-muted) break-all"
+                        title={entry.tag === "LastModified" && entry.category === "File"
+                          ? entry.value.replace("T", " ").replace("Z", " UTC")
+                          : undefined}
+                      >
                         {entry.value}
                       </span>
                     </div>
