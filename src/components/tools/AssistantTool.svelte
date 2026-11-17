@@ -6,23 +6,17 @@
         type TextGenerationPipeline,
     } from "@huggingface/transformers";
     import { onMount, tick } from "svelte";
+    import {
+        DEFAULT_LOCAL_MODEL,
+        DEFAULT_LOCAL_DTYPE,
+        MODELS,
+        type ModelTask,
+    } from "../../lib/assistant-models.ts";
 
     // Configuration for transformers.js
     env.allowLocalModels = false;
 
-    type ModelTask =
-        | "text-generation"
-        | "text2text-generation"
-        | "token-classification";
     type RuntimeMode = "local" | "cloud";
-
-    interface ModelOption {
-        value: string;
-        label: string;
-        supportedDtypes: string[];
-        defaultDtype: string;
-        task: ModelTask;
-    }
 
     interface GenerationParams {
         max_new_tokens?: number;
@@ -79,38 +73,6 @@
         type: string;
         dataUrl: string;
     }
-
-    // Models
-    const MODELS: ModelOption[] = [
-        {
-            value: "HuggingFaceTB/SmolLM2-135M-Instruct",
-            label: "SmolLM2-135M (Instruct, Fast, ~140MB)",
-            supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
-            defaultDtype: "q4f16",
-            task: "text-generation",
-        },
-        {
-            value: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-            label: "SmolLM2-1.7B (Instruct, High Quality, ~1.7GB)",
-            supportedDtypes: ["fp32", "fp16", "q8", "q4", "q4f16"],
-            defaultDtype: "q4f16",
-            task: "text-generation",
-        },
-        {
-            value: "Xenova/Phi-3-mini-4k-instruct",
-            label: "Phi-3 Mini 4k (Instruct, Smart, ~2.5GB)",
-            supportedDtypes: ["q4"],
-            defaultDtype: "q4",
-            task: "text-generation",
-        },
-        {
-            value: "openai/privacy-filter",
-            label: "OpenAI Privacy Filter (PII Detection, ~1B)",
-            supportedDtypes: ["q4"],
-            defaultDtype: "q4",
-            task: "token-classification",
-        },
-    ];
 
     // Available devices
     const DEVICES = [
@@ -250,15 +212,23 @@
             description:
                 "OpenAI-compatible Groq API. Has a free developer tier with rate limits.",
             apiKeyUrl: "https://console.groq.com/keys",
-            defaultModel: "llama-3.1-8b-instant",
+            defaultModel: "openai/gpt-oss-20b",
             models: [
                 {
+                    value: "openai/gpt-oss-20b",
+                    label: "GPT-OSS 20B (Fast)",
+                },
+                {
+                    value: "openai/gpt-oss-120b",
+                    label: "GPT-OSS 120B",
+                },
+                {
                     value: "llama-3.1-8b-instant",
-                    label: "Llama 3.1 8B Instant",
+                    label: "Llama 3.1 8B Instant (Enterprise)",
                 },
                 {
                     value: "llama-3.3-70b-versatile",
-                    label: "Llama 3.3 70B Versatile",
+                    label: "Llama 3.3 70B Versatile (Enterprise)",
                 },
             ],
         },
@@ -269,19 +239,23 @@
             description:
                 "OpenAI-compatible OpenRouter API. Select :free models, subject to availability and limits.",
             apiKeyUrl: "https://openrouter.ai/keys",
-            defaultModel: "meta-llama/llama-3.1-8b-instruct:free",
+            defaultModel: "google/gemma-4-26b-a4b-it:free",
             models: [
                 {
-                    value: "meta-llama/llama-3.1-8b-instruct:free",
-                    label: "Llama 3.1 8B Instruct :free",
+                    value: "google/gemma-4-26b-a4b-it:free",
+                    label: "Gemma 4 26B A4B :free",
                 },
                 {
-                    value: "google/gemma-3-4b-it:free",
-                    label: "Gemma 3 4B IT :free",
+                    value: "google/gemma-4-31b-it:free",
+                    label: "Gemma 4 31B :free",
                 },
                 {
-                    value: "mistralai/devstral-small:free",
-                    label: "Devstral Small :free",
+                    value: "nvidia/nemotron-3.5-lightning:free",
+                    label: "Nemotron 3.5 Lightning :free",
+                },
+                {
+                    value: "inclusionai/ling-3.2-flash:free",
+                    label: "Ling 3.2 Flash :free",
                 },
             ],
         },
@@ -448,9 +422,9 @@
     );
     let selectedDevice = $state(savedSettings?.selectedDevice ?? "webgpu");
     let selectedModel = $state(
-        savedSettings?.selectedModel ?? "HuggingFaceTB/SmolLM2-135M-Instruct",
+        savedSettings?.selectedModel ?? DEFAULT_LOCAL_MODEL,
     );
-    let selectedDtype = $state(savedSettings?.selectedDtype ?? "q4f16");
+    let selectedDtype = $state(savedSettings?.selectedDtype ?? DEFAULT_LOCAL_DTYPE);
     let generator = $state<
         TextGenerationPipeline | TokenClassificationPipeline | null
     >(null);
@@ -891,6 +865,8 @@
                 top_p,
                 repetition_penalty,
                 return_full_text: false,
+                // Qwen3 otherwise spends the short response budget on reasoning.
+                tokenizer_encode_kwargs: { enable_thinking: false },
                 // Stopping criteria to allow manual interruption
                 stopping_criteria: [
                     (ids: any) => {
@@ -899,7 +875,7 @@
                                 "[Assistant] Stopping via stopping_criteria",
                             );
                         }
-                        return shouldStop;
+                        return ids.map(() => shouldStop);
                     },
                 ],
                 // Fallback: Check stop in callback and throw to interrupt

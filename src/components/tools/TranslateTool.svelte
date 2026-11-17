@@ -1,22 +1,11 @@
 <script lang="ts">
-    import {
-        env,
-        pipeline,
-        type TranslationPipeline,
-    } from "@huggingface/transformers";
     import { onMount, tick } from "svelte";
-
-    // Configuration for transformers.js
-    env.allowLocalModels = false;
-    env.useBrowserCache = true; // Enable browser cache (IndexedDB)
-
-    // Models
-    const MODELS = [
-        {
-            value: "Xenova/m2m100_418M",
-            label: "M2M-100 (418M, 100 languages)",
-        },
-    ];
+    import {
+        TRANSLATION_MODELS,
+        resolveTranslationRuntime,
+        restoreTranslationModel,
+        type TranslationModelId,
+    } from "../../lib/translation.ts";
 
     // M2M-100 supported languages (100 languages with simple ISO codes)
     const LANGUAGES = [
@@ -154,17 +143,45 @@
     const savedSettings = loadSettings();
 
     // State
-    let selectedModel = $state(
-        savedSettings?.selectedModel ?? "Xenova/m2m100_418M",
-    );
-    let sourceLang = $state(savedSettings?.sourceLang ?? "en");
-    let targetLang = $state(savedSettings?.targetLang ?? "tr");
+    let selectedModel = $state<TranslationModelId>(restoreTranslationModel(savedSettings?.selectedModel));
+    let sourceLang = $state<string>(LANGUAGES.some((lang) => lang.code === savedSettings?.sourceLang) ? savedSettings.sourceLang : "en");
+    let targetLang = $state<string>(LANGUAGES.some((lang) => lang.code === savedSettings?.targetLang) ? savedSettings.targetLang : "tr");
     let inputText = $state("");
     let outputText = $state("");
 
-    // Model state - NOT reactive to prevent re-initialization
-    let translator: TranslationPipeline | null = null;
-    let currentModelId = "";
+    // Heavy model loading and inference stay off the UI thread.
+    let worker: Worker | undefined;
+    let downloadApproved = $state(false);
+    const approvedModels = new Set<string>();
+    let activeModel = $derived(TRANSLATION_MODELS.find((model) => model.value === selectedModel)!);
+    let availableLanguages = $derived(LANGUAGES.filter((lang) => !activeModel.languages || activeModel.languages.includes(lang.code)));
+    let runtime = $derived(availableLanguages.some((lang) => lang.code === sourceLang) && availableLanguages.some((lang) => lang.code === targetLang)
+        && (selectedModel !== "opus" || (sourceLang === "tr" && targetLang === "en"))
+        ? resolveTranslationRuntime(selectedModel, sourceLang, targetLang)
+        : null);
+
+    $effect(() => {
+        if (selectedModel === "opus") {
+            sourceLang = "tr";
+            targetLang = "en";
+            return;
+        }
+        if (!availableLanguages.some((lang) => lang.code === sourceLang)) sourceLang = "en";
+        if (!availableLanguages.some((lang) => lang.code === targetLang)) targetLang = "tr";
+    });
+
+    $effect(() => {
+        selectedModel;
+        sourceLang;
+        targetLang;
+        resetWorker();
+        outputText = "";
+        errorMessage = "";
+    });
+
+    $effect(() => {
+        downloadApproved = runtime ? approvedModels.has(runtime.modelId) : false;
+    });
     
     // UI state - reactive
     let isModelLoaded = $state(false);
@@ -224,6 +241,7 @@
         }
 
         return () => {
+            worker?.terminate();
             if (recognition) {
                 recognition.abort();
             }
@@ -253,103 +271,74 @@
         LANGUAGES.find((l) => l.code === sourceLang),
     );
 
-    async function initModel() {
-        // Return cached instance if already loaded
-        if (translator && currentModelId === selectedModel) {
-            console.log(`[Translate] Using cached model instance`);
-            return translator;
-        }
-
-        try {
-            isModelLoading = true;
-            isModelLoaded = false;
-            errorMessage = "";
-            loadProgress = 0;
-            statusMessage = "Loading translation model...";
-
-            console.log(`[Translate] Initializing model: ${selectedModel}`);
-
-            // Track progress across multiple files
-            const fileProgress: Record<string, number> = {};
-            let isFromCache = true;
-
-            const instance = await pipeline("translation", selectedModel, {
-                progress_callback: (p: any) => {
-                    if (p.status === "progress" && p.file) {
-                        fileProgress[p.file] = p.progress;
-                        const files = Object.values(fileProgress);
-                        const avgProgress =
-                            files.reduce((a, b) => a + b, 0) / files.length;
-                        loadProgress = avgProgress;
-                        const fileName = p.file.split("/").pop();
-                        statusMessage = `Loading: ${fileName} (${Math.round(p.progress)}%)`;
-                    } else if (p.status === "ready") {
-                        loadProgress = 100;
-                        statusMessage = "Model ready!";
-                    } else if (p.status === "initiate" && p.file) {
-                        fileProgress[p.file] = 0;
-                        statusMessage = `Preparing: ${p.file.split("/").pop()}`;
-                    } else if (p.status === "download" && p.file) {
-                        // Actually downloading from network (not cached)
-                        isFromCache = false;
-                        statusMessage = `Downloading: ${p.file.split("/").pop()}`;
-                    } else if (p.status === "done" && p.file) {
-                        console.log(`[Translate] Loaded: ${p.file}`);
-                    }
-                },
-            });
-
-            translator = instance as TranslationPipeline;
-            currentModelId = selectedModel;
-
-            console.log(`[Translate] Model loaded successfully! (from cache: ${isFromCache})`);
-
-            isModelLoading = false;
-            isModelLoaded = true;
-            statusMessage = "";
-            return translator;
-        } catch (err: any) {
-            isModelLoading = false;
-            isModelLoaded = false;
-            errorMessage = `Failed to load model: ${err.message || String(err)}`;
-            console.error("[Translate] Init Error:", err);
-            throw err;
-        }
+    function resetWorker(): void {
+        worker?.terminate();
+        worker = undefined;
+        isModelLoaded = false;
+        isModelLoading = false;
+        isTranslating = false;
+        statusMessage = "";
+        loadProgress = 0;
     }
 
-    async function handleTranslate() {
-        if (!inputText.trim() || isTranslating) return;
-
-        try {
-            isTranslating = true;
-            errorMessage = "";
-            outputText = "";
-            statusMessage = "Translating...";
-
-            // Force UI update before heavy computation
-            await tick();
-
-            const model = await initModel();
-
-            console.log(
-                `[Translate] Translating from ${sourceLang} to ${targetLang}`,
-            );
-
-            const result = await model(inputText, {
-                tgt_lang: targetLang,
-                src_lang: sourceLang,
-            } as any);
-
-            if (Array.isArray(result) && result.length > 0) {
-                outputText = (result[0] as any).translation_text || "";
+    function ensureWorker(): Worker {
+        if (worker) return worker;
+        worker = new Worker(new URL("../../workers/translation.worker.ts", import.meta.url), { type: "module" });
+        worker.onmessage = (event: MessageEvent): void => {
+            const message = event.data;
+            if (message.type === "progress") {
+                statusMessage = message.status;
+                if (typeof message.progress === "number") loadProgress = message.progress;
+                if (typeof message.loaded === "boolean") {
+                    isModelLoaded = message.loaded;
+                    isModelLoading = !message.loaded;
+                }
+            } else if (message.type === "result") {
+                outputText = message.text;
+                isModelLoading = false;
+                isTranslating = false;
+                statusMessage = "";
+            } else if (message.type === "error") {
+                resetWorker();
+                errorMessage = `Translation failed: ${message.message}. If this model cannot load, try Automatic or M2M-100.`;
             }
+        };
+        worker.onerror = (): void => {
+            resetWorker();
+            errorMessage = "The translation worker failed. Check available memory and your connection, then try Automatic or M2M-100.";
+        };
+        return worker;
+    }
 
-            statusMessage = "";
-        } catch (err: any) {
-            errorMessage = `Translation failed: ${err.message || String(err)}`;
-            console.error("[Translate] Error:", err);
-        } finally {
-            isTranslating = false;
+    async function handleTranslate(): Promise<void> {
+        if (!inputText.trim() || isTranslating || !runtime) return;
+        errorMessage = "";
+        if (sourceLang === targetLang) {
+            outputText = inputText;
+            return;
+        }
+        if (!downloadApproved) {
+            errorMessage = "Allow the model download below the model selector before translating. Cached files will be reused when available.";
+            return;
+        }
+        approvedModels.add(runtime.modelId);
+        if (isListening) recognition?.stop();
+        isTranslating = true;
+        isModelLoading = !isModelLoaded;
+        statusMessage = "Preparing translation...";
+        outputText = "";
+        await tick();
+        try {
+            ensureWorker().postMessage({
+                model: selectedModel,
+                source: sourceLang,
+                target: targetLang,
+                targetName: LANGUAGES.find((lang) => lang.code === targetLang)?.name ?? "Turkish",
+                text: inputText,
+            });
+        } catch (error) {
+            resetWorker();
+            errorMessage = error instanceof Error ? error.message : String(error);
         }
     }
 
@@ -367,6 +356,7 @@
     }
 
     function clearAll() {
+        resetWorker();
         inputText = "";
         outputText = "";
         errorMessage = "";
@@ -411,8 +401,8 @@
 <div class="h-full flex flex-col gap-2">
     <header>
         <p class="text-sm text-(--color-text-muted)">
-            Translate text between 100 languages using AI. Everything runs
-            privately in your browser.
+            Translate locally with dedicated Turkish → English or multilingual AI models.
+            Text stays in your browser; model files download from Hugging Face on first use.
             {#if speechSupported}
                 <span class="text-yellow-600 dark:text-yellow-500"
                     >(Voice input requires internet)</span
@@ -433,7 +423,7 @@
     <div
         class="px-2 py-2 justify-between border border-(--color-border) bg-(--color-bg-alt) flex flex-wrap items-center gap-4"
     >
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
             <label
                 for="model-select"
                 class="text-xs uppercase tracking-wider text-(--color-text-light) font-medium"
@@ -444,9 +434,9 @@
                 id="model-select"
                 bind:value={selectedModel}
                 disabled={isModelLoading || isTranslating}
-                class="px-3 py-1.5 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
+                class="min-w-0 max-w-full px-3 py-1.5 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
             >
-                {#each MODELS as model}
+                {#each TRANSLATION_MODELS as model}
                     <option value={model.value}>{model.label}</option>
                 {/each}
             </select>
@@ -481,7 +471,7 @@
         <div class="flex items-center justify-center gap-2">
             <button
                 onclick={swapLanguages}
-                disabled={isTranslating || isModelLoading}
+                disabled={isTranslating || isModelLoading || selectedModel === "opus"}
                 class="p-2 border border-(--color-border) bg-(--color-bg-alt) hover:bg-(--color-bg) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Swap languages"
             >
@@ -530,8 +520,36 @@
                     <span>Translate</span>
                 {/if}
             </button>
+            {#if isTranslating}
+                <button
+                    onclick={resetWorker}
+                    class="px-3 py-2 border border-(--color-border) text-sm hover:bg-(--color-bg)"
+                >Cancel</button>
+            {/if}
         </div>
     </div>
+
+    <div class="text-xs text-(--color-text-muted) space-y-2" aria-live="polite">
+        <p>{activeModel.description}</p>
+        {#if runtime && sourceLang !== targetLang}
+            <p class="break-words">
+                Selected: <a class="underline underline-offset-2" href={`https://huggingface.co/${runtime.modelId}`} target="_blank" rel="noopener noreferrer">{runtime.modelId}</a>
+                · {runtime.download} · {runtime.device === "webgpu" ? "WebGPU / q4f16" : "CPU / q8"}
+            </p>
+            <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" bind:checked={downloadApproved} disabled={isTranslating} class="mt-0.5" />
+                <span>Allow this model's download and browser cache use ({runtime.download}, plus runtime files). Cached files are reused; memory use is higher than download size.</span>
+            </label>
+        {/if}
+        {#if runtime?.modelId.includes("opus-mt")}
+            <p>OPUS-MT by <a class="underline" href="https://huggingface.co/Helsinki-NLP" target="_blank" rel="noopener noreferrer">Helsinki-NLP / OPUS</a>, converted to ONNX by Xenova.
+                <a class="underline" href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache-2.0</a>. Original model weights were converted and quantized.</p>
+        {/if}
+    </div>
+
+    {#if isTranslating && !isModelLoading}
+        <p role="status" class="text-xs text-(--color-text-muted)">{statusMessage}</p>
+    {/if}
 
     <!-- Translation Area -->
     <div class="flex-1 flex flex-col lg:flex-row gap-2 min-h-0">
@@ -544,10 +562,11 @@
             >
                 <select
                     bind:value={sourceLang}
-                    disabled={isTranslating}
+                    disabled={isTranslating || isModelLoading || selectedModel === "opus"}
+                    aria-label="Source language"
                     class="flex-1 px-2 py-1 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
                 >
-                    {#each LANGUAGES as lang}
+                    {#each availableLanguages as lang}
                         <option value={lang.code}>{lang.name}</option>
                     {/each}
                 </select>
@@ -636,10 +655,11 @@
             >
                 <select
                     bind:value={targetLang}
-                    disabled={isTranslating}
+                    disabled={isTranslating || isModelLoading || selectedModel === "opus"}
+                    aria-label="Target language"
                     class="flex-1 px-2 py-1 border border-(--color-border) bg-(--color-bg) text-(--color-text) text-sm focus:outline-none focus:border-(--color-accent) cursor-pointer"
                 >
-                    {#each LANGUAGES as lang}
+                    {#each availableLanguages as lang}
                         <option value={lang.code}>{lang.name}</option>
                     {/each}
                 </select>
@@ -694,33 +714,12 @@
     <div
         class="text-[10px] text-(--color-text-muted) text-end border-t border-(--color-border) pt-1"
     >
-        Powered by
-        <a
-            href="https://huggingface.co/facebook/m2m100_418M"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-(--color-accent) hover:underline"
-        >
-            M2M-100
-        </a>
-        model by
-        <a
-            href="https://ai.meta.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-(--color-accent) hover:underline"
-        >
-            Meta AI
-        </a>
-        (MIT License) ·
-        <a
-            href="https://huggingface.co/Xenova/m2m100_418M"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-(--color-accent) hover:underline"
-        >
-            ONNX conversion
-        </a>
-        by Xenova
+        {#if runtime?.modelId === "Xenova/m2m100_418M"}
+            M2M-100 by Meta AI (MIT) · ONNX conversion by Xenova
+        {:else if selectedModel === "hymt2"}
+            Hy-MT2 by Tencent (Apache-2.0) · Experimental ONNX conversion by konstbet
+        {:else}
+            OPUS-MT by Helsinki-NLP / OPUS (Apache-2.0) · ONNX conversion by Xenova
+        {/if}
     </div>
 </div>

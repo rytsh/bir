@@ -21,6 +21,9 @@
     "test:workbenches": "node --experimental-strip-types --test scripts/workbenches.test.mjs",
     "test:archive": "node --experimental-strip-types --test scripts/archive.test.mjs",
     "test:world-clock": "node --experimental-strip-types --test scripts/world-clock.test.mjs",
+    "test:markdown": "node --experimental-strip-types --test scripts/markdown.test.mjs",
+    "test:assistant": "node --experimental-strip-types --test scripts/assistant-models.test.mjs",
+    "test:translation": "node --experimental-strip-types --test scripts/translation.test.mjs",
     "check:seo": "node scripts/check-seo.mjs"
   },
   "dependencies": {

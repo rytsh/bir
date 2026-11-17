@@ -10,6 +10,7 @@
     type DarkModeCleanup,
   } from "../../lib/codemirror.js";
   import { onMount } from "svelte";
+  import { renderMarkdown } from "../../lib/markdown.ts";
 
   type ViewMode = "split" | "editor" | "preview";
 
@@ -24,7 +25,6 @@
   let mermaidLoaded = $state(false);
   let hljs: typeof import("highlight.js") | undefined;
   let viewMode = $state<ViewMode>("split");
-  let comarkRender: ((markdown: string) => Promise<string>) | undefined;
 
   const htmlEscapes: Record<string, string> = {
     "&": "&amp;",
@@ -145,22 +145,6 @@ sequenceDiagram
     return hljs;
   }
 
-  async function loadComarkRender(): Promise<(markdown: string) => Promise<string>> {
-    if (!comarkRender) {
-      const [{ createRender }, mathPlugin] = await Promise.all([
-        import("@comark/html"),
-        import("@comark/html/plugins/math"),
-      ]);
-
-      comarkRender = createRender({
-        plugins: [mathPlugin.default()],
-        components: { Math: mathPlugin.Math },
-      });
-    }
-
-    return comarkRender;
-  }
-
   function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
   }
@@ -229,11 +213,6 @@ sequenceDiagram
     } catch {
       // Mermaid failed to load, leave code blocks as-is
     }
-  }
-
-  async function renderMarkdown(input: string): Promise<string> {
-    const render = await loadComarkRender();
-    return render(input);
   }
 
   async function updatePreview(input: string): Promise<void> {
